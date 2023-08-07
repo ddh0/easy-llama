@@ -1,3 +1,3 @@
-### easy-llama - official documentation
+# easy-llama - official documentation
 
 TODO
