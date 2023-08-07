@@ -21,6 +21,8 @@ DEBUG = False
 class suppress_if_no_debug(object):
     """
     Suppress console output from llama.cpp if easy_llama.DEBUG == False
+    
+    Changing DEBUG inside the WITH block could have strange effects
 
     See https://github.com/abetlen/llama-cpp-python/issues/478
     """
