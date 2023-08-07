@@ -2,7 +2,7 @@
 
 easy-llama allows developers that are unfamiliar with large language models to deploy them in an simplified manner, without sacrificing core functionality. It supports LLaMA and Llama 2 models released by Meta AI, and any model that derives from them.
 
-> *this project is unfinished and under active development*
+This project is currently unfinished and under active development.
 
 You can install easy-llama with pip:
 ```
