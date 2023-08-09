@@ -19,6 +19,16 @@ pip install easy-llama
 >>> 
 ```
 
+### ...helpful!
+```python
+>>> import easy_llama as ez
+>>> text = 'How do I make an omelette?'
+>>> text = ez.Formatters.assistant(text)
+>>> text
+"A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n### Human: How do I make an omelette? ### Assistant: "
+>>> 
+```
+
 ### ...powerful!
 ```python
 >>> import easy_llama
