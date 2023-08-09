@@ -2,9 +2,7 @@
 # Python 3.11.2
 
 """
-easy-llama - Simplified deployment of llama models
-
-requires llama-cpp-python, which should be installed automatically
+Simplified deployment of llama models
 
 for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 """
@@ -15,13 +13,14 @@ for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 
 import os
 import sys
+import pickle
 
 DEBUG = False
 
 class suppress_if_no_debug(object):
     """
     Suppress console output from llama.cpp if easy_llama.DEBUG == False
-    
+
     Changing DEBUG inside the WITH block could have strange effects
 
     See https://github.com/abetlen/llama-cpp-python/issues/478
@@ -66,6 +65,7 @@ class suppress_if_no_debug(object):
             self.outnull_file.close()
             self.errnull_file.close()
 
+
 try:
     with suppress_if_no_debug():
         import llama_cpp
@@ -74,34 +74,48 @@ except ModuleNotFoundError as e:
     e.add_note('Hint: Try \'pip install llama-cpp-python\'')
     raise
 
+if 'llama_cpp' not in sys.modules:
+    raise ImportWarning('easy_llama: required llama_cpp module not imported, \
+                        likely due to \'from easy_llama import ...\' statement')
+
 class Presets:
     """
-    You can make your own preset as long as it has .temp, .top_p, and .top_k attributes
+    You can make your own preset as long as it these attributes:
+    .temp
+    .top_p
+    .top_k
+    .repeat_penalty
     
-    It does not need to be under Presets, it can be in your own module
+    It does not need to be under Presets, it can be in your own module.
     """
+
+    # repeat_penalty == 1: no penalty
+    # repeat_penalty <  1: no idea
 
     class Standard:
         temp = 0.7
         top_p = 0.37
         top_k = 32
+        repeat_penalty = 1.1
     
     class Creative:
         temp = 0.9
         top_p = 0.37
         top_k = 128
+        repeat_penalty = 1.2
 
     class Crazy:
-        temp = 1.7
+        temp = 1.9
         top_p = 1
         top_k = 256
+        repeat_penalty = 2
 
 
 class Model(object):
     """
     """
 
-    def __init__(self, model_path: str, context_length=2048):
+    def __init__(self, model_path: str, context_length=2048) -> None:
         """
         Initialize a Llama model from a file.
         
@@ -110,13 +124,13 @@ class Model(object):
         """
 
         if type(model_path) is not str:
-            raise TypeError("model_path should be a string, not %s" % type(model_path))
+            raise TypeError('model_path should be a string, not %s' % type(model_path))
     
         if os.path.isdir(model_path):
-            raise IsADirectoryError("%s is a directory, not a file" % model_path)
+            raise IsADirectoryError('the given model_path \'%s\' is a directory, not a file' % model_path)
 
         if not os.path.exists(model_path):
-            raise FileNotFoundError("file %s does not exist" % model_path)
+            raise FileNotFoundError('the given model_path \'%s\' does not exist' % model_path)
         
         if type(context_length) is not int:
             raise TypeError("context_length should be int, not %s" % type(context_length))
@@ -132,25 +146,24 @@ class Model(object):
                                                     n_batch=512,
                                                     verbose=False)
     
-    def generate(self, prompt: str, preset=Presets.Standard, max_length=512, stop_sequences=['###']) -> str:
+    def generate(self, prompt: str, preset=Presets.Standard, max_length=512, stop_sequences=None) -> str:
        """
-       Given a prompt and a maximum length, return a generated string.
+       Given a prompt, return a generated string.
 
-       Optionally, specify a preset to control the behaviour of the model.
-
-       Built-in presets are Presets.Standard (default), Presets.Creative, and Presets.Crazy.
-
-       Optionally, specify a list of stop sequences that force the model to end generation early.
+       Optional parameters:
+       - preset: alters the way tokens are chosen, see the Presets class for options
+       - max_length: maximum length of generated string in tokens
+       - stop_sequences: string or list of strings at which to end the generation early (right before)
        """
 
        if type(prompt) is not str:
            raise TypeError("prompt should be string, not %s" % type(prompt))
 
        if type(max_length) is not int:
-           raise TypeError("max_length_in_tokens should be int, not %s" % type(max_length))
+           raise TypeError("max_length should be int, not %s" % type(max_length))
        
        if max_length > self.context_length:
-           raise Warning("generate: max_length is greater than model's context length")
+           print("easy_llama: generate: warning: max_length is greater than model's context_length")
        
        if not hasattr(preset, 'temp'):
            raise AttributeError("preset is missing attribute .temp")
@@ -160,11 +173,14 @@ class Model(object):
        
        if not hasattr(preset, 'top_k'):
            raise AttributeError("preset is missing attribute .top_k")
+       
+       if not hasattr(preset, 'repeat_penalty'):
+           raise AttributeError("preset is missing attribute .repeat_penalty")
 
-       if type(stop_sequences) is not list:
-           raise TypeError("stop_sequence should be list, not %s" % type(stop_sequences))
+       if type(stop_sequences) is not (list or str or None):
+           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
 
-       with suppress_if_no_debug():
+       with suppress_if_no_debug(): 
             return self.__internal_model.create_completion(prompt,
                                                            max_tokens=max_length,
                                                            temperature=preset.temp,
@@ -172,56 +188,131 @@ class Model(object):
                                                            top_k=preset.top_k,
                                                            stream=False,
                                                            stop=stop_sequences,
-                                                           repeat_penalty=1.2
+                                                           repeat_penalty=preset.repeat_penalty
+                                                           )['choices'][0]['text']
+    
+    def generate_greedy(self, prompt: str, max_length=512, stop_sequences=None) -> str:
+        """
+        Given a prompt, return a generated string with greedy sampling.
+
+        Optionally specify max_length and stop_sequences.
+
+        Greedy sampling means that the most likely token is always chosen.
+
+        Note that easy_llama.Model is hardcoded to initialize the model
+        with a random seed, so generations are not deterministic across
+        different instances of Model.
+        """
+
+        # top_p == 1 --> greedy sampling, according to llama.cpp docs
+
+        if type(prompt) is not str:
+            raise TypeError("prompt should be string, not %s" % type(prompt))
+        
+        if type(max_length) is not int:
+           raise TypeError("max_length should be int, not %s" % type(max_length))
+
+        if max_length > self.context_length:
+           print("easy_llama: generate_greedy: warning: max_length is greater than model's context_length")
+        
+        with suppress_if_no_debug():
+            return self.__internal_model.create_completion(prompt,
+                                                           max_tokens=max_length,
+                                                           temperature=0,
+                                                           top_p=1,
+                                                           top_k=0,
+                                                           stream=False,
+                                                           stop=stop_sequences,
+                                                           repeat_penalty=1
                                                            )['choices'][0]['text']
 
+    def generate_raw(self, prompt: str, max_tokens: int, temperature: float,
+                       top_p: float, top_k: int, stream: bool, stop: list | str | None,
+                       repeat_penalty: float
+                       ) -> llama_cpp.Completion | llama_cpp.Iterator[llama_cpp.CompletionChunk]:
+        """
+        Directly expose the most commonly useful parameters
+        of Llama.create_completion
 
-def text_to_alpaca_format(text: str):
+        Returns a response object containing the generated text
+
+        Raw in this case means forgoing easy_llama's usual
+        simplicity in favor of utility. If you want something more
+        low-level than this, use llama-cpp-python or llama.cpp
+        directly.
+        """
+        
+        with suppress_if_no_debug():
+            return self.__internal_model.create_completion(prompt,
+                                                           max_tokens,
+                                                           temperature,
+                                                           top_p,
+                                                           top_k,
+                                                           stream,
+                                                           stop,
+                                                           repeat_penalty,
+                                                           )
+
+
+class Formatters:
     """
-    Return any text in Stanford's Alpaca prompt format
-
-    This is good for Instruction/Response generations.
-
-    For example:
-    
-    >>> easy_llama.text_to_alpaca_format('How do I make pasta?')
-    'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\nHow do I make pasta?\n\n### Response:\n'
-    """
-
-    return 'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n%s\n\n### Response:\n' % text
-
-def text_to_llama_format(text: str):
-    """
-    Return any text in Meta AI's official Llama 2 chat prompt format
-
-    This is good for a safe, cautious assistant.
-    
-    For example:
-
-    >>> easy_llama.text_to_llama_format('How do I make pasta?')
-    '[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n\nHow do I make pasta? [/INST]'
-    """
-
-    return '[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.\n<</SYS>>\n\n%s [/INST]' \
-    % text
-
-def text_to_guanaco_format(text: str):
-    """
-    Return any text in Tim Dettmers' Guanaco prompt format
-
-    This is good for helpful assistant that is not as cautious as Meta's.
-
-    For example:
-
-    >>> easy_llame.text_to_guanaco_format('How do I make pasta?')
-    'A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n### Human: How do I make pasta? ### Assistant:'
+    Convenience functions to return a given input in various
+    prompt formats like Alpaca, Guanaco, etc
     """
 
-    return 'A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user\'s questions.\n### Human: %s ### Assistant:' \
-    % text
+    def alpaca(text: str) -> str:
+        """
+        Return any text in Stanford's Alpaca prompt format
 
-class ChatThread(object):
+        Recommened format for Intruct/Response
+
+        Below is an instruction that describes a task. Write a response that appropriately completes the request.
+
+        ### Instruction:
+        {text}
+        
+        ### Response:
+
+        """
+
+        return 'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n%s\n\n### Response:\n' % text
+
+    def llama(text: str) -> str:
+        """
+        Return any text in Meta AI's Llama-2-Chat prompt format
+
+        [INST] <<SYS>>
+        You are a helpful, respectful and honest assistant.
+        <</SYS>>
+        
+        {text} [/INST] 
+        """
+
+        return '[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant.\n<</SYS>>\n\n%s [/INST] ' \
+        % text
+
+    def guanaco(text: str) -> str:
+        """
+        Return any text in Tim Dettmers' Guanaco prompt format
+
+        Recommended format for assitant interactions
+
+        A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.
+        ### Human: {text} ### Assistant: 
+        """
+
+        return 'A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user\'s questions.\n### Human: %s ### Assistant: ' \
+        % text
+
+
+class Thread(object):
     """
-    TODO
+    Provide functions to facilitate conversation threads with a model
+    (i.e. remembering past messages)
+
+    Allows for arbitrary number of threads to be held simultaneously
+    and stored on disk, and for moving interactions between models
     """
 
+    def __init__(self, parties, bot):
+        pass
