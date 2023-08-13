@@ -1,47 +1,36 @@
-# easy-llama - Simplified deployment of Llama models in Python
+# easy-llama - Simple, on-device text inference in Python
 
-easy-llama allows developers that are unfamiliar with large language models to deploy them in an simplified manner, without sacrificing core functionality. It supports LLaMA and Llama 2 models released by Meta AI, and any model that derives from them.
+This project is currently unfinished and under heavy development.
 
-This project is currently unfinished and under active development.
-
-You can install easy-llama with pip:
+COMING SOON: You can install easy-llama with pip:
 ```
 pip install easy-llama
 ```
 
-# easy-llama is...
-### ...easy!
+# Showcase
+### Basic usage
 ```python
->>> import easy_llama
->>> Orca = easy_llama.Model('./orca-mini-7B.bin')
+>>> import easy_llama as ez
+>>> Orca = ez.Model('./orca-mini-7B.bin')
 >>> Orca.generate('The sky is ')
 '360 degrees of blue.\nThe ocean is a vast expanse of deep, dark blue.\nI am in awe of the beauty around me.'
 >>> 
 ```
 
-### ...helpful!
+### Creative writing
 ```python
 >>> import easy_llama as ez
->>> text = 'How do I make an omelette?'
->>> text = ez.Formatters.assistant(text)
->>> text
-"A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.\n### Human: How do I make an omelette? ### Assistant: "
->>> 
-```
-
-### ...powerful!
-```python
->>> import easy_llama
->>> Guanaco = easy_llama.Model('./guanaco-33B.bin', context_length=8192)
->>> Guanaco.generate('The breeze was crisp against her skin, and ', preset=easy_llama.Presets.Creative, max_length=128, stop_sequences=['\n\n'])
+>>> Guanaco = ez.Model('./guanaco-33B.bin')
+>>> Guanaco.generate('The breeze was crisp against her skin, and ', preset=ez.Presets.Creative, max_length=128, stop_sequences=['\n\n'])
 'icy rain splattered on the sidewalk. It had been a long day at work, but she didn’t mind. She loved being out in the city this time of year. There were so many people rushing around with their umbrellas and holiday shopping bags that it made her feel alive.\nShe stopped to look through the window of an antique shop on the corner. The store was filled with old books, vintage jewelry, and delicate glass figurines. She could have spent hours there if she had more time. As she turned away from the window, a man'
 >>> 
 ```
 
-### ...portable!
+# Support
+### Platforms
 I aim to make easy-llama completely portable between Linux, macOS and Windows, without you having to change any code. If this isn't your experience, please [open an issue](https://github.com/ddh0/easy-llama/issues).
 
-### ...documented!
+### Documentation
 Official documentation and FAQ can be found [here](https://github.com/ddh0/easy-llama/blob/main/docs.md).
 
 # Thank you!
@@ -55,4 +44,4 @@ easy-llama stands on the shoulders of giants. Thank you to the following:
 Language models tend to produce writing that is factually inaccurate, stereotypically biased, and completely disconnected from reality. You should never rely on a language model for anything important.
 
 ###### LICENSE
-> easy-llama is licensed under the terms of the MIT license.
+This project is licensed under the terms of the MIT license.
