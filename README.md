@@ -44,4 +44,4 @@ easy-llama stands on the shoulders of giants. Thank you to the following:
 Language models tend to produce writing that is factually inaccurate, stereotypically biased, and completely disconnected from reality. You should never rely on a language model for anything important.
 
 ###### LICENSE
-This project is licensed under the terms of the MIT license.
+This project is licensed under the terms of the [MIT license](https://github.com/ddh0/easy-llama/blob/main/LICENSE).
