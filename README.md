@@ -35,7 +35,7 @@ Official documentation and FAQ can be found [here](https://github.com/ddh0/easy-
 
 # Thank you!
 easy-llama stands on the shoulders of giants. Thank you to the following:
-- [Andrei Belten](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which this project relies on heavily
+- [Andrei Betlen](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which this project relies on heavily
 - [Georgi Gerganov](https://github.com/ggerganov) for the underlying implementation of [llama.cpp](https://github.com/ggerganov/llama.cpp) and [GGML](https://github.com/ggerganov/ggml)
 - [Tom Jobbins](https://huggingface.co/TheBloke) for providing the community with an enormous selection of model quantizations
 - [Meta AI](https://ai.meta.com/) for training and releasing LLaMA, Llama 2, and Llama-2-Chat
