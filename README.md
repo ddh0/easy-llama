@@ -26,9 +26,22 @@ pip install easy-llama
 >>> 
 ```
 
+# Intended audience
+easy-llama is intended for:
+- People that new to Llama models and want to test the waters
+- People with lower-end hardware
+- Developers seeking to utilize text inference without requiring the highest possible performance or efficiency
+- Developers that could benefit from a Python package that runs on any device with a CPU
+
 # Support
-### Platforms
-I aim to make easy-llama completely portable between Linux, macOS and Windows, without you having to change any code. If this isn't your experience, please [open an issue](https://github.com/ddh0/easy-llama/issues).
+### Models
+The following models are supported (GGML format only, see below):
+- Meta AI's LLaMA, Llama-2, and Llama-2-Chat
+- Stanford's Alpaca
+- Various community finetines such as Vicuna, WizardLM, Guanco, etc.
+
+### GPU acceleration
+easy-llama only supports CPU-based text inference. I have no plans to support CUDA, ROCm, or other forms of GPU acceleration.
 
 ### Documentation
 Official documentation and FAQ can be found [here](https://github.com/ddh0/easy-llama/blob/main/docs.md).
