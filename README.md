@@ -39,7 +39,8 @@ The following models are supported (GGML format only, see below):
 - Stanford's Alpaca
 - Community finetunes such as Vicuna, WizardLM, Guanaco, etc.
 
-For a list of recommended models at various sizes, [see here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
+### Which model should I pick?
+[See here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
 
 ### GPU acceleration
 easy-llama only supports CPU-based text inference. I have no plans to support CUDA, ROCm, MPS, or other forms of GPU acceleration.
@@ -55,7 +56,7 @@ easy-llama stands on the shoulders of giants. Thank you to the following:
 - [Meta AI](https://ai.meta.com/) for training and releasing LLaMA, Llama 2, and Llama-2-Chat
 
 ###### DISCLAIMER
-Language models tend to produce writing that is factually inaccurate, stereotypically biased, and completely disconnected from reality. You should never rely on a language model for anything important. This is doubly true of the language models you are likely to be running locally - they are small and unintelligent compared to a model like GPT-3.5 (ChatGPT), let alone GPT-4.
+All language models tend to produce writing that is factually inaccurate, stereotypically biased, and completely disconnected from reality. You should never rely on a language model for anything important. This is doubly true of the language models you are likely to be running locally - they are small and unintelligent compared to a model like GPT-3.5 (ChatGPT), let alone GPT-4.
 
 ###### LICENSE
 This project is licensed under the terms of the [MIT license](https://github.com/ddh0/easy-llama/blob/main/LICENSE).
