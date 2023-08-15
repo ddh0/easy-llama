@@ -37,7 +37,7 @@ easy-llama is intended for:
 The following models are supported (GGML format only, see below):
 - Meta AI's LLaMA, Llama-2, and Llama-2-Chat
 - Stanford's Alpaca
-- Community finetines such as Vicuna, WizardLM, Guanaco, etc.
+- Community finetunes such as Vicuna, WizardLM, Guanaco, etc.
 
 For a list of recommended models at various sizes, [see here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
 
