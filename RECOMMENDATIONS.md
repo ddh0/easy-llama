@@ -13,7 +13,7 @@ These models are quantized and uploaded to HuggingFace courtesy of [Tom Jobbins]
 [Orca Mini 3B q5_1](https://huggingface.co/TheBloke/orca_mini_3B-GGML/blob/main/orca-mini-3b.ggmlv3.q5_1.bin)
 
 ### 7B
-[Orca Mini 7B v2 q5_K_M](https://huggingface.co/TheBloke/orca_mini_v2_7B-GGML/blob/main/orca-mini-v2_7b.ggmlv3.q5_K_M.bin)
+[Orca Mini v2 7B q5_K_M](https://huggingface.co/TheBloke/orca_mini_v2_7B-GGML/blob/main/orca-mini-v2_7b.ggmlv3.q5_K_M.bin)
 
 ### 13B
 [Guanaco 13B q5_K_M](https://huggingface.co/TheBloke/guanaco-13B-GGML/blob/main/guanaco-13B.ggmlv3.q5_K_M.bin)
