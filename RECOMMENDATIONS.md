@@ -1,5 +1,5 @@
 # Recommended models for CPU-based text inference
-The following are my subjective, personal choices for each model size. I will attempt to keep this list up to date as better models are released.
+The following are my subjective, personal choices for each model size.
 
 In general, the more parameters a model has - i.e. as you get further down this list - the smarter it will be, the longer it will take to generate responses, and the more RAM you'll need.
 
