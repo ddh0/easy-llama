@@ -39,8 +39,7 @@ The following models are supported (GGML format only, see below):
 - Stanford's Alpaca
 - Community finetines such as Vicuna, WizardLM, Guanaco, etc.
 
-### Recommended models
-[See here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
+For a list of recommended models at various sizes, [see here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
 
 ### GPU acceleration
 easy-llama only supports CPU-based text inference. I have no plans to support CUDA, ROCm, MPS, or other forms of GPU acceleration.
