@@ -28,20 +28,22 @@ pip install easy-llama
 
 # Intended audience
 easy-llama is intended for:
-- People that new to Llama models and want to test the waters
-- People with lower-end hardware
-- Developers seeking to utilize text inference without requiring the highest possible performance or efficiency
-- Developers that could benefit from a Python package that runs on any device with a CPU
+- Developers seeking to utilize text inference - who are willing to forgo the latest advancements in speed in favor of quick, headache-free development
+- People that are new to Llama models and want to test the waters
+- People without powerful GPUs (or without discrete GPUs entirely)
 
 # Support
 ### Models
 The following models are supported (GGML format only, see below):
 - Meta AI's LLaMA, Llama-2, and Llama-2-Chat
 - Stanford's Alpaca
-- Various community finetines such as Vicuna, WizardLM, Guanco, etc.
+- Community finetines such as Vicuna, WizardLM, Guanaco, etc.
+
+### Recommended models
+[See here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
 
 ### GPU acceleration
-easy-llama only supports CPU-based text inference. I have no plans to support CUDA, ROCm, or other forms of GPU acceleration.
+easy-llama only supports CPU-based text inference. I have no plans to support CUDA, ROCm, MPS, or other forms of GPU acceleration.
 
 ### Documentation
 Official documentation and FAQ can be found [here](https://github.com/ddh0/easy-llama/blob/main/docs.md).
@@ -54,7 +56,7 @@ easy-llama stands on the shoulders of giants. Thank you to the following:
 - [Meta AI](https://ai.meta.com/) for training and releasing LLaMA, Llama 2, and Llama-2-Chat
 
 ###### DISCLAIMER
-Language models tend to produce writing that is factually inaccurate, stereotypically biased, and completely disconnected from reality. You should never rely on a language model for anything important.
+Language models tend to produce writing that is factually inaccurate, stereotypically biased, and completely disconnected from reality. You should never rely on a language model for anything important. This is doubly true of the language models you are likely to be running locally - they are small and unintelligent compared to a model like GPT-3.5 (ChatGPT), let alone GPT-4.
 
 ###### LICENSE
 This project is licensed under the terms of the [MIT license](https://github.com/ddh0/easy-llama/blob/main/LICENSE).
