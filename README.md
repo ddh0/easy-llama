@@ -37,7 +37,7 @@ easy-llama supports all the same models as the underlying llama-cpp-python, most
 [See here](https://github.com/ddh0/easy-llama/blob/main/RECOMMENDATIONS.md).
 
 ### Hardware acceleration (Apple Silicon, CUDA, ROCm, and more)
-easy-llama supports hardware accelation for. To ensure this is used, compile llama-cpp-python at installation time. This can be done with a single command, which differs depending on your hardware. See [llama-cpp-python: Installation with Hardware Acceleration](https://github.com/abetlen/llama-cpp-python/tree/v0.2.11#installation-with-hardware-acceleration).
+easy-llama supports hardware accelation. To ensure this is utilized, you have to compile llama-cpp-python at installation time. But don't worry, this can be done with a single command, which can be found here: [llama-cpp-python: Installation with Hardware Acceleration](https://github.com/abetlen/llama-cpp-python/tree/v0.2.11#installation-with-hardware-acceleration).
 
 ### Documentation
 Official documentation and FAQ can be found [here](https://github.com/ddh0/easy-llama/blob/main/docs.md).
