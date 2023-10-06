@@ -21,7 +21,7 @@ pip install easy-llama
 ```python
 >>> import easy_llama as ez
 >>> Guanaco = ez.Model('./guanaco-33B.gguf')
->>> Guanaco.contrastive('The breeze was crisp against her skin, and ', preset=ez.Presets.Creative, max_length=128, stop_sequences=['\n\n'])
+>>> Guanaco.contrastive('The breeze was crisp against her skin, and ', max_length=128, stop_sequences='\n\n')
 'icy rain splattered on the sidewalk. It had been a long day at work, but she didn’t mind. She loved being out in the city this time of year. There were so many people rushing around with their umbrellas and holiday shopping bags that it made her feel alive.\nShe stopped to look through the window of an antique shop on the corner. The store was filled with old books, vintage jewelry, and delicate glass figurines. She could have spent hours there if she had more time. As she turned away from the window, a man'
 >>> 
 ```
