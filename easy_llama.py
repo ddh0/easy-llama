@@ -1,32 +1,27 @@
 # easy_llama.py
-# Python 3.11.2
-
-# pip uninstall llama-cpp-python
-# CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
+# Python 3.11.6
 
 """
-Simplified text inference using llama models
+Simple, on-device text inference using language models
 
 for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 """
 
-# TODO:
-# - chat conversation threads
-# - publish to pypi
-
 import os
 import sys
+import uuid
 
-from typing import Iterable
+VERBOSE = False             # Print all backend information as it occurs
+SUPPRESS_WARNINGS = False   # Not recommended
+AUTOPRINT = False           # Whether to print or return generated responses
+MAX_LEN_TOKENS = 100        # Default max length of responses, in tokens
 
-DEBUG = False
-SUPPRESS_WARNINGS = False
-
-class _suppress_if_no_debug(object):
+class _suppress_if_not_verbose(object):
     """
-    Suppress console output from llama.cpp if easy_llama.DEBUG is False
+    Suppress console output from llama.cpp if easy_llama.VERBOSE is False
 
-    Changing DEBUG inside the WITH block could have strange effects
+    Changing VERBOSE inside the WITH block may result in stdout and stderr
+    being stuck to /dev/null, or other undefined behaviour
 
     See https://github.com/abetlen/llama-cpp-python/issues/478
     """
@@ -35,7 +30,7 @@ class _suppress_if_no_debug(object):
     # I believe it may be removed at some point, so here it is again
 
     def __enter__(self):
-        if not DEBUG:
+        if not VERBOSE:
             self.outnull_file = open(os.devnull, 'w')
             self.errnull_file = open(os.devnull, 'w')
 
@@ -55,12 +50,12 @@ class _suppress_if_no_debug(object):
             sys.stderr = self.errnull_file
             return self
         
-        if DEBUG:
+        if VERBOSE:
             # do nothing
             return self
 
     def __exit__(self, *_):
-        if not DEBUG:        
+        if not VERBOSE:        
             sys.stdout = self.old_stdout
             sys.stderr = self.old_stderr
 
@@ -73,102 +68,44 @@ class _suppress_if_no_debug(object):
             self.outnull_file.close()
             self.errnull_file.close()
 
-with _suppress_if_no_debug():
+with _suppress_if_not_verbose():
         import llama_cpp
 
-def _debug_output(text: str) -> str:
+def _verbose_output(text: str) -> str:
     """
-    Print text to stderr if DEBUG is True,
-    prefixing with 'easy_llama: debug: '
+    Print text to stderr if VERBOSE is True,
+    prefixing with 'easy_llama: '
     """
 
-    if DEBUG:
-        print('easy_llama: debug: ' + text, file=sys.stderr)
+    if VERBOSE:
+        print('easy_llama: ' + text, file=sys.stderr)
 
 def _warning_output(text: str) -> str:
     """
     Print text to stderr unless SUPPRESS_WARNINGS is True,
-    prefixing with 'easy_llama: warning: '
+    prefixing with 'easy_llama: WARNING: '
     """
 
     if not SUPPRESS_WARNINGS:
-        print('easy_llama: warning: ' + text, file=sys.stderr)
+        print('easy_llama: WARNING: ' + text, file=sys.stderr)
 
-# if something is missing, fail ASAP and explain
-_required_modules = ['os', 'sys', 'pickle', 'llama_cpp']
-
-for modulename in _required_modules:
-    if modulename not in sys.modules:
-        e = ModuleNotFoundError('missing required module \'%s\'' % modulename)
-        e.add_note('Hint: see https://github.com/ddh0/easy-llama')
-        raise e
-
-class Presets:
-    """
-    Default preset is Presets.Standard
-
-    Choosing another preset will change the way tokens are sampled (chosen)
-
-    You can use anything as a preset as long as it these attributes:
-    .temp
-    .top_p
-    .top_k
-    .repeat_penalty
-    """
-
-    # repeat_penalty == 1: no penalty
-    # repeat_penalty <  1: no idea
-
-    class Greedy:
-        """Greedy sampling (deterministic for same Model instance)"""
-        temp = 0.0
-        top_p = 1
-        top_k = 0
-        repeat_penalty = 1
-
-    class Standard:
-        """Reasonable default"""
-        temp = 0.7
-        top_p = 0.37
-        top_k = 32
-        repeat_penalty = 1.1
-    
-    class Creative:
-        """Coherent and creative"""
-        temp = 0.9
-        top_p = 0.37
-        top_k = 128
-        repeat_penalty = 1.2
-    
-    class Funny:
-        """Just for laughs"""
-        temp = 10
-        top_p = 0.1
-        top_k = 128
-        repeat_penalty = 1
-    
-    class Crazy:
-        """Creative to a fault"""
-        temp = 1.4
-        top_p = 1
-        top_k = 1024
-        repeat_penalty = 1.2
-    
 
 class Model(object):
     """
-    Super-abstraction of a Llama model
+    Abstraction of a Llama model
     """
 
-    def __init__(self, model_path: str, context_length: int=2048) -> None:
+    def __init__(self, model_path: str, context_length: int=4096, seed: int=-1) -> None:
         """
         Initialize a Llama model from a file.
-        
-        This will take some time, anywhere from 0.1 seconds to 5 minutes
-        depending on the size of the model.
+
+        Model must be in GGUF format.
+
+        Note that this defaults to a context length of 4096. This should be changed to
+        2048 for Llama 1 models, or other models with different context lengths.
         """
 
-        _debug_output("init: begin initializing")
+        _verbose_output("init: begin initializing")
 
         if type(model_path) is not str:
             raise TypeError('model_path should be a string, not %s' % type(model_path))
@@ -184,182 +121,288 @@ class Model(object):
         
         self.context_length = context_length
 
-        _debug_output("init: basic checks passed. will now load model...")
+        _verbose_output("init: basic checks passed. will now load model...")
 
-        with _suppress_if_no_debug():
+        with _suppress_if_not_verbose():
             self._internal_model: llama_cpp.Llama = llama_cpp.Llama(model_path=model_path,
                                                                     n_ctx=self.context_length,
-                                                                    seed=0,
+                                                                    n_gpu_layers=1,
+                                                                    seed=seed,
                                                                     use_mmap=False,
                                                                     use_mlock=False,
                                                                     logits_all=True,
                                                                     n_batch=512,
-                                                                    verbose=DEBUG)
+                                                                    n_threads=4,
+                                                                    mul_mat_q=True,
+                                                                    verbose=VERBOSE)
         
-        _debug_output("init: model loaded")
+        _verbose_output("init: model loaded")
     
-    def generate(self, prompt: str, preset=Presets.Standard, max_length: int=512,
-                 stop_sequences: list[str] | str | None=None, stream: bool=False) -> str | Iterable[str]:
-        """
-        Given a prompt, return a generated string.
 
-        Optional parameters:
+    def greedy(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
+                 stop_sequences: list[str] | str | None=None) -> str | None:
+        """
+        Given a prompt, return a generated string using greedy sampling,
+        where the most likely token is always chosen.
+
+        The following parameters are optional:
         
-        preset: changes the way tokens are sampled (chosen). See the Presets class for more info.
-        Default is Presets.Standard.
-        
-        max_length: maximum length of generated string in tokens. Default is 512
+        max_length: maximum length of generated string in tokens.
+        Default is set in the easy_llama.MAX_LEN_TOKENS
         
         stop_sequences: list of strings at which to end the generation early (right before),
         can also be a single string or None. Default is None
-
-        stream: if True, continue yield single tokens rather than returning a
-        single string. Default is False
         """
 
         if type(prompt) is not str:
-           raise TypeError("generate: prompt should be string, not %s" % type(prompt))
-       
-        if not hasattr(preset, 'temp'):
-           raise AttributeError("generate: preset is missing attribute .temp")
-       
-        if not hasattr(preset, 'top_p'):
-           raise AttributeError("generate: preset is missing attribute .top_p")
-       
-        if not hasattr(preset, 'top_k'):
-           raise AttributeError("generate: preset is missing attribute .top_k")
-       
-        if not hasattr(preset, 'repeat_penalty'):
-           raise AttributeError("generate: preset is missing attribute .repeat_penalty")
+           raise TypeError("prompt should be string, not %s" % type(prompt))
 
         if type(max_length) is not int:
-           raise TypeError("generate: max_length should be int, not %s" % type(max_length))
+           raise TypeError("max_length should be int, not %s" % type(max_length))
        
         if max_length > self.context_length:
-           _warning_output("generate: max_length is greater than context_length")
+           _warning_output("max_length is greater than context_length")
 
         if type(stop_sequences) not in [list, str, type(None)]:
-           raise TypeError("generate: stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
 
         if type(stop_sequences) is list:
-            for item in list:
+            for item in stop_sequences:
                 if type(item) is not str:
-                    raise TypeError("generate: item \'%s\' in stop_sequences list is not of type str" \
+                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
                                     % repr(item))
 
-        if type(stream) is not bool:
-            raise TypeError("generate: stream should be bool (True or False), not %s" % type(stream))
-
-        _debug_output("generate: basic checks passed. begin generation...")
+        _verbose_output("basic checks passed. begin generation...")
         
-        if not stream: # Return a completed string
-           with _suppress_if_no_debug():
-                return self._internal_model.create_completion(prompt,
-                                                              max_tokens=max_length,
-                                                              temperature=preset.temp,
-                                                              top_p=preset.top_p,
-                                                              top_k=preset.top_k,
-                                                              stream=False,
-                                                              stop=stop_sequences,
-                                                              repeat_penalty=preset.repeat_penalty  
-                                                             )['choices'][0]['text']
-        if stream: # Continuously yield tokens
-            with _suppress_if_no_debug():
-                llama_completion_generator = self._internal_model.create_completion(prompt,
-                                                              max_tokens=max_length,
-                                                              temperature=preset.temp,
-                                                              top_p=preset.top_p,
-                                                              top_k=preset.top_k,
-                                                              stream=True,
-                                                              stop=stop_sequences,
-                                                              repeat_penalty=preset.repeat_penalty)
-                
-            # create_completion() returns a generator which yields generators (??)
-            while True:
-                for sub_generator in llama_completion_generator:
-                    for x in sub_generator:
-                        yield x['choices']['text']
+        with _suppress_if_not_verbose():
+            output = self._internal_model.create_completion(prompt,
+                                                          max_tokens=max_length,
+                                                          top_p=0,
+                                                          top_k=1,
+                                                          stream=False,
+                                                          stop=stop_sequences,
+                                                          repeat_penalty=1
+                                                          )['choices'][0]['text']
+        # outside of with block so print will work
+        if AUTOPRINT:
+            print(output)
+        else:
+            return output
 
 
-class Formatters:
+    def standard(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
+                 stop_sequences: list[str] | str | None=None) -> str | None:
+        """
+        Given a prompt, return a generated string using the llama.cpp default
+        sampling (as implemented in llama-cpp-python).
+
+        The following parameters are optional:
+        
+        max_length: maximum length of generated string in tokens.
+        Default is set in the easy_llama.MAX_LEN_TOKENS
+        
+        stop_sequences: list of strings at which to end the generation early (right before),
+        can also be a single string or None. Default is None
+        """
+
+        if type(prompt) is not str:
+           raise TypeError("prompt should be string, not %s" % type(prompt))
+
+        if type(max_length) is not int:
+           raise TypeError("max_length should be int, not %s" % type(max_length))
+       
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
+
+        if type(stop_sequences) not in [list, str, type(None)]:
+           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+
+        if type(stop_sequences) is list:
+            for item in stop_sequences:
+                if type(item) is not str:
+                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
+                                    % repr(item))
+
+        _verbose_output("basic checks passed. begin generation...")
+        
+        with _suppress_if_not_verbose():
+            output = self._internal_model.create_completion(prompt,
+                                                          max_tokens=max_length,
+                                                          stream=False,
+                                                          stop=stop_sequences,
+                                                          )['choices'][0]['text']
+        # outside of with block so print will work
+        if AUTOPRINT:
+            print(output)
+        else:
+            return output
+
+
+    def contrastive(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
+                    stop_sequences: list[str] | str | None=None) -> str | None:
+        """
+        Given a prompt, return a generated string using constrastive search.
+
+        For more information on contrastive search, see here:
+        https://huggingface.co/blog/introducing-csearch
+
+        The following parameters are optional:
+        
+        max_length: maximum length of generated string in tokens.
+        Default is set in the easy_llama.MAX_LEN_TOKENS
+        
+        stop_sequences: list of strings at which to end the generation early (right before),
+        can also be a single string or None. Default is None
+        """
+
+        if type(prompt) is not str:
+           raise TypeError("prompt should be string, not %s" % type(prompt))
+
+        if type(max_length) is not int:
+           raise TypeError("max_length should be int, not %s" % type(max_length))
+       
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
+
+        if type(stop_sequences) not in [list, str, type(None)]:
+           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+
+        if type(stop_sequences) is list:
+            for item in stop_sequences:
+                if type(item) is not str:
+                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
+                                    % repr(item))
+
+        _verbose_output("basic checks passed. begin generation...")
+        
+        with _suppress_if_not_verbose():
+            output = self._internal_model.create_completion(prompt,
+                                                          max_tokens=max_length,
+                                                          top_k=4,
+                                                          presence_penalty=0.6,
+                                                          stream=False,
+                                                          stop=stop_sequences,
+                                                          repeat_penalty=1
+                                                          )['choices'][0]['text']
+        
+        # outside of with block so print will work
+        if AUTOPRINT:
+            print(output)
+        else:
+            return output
+
+    def testing(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
+                    stop_sequences: list[str] | str | None=None) -> str | None:
+        """
+        Given a prompt, return a generated string using experimental settings.
+
+        This is useful for testing out different sampling settings without changing
+        the default functions.
+
+        The following parameters are optional:
+        
+        max_length: maximum length of generated string in tokens.
+        Default is set in the easy_llama.MAX_LEN_TOKENS
+        
+        stop_sequences: list of strings at which to end the generation early (right before),
+        can also be a single string or None. Default is None
+        """
+
+        if type(prompt) is not str:
+           raise TypeError("prompt should be string, not %s" % type(prompt))
+
+        if type(max_length) is not int:
+           raise TypeError("max_length should be int, not %s" % type(max_length))
+       
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
+
+        if type(stop_sequences) not in [list, str, type(None)]:
+           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+
+        if type(stop_sequences) is list:
+            for item in stop_sequences:
+                if type(item) is not str:
+                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
+                                    % repr(item))
+
+        _verbose_output("basic checks passed. begin generation...")
+        
+        with _suppress_if_not_verbose():
+            output = self._internal_model.create_completion(prompt,
+                                                          max_tokens=max_length,
+                                                          top_k=4,
+                                                          presence_penalty=0.677,
+                                                          stream=False,
+                                                          stop=stop_sequences,
+                                                          )['choices'][0]['text']
+        # outside of with block so print will work
+        if AUTOPRINT:
+            print(output)
+        else:
+            return output
+
+class Prompting:
     """
-    Convenience functions to return a given input in various
-    prompt formats.
+    Functions available:
+    - Prompting.chat(string)
+    - Prompting.assist(string)
+    - Prompting.instruct(string)
 
-    See docstrings of each function for more information.
+    Prompting.assist is probably what you want.
+    See each function's docstring for more info.
+
+    Provide functionality to convert a string like this:
+    
+    "How do I make pasta?"
+    
+    to a string like this:
+
+    "A chat between a curious human and an artificial intelligence assistant.
+    The assistant gives helpful, detailed, and polite answers to the user's
+    questions. ### Human: How do I make pasta? ### Assistant: "
     """
 
-    def assist(text: str) -> str:
-        """
-        Return any text in Tim Dettmers' Guanaco prompt format.
-        This is the suggested format for assitant generations.
-
-        A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.
-        ### Human: {text} ### Assistant: 
-        """
-
-        return 'A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user\'s questions.\n### Human: %s ### Assistant: ' \
-        % text
-
-    def instruct(text: str) -> str:
-        """
-        Return any text in Stanford's Alpaca prompt format.
-        This is the suggested format for Instruct-Response generations.
-
-        Below is an instruction that describes a task. Write a response that appropriately completes the request.
-
-        ### Instruction:
-        {text}
+    def chat(string: str) -> str:
+        """Return the given string in a custom chatbot prompt format
         
-        ### Response:
+        Broadly useful for chatbots"""
 
-        """
+        return "A chat between a human and an artificial intelligence chatbot. The chatbot is polite, intelligent, honest, and casual.\n" + \
+               "### Human: " + string + " ### Chatbot: "
 
-        return 'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n%s\n\n### Response:\n' % text
-
-    def llama_2_chat(text: str) -> str:
-        """
-        Return any text in Meta AI's Llama-2-Chat prompt format.
-        This is the suggested format for Llama-2-Chat generations.
+    def assist(string: str) -> str:
+        """Return the given string in Tim Dettmers' Guanaco prompt format
         
-        This does not apply to base Llama models or unofficial chat
-        finetunes.
+        Broadly useful for assistant interactions"""
 
-        [INST] <<SYS>>
-        You are a helpful, respectful and honest assistant.
-        <</SYS>>
+        return "A chat between a curious human and an artificial intelligence assistant. " + \
+               "The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + \
+               "### Human: " + string + " ### Assistant: "
+
+    def instruct(string: str) -> str:
+        """Return the given string in Stanford's Alpaca prompt format
         
-        {text} [/INST] 
-        """
+        Broadly useful for Instruct-Response interactions"""
 
-        return '[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant.\n<</SYS>>\n\n%s [/INST] ' \
-        % text
-
+        return "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n" + \
+               "\n### Instruction:\n" + string + \
+               "\n\n### Response:\n"
 
 class Thread(object):
     """
-    Provide functions to facilitate conversation threads with a model
+    Provide functionality to facilitate conversation threads with a model
     (i.e. remembering past messages)
 
     Allows for arbitrary number of threads to be held simultaneously
     and stored on disk, and for moving interactions between models
     """
 
-    count = 0
-
-    types = ['simple', 'assistant']
-
-    def __init__(self, type):
+    def __init__(self) -> None:
+        self.uuid = uuid.uuid4()
         
-        type = type.lower()
-        if type not in Thread.types:
-            pass # TODO
 
-        #if types
 
-        Thread.count += 1
-        self.num = Thread.count + 1
     
     def msg(self):
         pass
-
