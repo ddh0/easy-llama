@@ -10,11 +10,17 @@ for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 import os
 import sys
 import uuid
+import metadata_gguf
 
 VERBOSE = False             # Print all backend information as it occurs
 SUPPRESS_WARNINGS = False   # Not recommended
 AUTOPRINT = False           # Whether to print or return generated responses
 MAX_LEN_TOKENS = 100        # Default max length of responses, in tokens
+NUM_GPU_LAYERS = 1          # Leave at 1 for Apple Silicon, tweak for CUDA and ROCm, set to 0 for OpenBLAS
+NUM_THREADS = int(os.cpu_count() / 2) # Half of logical cores
+                                      # This is equal to the number of physical cores
+                                      # on an Intel CPU with hyperthreading, and for the
+                                      # most common M-series chips, it is equal to the number of P-cores
 
 class _suppress_if_not_verbose(object):
     """
@@ -103,36 +109,39 @@ class Model(object):
 
         Note that this defaults to a context length of 4096. This should be changed to
         2048 for Llama 1 models, or other models with different context lengths.
+
         """
 
         _verbose_output("init: begin initializing")
 
-        if type(model_path) is not str:
-            raise TypeError('model_path should be a string, not %s' % type(model_path))
-    
-        if os.path.isdir(model_path):
-            raise IsADirectoryError('the given model_path \'%s\' is a directory, not a file' % model_path)
-
-        if not os.path.exists(model_path):
-            raise FileNotFoundError('the given model_path \'%s\' does not exist' % model_path)
+        assert isinstance(model_path, str), 'model_path should be a string, not %s' % type(model_path)
+        assert not os.path.isdir(model_path), 'the given model_path \'%s\' is a directory, not a file' % model_path
+        assert os.path.exists(model_path), 'the given model_path \'%s\' does not exist' % model_path
+        assert isinstance(context_length, int), 'context_length should be int, not %s' % type(context_length)
         
-        if type(context_length) is not int:
-            raise TypeError("context_length should be int, not %s" % type(context_length))
+        # Read file to determine n_ctx_train
+        self.metadata_dict = metadata_gguf.load_metadata(model_path)
         
-        self.context_length = context_length
+        try:
+            self.context_length = self.metadata_dict['llama.context_length']
+        except KeyError:
+            _warning_output("Unable to detemine model's native context length. Defaulting to 4096.")
+            self.context_length = 4096
+        
+        self.filename = os.path.split(model_path)[1] # Should work regardless of OS
 
         _verbose_output("init: basic checks passed. will now load model...")
 
         with _suppress_if_not_verbose():
             self._internal_model: llama_cpp.Llama = llama_cpp.Llama(model_path=model_path,
                                                                     n_ctx=self.context_length,
-                                                                    n_gpu_layers=1,
+                                                                    n_gpu_layers=NUM_GPU_LAYERS,
                                                                     seed=seed,
                                                                     use_mmap=False,
                                                                     use_mlock=False,
                                                                     logits_all=True,
                                                                     n_batch=512,
-                                                                    n_threads=4,
+                                                                    n_threads=NUM_THREADS,
                                                                     mul_mat_q=True,
                                                                     verbose=VERBOSE)
         
@@ -148,29 +157,23 @@ class Model(object):
         The following parameters are optional:
         
         max_length: maximum length of generated string in tokens.
-        Default is set in the easy_llama.MAX_LEN_TOKENS
+        Default is set in easy_llama.MAX_LEN_TOKENS
         
         stop_sequences: list of strings at which to end the generation early (right before),
         can also be a single string or None. Default is None
         """
 
-        if type(prompt) is not str:
-           raise TypeError("prompt should be string, not %s" % type(prompt))
-
-        if type(max_length) is not int:
-           raise TypeError("max_length should be int, not %s" % type(max_length))
-       
-        if max_length > self.context_length:
-           _warning_output("max_length is greater than context_length")
-
-        if type(stop_sequences) not in [list, str, type(None)]:
-           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+        assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
+        assert isinstance(max_length, int), 'max_length should be int, not %s' % type(max_length)
+        assert type(stop_sequences) in [list, str, type(None)], 'stop_sequences should be list, str, or None'
+        # Why is NoneType not accessible directly? I don't know.
 
         if type(stop_sequences) is list:
             for item in stop_sequences:
-                if type(item) is not str:
-                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
-                                    % repr(item))
+                assert isinstance(item, str), "some item in stop_sequences list is not of type str"
+
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
 
         _verbose_output("basic checks passed. begin generation...")
         
@@ -199,29 +202,22 @@ class Model(object):
         The following parameters are optional:
         
         max_length: maximum length of generated string in tokens.
-        Default is set in the easy_llama.MAX_LEN_TOKENS
+        Default is set in easy_llama.MAX_LEN_TOKENS
         
         stop_sequences: list of strings at which to end the generation early (right before),
         can also be a single string or None. Default is None
         """
 
-        if type(prompt) is not str:
-           raise TypeError("prompt should be string, not %s" % type(prompt))
-
-        if type(max_length) is not int:
-           raise TypeError("max_length should be int, not %s" % type(max_length))
-       
-        if max_length > self.context_length:
-           _warning_output("max_length is greater than context_length")
-
-        if type(stop_sequences) not in [list, str, type(None)]:
-           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+        assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
+        assert isinstance(max_length, int), 'max_length should be int, not %s' % type(max_length)
+        assert type(stop_sequences) in [list, str, type(None)], 'stop_sequences should be list, str, or None'
 
         if type(stop_sequences) is list:
             for item in stop_sequences:
-                if type(item) is not str:
-                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
-                                    % repr(item))
+                assert isinstance(item, str), "some item in stop_sequences list is not of type str"
+
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
 
         _verbose_output("basic checks passed. begin generation...")
         
@@ -255,23 +251,16 @@ class Model(object):
         can also be a single string or None. Default is None
         """
 
-        if type(prompt) is not str:
-           raise TypeError("prompt should be string, not %s" % type(prompt))
-
-        if type(max_length) is not int:
-           raise TypeError("max_length should be int, not %s" % type(max_length))
-       
-        if max_length > self.context_length:
-           _warning_output("max_length is greater than context_length")
-
-        if type(stop_sequences) not in [list, str, type(None)]:
-           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+        assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
+        assert isinstance(max_length, int), 'max_length should be int, not %s' % type(max_length)
+        assert type(stop_sequences) in [list, str, type(None)], 'stop_sequences should be list, str, or None'
 
         if type(stop_sequences) is list:
             for item in stop_sequences:
-                if type(item) is not str:
-                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
-                                    % repr(item))
+                assert isinstance(item, str), "some item in stop_sequences list is not of type str"
+
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
 
         _verbose_output("basic checks passed. begin generation...")
         
@@ -282,7 +271,6 @@ class Model(object):
                                                           presence_penalty=0.6,
                                                           stream=False,
                                                           stop=stop_sequences,
-                                                          repeat_penalty=1
                                                           )['choices'][0]['text']
         
         # outside of with block so print will work
@@ -302,29 +290,22 @@ class Model(object):
         The following parameters are optional:
         
         max_length: maximum length of generated string in tokens.
-        Default is set in the easy_llama.MAX_LEN_TOKENS
+        Default is set in easy_llama.MAX_LEN_TOKENS
         
         stop_sequences: list of strings at which to end the generation early (right before),
         can also be a single string or None. Default is None
         """
 
-        if type(prompt) is not str:
-           raise TypeError("prompt should be string, not %s" % type(prompt))
-
-        if type(max_length) is not int:
-           raise TypeError("max_length should be int, not %s" % type(max_length))
-       
-        if max_length > self.context_length:
-           _warning_output("max_length is greater than context_length")
-
-        if type(stop_sequences) not in [list, str, type(None)]:
-           raise TypeError("stop_sequence should be list or str or None, not %s" % type(stop_sequences))
+        assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
+        assert isinstance(max_length, int), 'max_length should be int, not %s' % type(max_length)
+        assert type(stop_sequences) in [list, str, type(None)], 'stop_sequences should be list, str, or None'
 
         if type(stop_sequences) is list:
             for item in stop_sequences:
-                if type(item) is not str:
-                    raise TypeError("item \'%s\' in stop_sequences list is not of type str" \
-                                    % repr(item))
+                assert isinstance(item, str), "some item in stop_sequences list is not of type str"
+
+        if max_length > self.context_length:
+           _warning_output("max_length is greater than context_length")
 
         _verbose_output("basic checks passed. begin generation...")
         
@@ -332,7 +313,7 @@ class Model(object):
             output = self._internal_model.create_completion(prompt,
                                                           max_tokens=max_length,
                                                           top_k=4,
-                                                          presence_penalty=0.677,
+                                                          presence_penalty=0.65,
                                                           stream=False,
                                                           stop=stop_sequences,
                                                           )['choices'][0]['text']
@@ -342,52 +323,74 @@ class Model(object):
         else:
             return output
 
-class Prompting:
-    """
-    Functions available:
-    - Prompting.chat(string)
-    - Prompting.assist(string)
-    - Prompting.instruct(string)
+class Format(object):
+    """Base class for prompt format helpers"""
 
-    Prompting.assist is probably what you want.
-    See each function's docstring for more info.
+class Alpaca(Format):
+    system_str = 'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n'
+    user_prefix_str = '### Instruction:\n'
+    bot_prefix_str = '\n\n### Response:\n'
+    bot_postfix_str = '\n\n'
+    stop_sequences = ['###', '\nInstruction:']
 
-    Provide functionality to convert a string like this:
-    
-    "How do I make pasta?"
-    
-    to a string like this:
+    def wrap(text: str) -> str:
+        return Alpaca.system_str + Alpaca.user_prefix_str + \
+               text + Alpaca.bot_prefix_str
 
-    "A chat between a curious human and an artificial intelligence assistant.
-    The assistant gives helpful, detailed, and polite answers to the user's
-    questions. ### Human: How do I make pasta? ### Assistant: "
-    """
+class Llama2(Format):
+    system_str = '[INST] <<SYS>>\nAnswer the questions.\n<</SYS>>\n\n'
+    user_prefix_str = ''
+    bot_prefix_str = ' [/INST] '
+    bot_postfix_str = '</s><s>[INST] '
+    stop_sequences = ['</s>', '[INST]']
 
-    def chat(string: str) -> str:
-        """Return the given string in a custom chatbot prompt format
-        
-        Broadly useful for chatbots"""
+    def wrap(text: str) -> str:
+        return Llama2.system_str + Llama2.user_prefix_str + \
+               text + Llama2.bot_prefix_str
 
-        return "A chat between a human and an artificial intelligence chatbot. The chatbot is polite, intelligent, honest, and casual.\n" + \
-               "### Human: " + string + " ### Chatbot: "
+class Guanaco(Format):
+    system_str = 'A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human\'s questions.\n\n'
+    user_prefix_str = '### Human: '
+    bot_prefix_str = '\n### Assistant: '
+    bot_postfix_str = '\n'
+    stop_sequences = ['###', '\nHuman:']
 
-    def assist(string: str) -> str:
-        """Return the given string in Tim Dettmers' Guanaco prompt format
-        
-        Broadly useful for assistant interactions"""
+    def wrap(text: str) -> str:
+        return Guanaco.system_str + Guanaco.user_prefix_str + \
+               text + Guanaco.bot_prefix_str
 
-        return "A chat between a curious human and an artificial intelligence assistant. " + \
-               "The assistant gives helpful, detailed, and polite answers to the user's questions.\n" + \
-               "### Human: " + string + " ### Assistant: "
+class Samantha(Format):
+    system_str = 'You are Samantha, a sentient AI companion.\n\n'
+    user_prefix_str = 'USER: '
+    bot_prefix_str = '\nASSISTANT: '
+    bot_postfix_str = '\n'
+    stop_sequences = ['\nUSER:']
 
-    def instruct(string: str) -> str:
-        """Return the given string in Stanford's Alpaca prompt format
-        
-        Broadly useful for Instruct-Response interactions"""
+    def wrap(text: str) -> str:
+        return Samantha.system_str + Samantha.user_prefix_str + \
+               text + Samantha.bot_prefix_str
 
-        return "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n" + \
-               "\n### Instruction:\n" + string + \
-               "\n\n### Response:\n"
+class OrcaMini(Format):
+    system_str = '### System:\nYou are an AI assistant that follows instruction extremely well. Help as much as you can.\n\n'
+    user_prefix_str = '### User:\n'
+    bot_prefix_str = '\n\n### Assistant:\n'
+    bot_postfix_str = '\n\n'
+    stop_sequences = ['###', '\nUser:']
+
+    def wrap(text: str) -> str:
+        return OrcaMini.system_str + OrcaMini.user_prefix_str + \
+               text + OrcaMini.bot_prefix_str
+
+class Testing(Format):
+    system_str = ''
+    user_prefix_str = ''
+    bot_prefix_str = ''
+    bot_postfix_str = ''
+    stop_sequences = None
+
+    def wrap(text: str) -> str:
+        return Testing.system_str + Testing.user_prefix_str + \
+               text + Testing.bot_prefix_str
 
 class Thread(object):
     """
@@ -398,11 +401,19 @@ class Thread(object):
     and stored on disk, and for moving interactions between models
     """
 
-    def __init__(self) -> None:
+    def __init__(self, model: Model, format: Format, interactive: bool=False) -> None:
         self.uuid = uuid.uuid4()
-        
+        self.model = model # Models can be hot-swapped while keeping context!
+        self.format = format
+        self.interactive = interactive
 
-
+        assert isinstance(self.model, Model), 'Thread: model should be an instance of easy_llama.Model'
+        assert hasattr(self.format, 'system_str'), 'Thread: format is missing attribute system_str'
+        assert hasattr(self.format, 'user_prefix_str'), 'Thread: format is missing attribute user_prefix_str'
+        assert hasattr(self.format, 'bot_prefix_str'), 'Thread: format is missing attribute bot_prefix_str'
+        assert hasattr(self.format, 'bot_postfix_str'), 'Thread: format is missing attribute bot_postfix_str'
+        assert hasattr(self.format, 'stop_sequences'), 'Thread: format is missing attribute stop_sequences'
+        assert isinstance(self.interactive, bool), 'Thread: interactive should be bool (True or False)'
     
     def msg(self):
         pass
