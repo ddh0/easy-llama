@@ -9,7 +9,6 @@ for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 
 import os
 import sys
-import uuid
 import metadata_gguf
 
 
@@ -99,24 +98,26 @@ class Model(object):
 
         Model must be in GGUF format.
 
-        easy_llama will determine the model's context length from the GGUF metadata.
+        easy_llama will automatically determine the model's trained
+        context length from the GGUF metadata.
         """
 
         assert isinstance(model_path, str), 'model_path should be a string, not %s' % type(model_path)
         assert not os.path.isdir(model_path), 'the given model_path \'%s\' is a directory, not a file' % model_path
         assert os.path.exists(model_path), 'the given model_path \'%s\' does not exist' % model_path
         
-        # Read file to determine n_ctx_train
         self.metadata: dict = metadata_gguf.load_metadata(model_path)
         
-        try:
-            self.context_length: int = self.metadata['llama.context_length']
-        except KeyError as e:
-            # Fail if GGUF is malformed or missing metadata
-            e.add_note("Unable to detemine model's native context length. \
-                        This means there is a problem with your GGUF model file. \
-                        Try converting or downloading the model again.")
-            raise
+        assert isinstance(self.metadata['llama.context_length'], int), \
+               'GGUF metadata reports context_length is not an integer'
+        if self.metadata['llama.context_length'] < 2048:
+               print_warning('GGUF metadata reports an unusually small native context length (%s)' % \
+                             self.metadata['llama.context_length'])
+        if self.metadata['llama.context_length'] > 131072:
+               print_warning('GGUF metadata reports an unusually large native context length (%s)' % \
+                             self.metadata['llama.context_length'])
+
+        self.context_length = self.metadata['llama.context_length']
 
         with suppress_if_not_verbose():
             self._internal_model: llama_cpp.Llama = llama_cpp.Llama(model_path=model_path,
@@ -171,75 +172,109 @@ class Model(object):
         return len(self._internal_model.tokenize(text.encode('utf-8')))
 
 
-    def generate(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
-                 stop_sequences: list[str] | str | None=None) -> str:
+    #
+    # llama.h says:
+    #
+    # /// @details Frequency and presence penalties described in OpenAI API https://platform.openai.com/docs/api-reference/parameter-details
+    # 
+    # ...which says:
+    #
+    # frequency_penalty
+    # ------------------
+    # Number between -2.0 and 2.0. Positive values penalize new tokens based on
+    # their existing frequency in the text so far, decreasing the model's
+    # likelihood to repeat the same line verbatim.
+    #
+    # presence_penalty
+    # -----------------
+    # Number between -2.0 and 2.0. Positive values penalize new tokens based on
+    # whether they appear in the text so far, increasing the model's
+    # likelihood to talk about new topics.
+    #
+    # My own summary
+    # ------------------------------------------
+    # frequency_penalty
+    # |
+    # | - Too low: model often gets stuck repeating same sentences
+    # |
+    # | - Too high: model becomes annoyingly quirky and rambling
+    # |
+    # | - Reasonable starting point: 0.075
+    # |
+    # 
+    # presence_penalty
+    # |
+    # | - Too low: highly robotic and predictable
+    # |
+    # | - Too high: does not make sense in context
+    # |
+    # | - Reasonable starting point: 0.5
+    # |
+    #
+
+
+    def generate(self, prompt: str, stop_sequences: list[str] | str | None=None) -> str:
         """
         Given a prompt, return a generated string using constrastive search
-        (a=0.5, k=4) which is the method easy-llama recommendeds for most cases.
+        which is the method easy-llama recommendeds for most cases.
+
+        Also applies a very slight frequency penalty to prevent repetition.
 
         For more information on contrastive search, see here:
         https://huggingface.co/blog/introducing-csearch
 
-        The following parameters are optional:
-        
-        max_length: maximum length of generated string in tokens.
-        Default is set in easy_llama.MAX_LEN_TOKENS
+        The following parameter is optional:
         
         stop_sequences: list of strings at which to end the generation early (right before),
         can also be a single string or None. Default is None
         """
 
         assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
-        assert isinstance(max_length, int), 'max_length should be int, not %s' % type(max_length)
         assert type(stop_sequences) in [list, str, type(None)], 'stop_sequences should be list, str, or None'
 
         if type(stop_sequences) is list:
             for item in stop_sequences:
                 assert isinstance(item, str), "some item in stop_sequences list is not of type str"
 
-        if max_length > self.context_length:
-           print_warning("the specified max_length is greater than this model's context length")
+        if MAX_LEN_TOKENS > self.context_length:
+           print_warning("easy_llama.MAX_LEN_TOKENS is greater than this model's context length")
         
         with suppress_if_not_verbose():
             output = self._internal_model.create_completion(prompt,
-                                                            max_tokens=max_length,
+                                                            max_tokens=MAX_LEN_TOKENS,
                                                             top_k=4,
-                                                            presence_penalty=0.5,
+                                                            frequency_penalty=0.025,
+                                                            presence_penalty=0.25,
                                                             stream=False,
                                                             stop=stop_sequences,
                                                             )['choices'][0]['text']
         return output
 
 
-    def greedy(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
-               stop_sequences: list[str] | str | None=None) -> str:
+    def greedy(self, prompt: str, stop_sequences: list[str] | str | None=None) -> str:
         """
         Given a prompt, return a generated string using greedy sampling,
         where the most likely token is always chosen.
 
-        The following parameters are optional:
-        
-        max_length: maximum length of generated string in tokens.
-        Default is set in easy_llama.MAX_LEN_TOKENS
+        The following parameter is optional:
         
         stop_sequences: list of strings at which to end the generation early (right before),
         can also be a single string or None. Default is None
         """
 
         assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
-        assert isinstance(max_length, int), 'max_length should be int, not %s' % type(max_length)
         assert type(stop_sequences) in [list, str, type(None)], 'stop_sequences should be list, str, or None'
 
         if type(stop_sequences) is list:
             for item in stop_sequences:
                 assert isinstance(item, str), "some item in stop_sequences list is not of type str"
 
-        if max_length > self.context_length:
-           print_warning("the specified max_length is greater than this model's context length")
+        if MAX_LEN_TOKENS > self.context_length:
+           print_warning("easy_llama.MAX_LEN_TOKENS is greater than this model's context length")
         
         with suppress_if_not_verbose():
             output = self._internal_model.create_completion(prompt,
-                                                            max_tokens=max_length,
+                                                            max_tokens=MAX_LEN_TOKENS,
                                                             top_p=0,
                                                             top_k=1,
                                                             stream=False,
@@ -249,7 +284,7 @@ class Model(object):
         return output
 
 
-class Format(object):
+class Format:
     """
     Base class for prompt format helpers
 
@@ -261,8 +296,8 @@ class Format(object):
     - bot_postfix_str: str
     - stop_sequences: list[str] | str | None
 
-    As well as the .wrap() method, which should wrap a single string in a
-    format suitable for single-turn completion.
+    For convenience, it should also have the .wrap() method, which should wrap a given
+    string in a format suitable for single-turn completion.
     """
 
 
@@ -411,8 +446,9 @@ class Thread(object):
     
     ...then, later on...
 
-    >>> Airoboros = None # Avoid double memory usage
-    >>> Guanaco = Model('./guanaco-13b.Q6_K.gguf')
+    >>> MyThread.model = none    # Optional, to avoid loading
+    >>> Airoboros = None         # two models in memory at once
+    >>> Guanaco = Model('./guanaco-13b.Q8_0.gguf')
     >>> MyThread.model = Guanaco
     >>> MyThread.msg("What is your name now?")
     'I apologize, what I said earlier is incorrect. I am Guanaco.'
@@ -432,19 +468,64 @@ class Thread(object):
         assert hasattr(format, 'bot_postfix_str'), 'Thread: format is missing attribute bot_postfix_str'
         assert hasattr(format, 'stop_sequences'), 'Thread: format is missing attribute stop_sequences'
 
-        self.uuid = uuid.uuid4()
         self.model: Model = model
         self.format: Format = format
         self.context = self.format.system_str
     
     
     def msg(self, prompt: str) -> str:
+        """
+        Send a message to this Thread, which will be remembered in
+        this Thread's context.
+        """
 
         assert isinstance(prompt, str), 'Thread.msg: prompt should be str'
 
         self.context += (self.format.user_prefix_str + prompt + self.format.bot_prefix_str)
         self.context = self.model.trim(self.context, overwrite=self.format.system_str)
-        output = self.model.generate(self.context, max_length=MAX_LEN_TOKENS, stop_sequences=self.format.stop_sequences)
+        output = self.model.generate(self.context, stop_sequences=self.format.stop_sequences)
         self.context += (output + self.format.bot_postfix_str)
 
         return output
+
+
+    def interact(self) -> None:
+        """
+        Start an interactive chat session.
+        Designed for use in interactive python shells.
+        """
+        print()
+        try:
+            while True:
+                prompt = input('  > ')
+                print() # Put the cursor where the generated text is about to appear
+                if prompt == '':
+                    # No input from user - assume user wants model to keep talking
+                    self.context += (self.format.bot_prefix_str)
+                    self.context = self.model.trim(self.context, overwrite=self.format.system_str)
+                    output = self.model.generate(self.context, stop_sequences=self.format.stop_sequences)
+                    self.context += (output + self.format.bot_postfix_str)
+                else:
+                    self.context += (self.format.user_prefix_str + prompt + self.format.bot_prefix_str)
+                    self.context = self.model.trim(self.context, overwrite=self.format.system_str)
+                    output = self.model.generate(self.context, stop_sequences=self.format.stop_sequences)
+                    self.context += (output + self.format.bot_postfix_str)
+
+                
+                # Strip all leading and trailing spaces and newlines
+                # This is only done for Thread.interact()
+                while output.startswith(' ') or output.startswith('\n'):
+                    output = output[1:]
+                while output.endswith('\n') or output.startswith(' '):
+                    output = output[:-1]
+
+                print(output + '\n')
+        
+        except KeyboardInterrupt:
+            print('\n')
+            return
+
+
+    def reset(self) -> None:
+        """Reset the Thread's context"""
+        self.context = self.format.system_str
