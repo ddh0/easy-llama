@@ -12,16 +12,18 @@ import sys
 import uuid
 import metadata_gguf
 
-VERBOSE = False             # Print all backend information as it occurs
+
+VERBOSE = False             # Print all backend information as it occurs (llama.cpp)
 SUPPRESS_WARNINGS = False   # At your own risk
-MAX_LEN_TOKENS = 200        # Default max length of responses, in tokens
-NUM_GPU_LAYERS = 1          # Leave at 1 for Apple Silicon, tweak for CUDA and ROCm, set to 0 for OpenBLAS
-NUM_THREADS = int(os.cpu_count() / 2) # Half of logical cores
+MAX_LEN_TOKENS = 200        # Default max length of all generations, in tokens
+NUM_GPU_LAYERS = 1          # Leave at 1 for Apple Silicon, tweak for CUDA and ROCm, set to 0 for OpenBLAS / CPU
+NUM_THREADS = int(os.cpu_count() / 2) # Default to half of logical cores
                                       # This is equal to the number of physical cores
-                                      # on an most CPUs with hyperthreading, and for the
+                                      # on most CPUs with hyperthreading, and for the
                                       # most common M-series chips, it is equal to the number of P-cores
 
-class _suppress_if_not_verbose(object):
+
+class suppress_if_not_verbose(object):
     """
     Suppress console output from llama.cpp if easy_llama.VERBOSE is False
 
@@ -30,6 +32,7 @@ class _suppress_if_not_verbose(object):
 
     See https://github.com/abetlen/llama-cpp-python/issues/478
     """
+
 
     def __enter__(self):
         if not VERBOSE:
@@ -53,8 +56,8 @@ class _suppress_if_not_verbose(object):
             return self
         
         if VERBOSE:
-            # do nothing
             return self
+
 
     def __exit__(self, *_):
         if not VERBOSE:        
@@ -70,11 +73,12 @@ class _suppress_if_not_verbose(object):
             self.outnull_file.close()
             self.errnull_file.close()
 
-with _suppress_if_not_verbose():
+
+with suppress_if_not_verbose():
         import llama_cpp
 
 
-def _warning_output(text: str) -> str:
+def print_warning(text: str) -> str:
     """
     Print text to stderr unless SUPPRESS_WARNINGS is True,
     prefixing with 'easy_llama: WARNING: '
@@ -114,7 +118,7 @@ class Model(object):
                         Try converting or downloading the model again.")
             raise
 
-        with _suppress_if_not_verbose():
+        with suppress_if_not_verbose():
             self._internal_model: llama_cpp.Llama = llama_cpp.Llama(model_path=model_path,
                                                                     n_ctx=self.context_length,
                                                                     n_gpu_layers=NUM_GPU_LAYERS,
@@ -168,7 +172,7 @@ class Model(object):
 
 
     def generate(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
-                 stop_sequences: list[str] | str | None=None) -> str | None:
+                 stop_sequences: list[str] | str | None=None) -> str:
         """
         Given a prompt, return a generated string using constrastive search
         (a=0.5, k=4) which is the method easy-llama recommendeds for most cases.
@@ -194,21 +198,21 @@ class Model(object):
                 assert isinstance(item, str), "some item in stop_sequences list is not of type str"
 
         if max_length > self.context_length:
-           _warning_output("the specified max_length is greater than this model's context length")
+           print_warning("the specified max_length is greater than this model's context length")
         
-        with _suppress_if_not_verbose():
+        with suppress_if_not_verbose():
             output = self._internal_model.create_completion(prompt,
-                                                          max_tokens=max_length,
-                                                          top_k=4,
-                                                          presence_penalty=0.5,
-                                                          stream=False,
-                                                          stop=stop_sequences,
-                                                          )['choices'][0]['text']
+                                                            max_tokens=max_length,
+                                                            top_k=4,
+                                                            presence_penalty=0.5,
+                                                            stream=False,
+                                                            stop=stop_sequences,
+                                                            )['choices'][0]['text']
         return output
 
 
     def greedy(self, prompt: str, max_length: int=MAX_LEN_TOKENS,
-               stop_sequences: list[str] | str | None=None) -> str | None:
+               stop_sequences: list[str] | str | None=None) -> str:
         """
         Given a prompt, return a generated string using greedy sampling,
         where the most likely token is always chosen.
@@ -231,17 +235,17 @@ class Model(object):
                 assert isinstance(item, str), "some item in stop_sequences list is not of type str"
 
         if max_length > self.context_length:
-           _warning_output("the specified max_length is greater than this model's context length")
+           print_warning("the specified max_length is greater than this model's context length")
         
-        with _suppress_if_not_verbose():
+        with suppress_if_not_verbose():
             output = self._internal_model.create_completion(prompt,
-                                                          max_tokens=max_length,
-                                                          top_p=0,
-                                                          top_k=1,
-                                                          stream=False,
-                                                          stop=stop_sequences,
-                                                          repeat_penalty=1
-                                                          )['choices'][0]['text']
+                                                            max_tokens=max_length,
+                                                            top_p=0,
+                                                            top_k=1,
+                                                            stream=False,
+                                                            stop=stop_sequences,
+                                                            repeat_penalty=1
+                                                            )['choices'][0]['text']
         return output
 
 
@@ -385,7 +389,7 @@ class Metharme(Format):
 
 class Thread(object):
     """
-    Provide functionality to facilitate conversation threads with a model
+    Provide functionality to facilitate conversation with a model
     (i.e. remembering past messages.)
 
     You must specify a format, which must have the following attributes:
@@ -419,30 +423,27 @@ class Thread(object):
     Remember to set easy_llama.MAX_LEN_TOKENS to suit your needs.
     """
 
-    def __init__(self, model: Model, format: Format, interactive: bool=False) -> None:
-        self.model: Model = model
-        self.format: Format = format
-        self.interactive: bool = interactive
+    def __init__(self, model: Model, format: Format) -> None:
 
-        assert isinstance(self.model, Model), 'Thread: model should be an instance of easy_llama.Model'
-        assert hasattr(self.format, 'system_str'), 'Thread: format is missing attribute system_str'
-        assert hasattr(self.format, 'user_prefix_str'), 'Thread: format is missing attribute user_prefix_str'
-        assert hasattr(self.format, 'bot_prefix_str'), 'Thread: format is missing attribute bot_prefix_str'
-        assert hasattr(self.format, 'bot_postfix_str'), 'Thread: format is missing attribute bot_postfix_str'
-        assert hasattr(self.format, 'stop_sequences'), 'Thread: format is missing attribute stop_sequences'
-        assert isinstance(self.interactive, bool), 'Thread: interactive should be bool (True or False)'
+        assert isinstance(model, Model), 'Thread: model should be an instance of easy_llama.Model'
+        assert hasattr(format, 'system_str'), 'Thread: format is missing attribute system_str'
+        assert hasattr(format, 'user_prefix_str'), 'Thread: format is missing attribute user_prefix_str'
+        assert hasattr(format, 'bot_prefix_str'), 'Thread: format is missing attribute bot_prefix_str'
+        assert hasattr(format, 'bot_postfix_str'), 'Thread: format is missing attribute bot_postfix_str'
+        assert hasattr(format, 'stop_sequences'), 'Thread: format is missing attribute stop_sequences'
 
         self.uuid = uuid.uuid4()
-
+        self.model: Model = model
+        self.format: Format = format
         self.context = self.format.system_str
     
     
-    def msg(self, prompt: str) -> str | None:
+    def msg(self, prompt: str) -> str:
 
         assert isinstance(prompt, str), 'Thread.msg: prompt should be str'
 
         self.context += (self.format.user_prefix_str + prompt + self.format.bot_prefix_str)
-        self.context = self.model.cut(self.context, overwrite=self.format.system_str)
+        self.context = self.model.trim(self.context, overwrite=self.format.system_str)
         output = self.model.generate(self.context, max_length=MAX_LEN_TOKENS, stop_sequences=self.format.stop_sequences)
         self.context += (output + self.format.bot_postfix_str)
 
