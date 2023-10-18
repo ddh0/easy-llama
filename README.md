@@ -2,6 +2,8 @@
 
 This project is currently unfinished and under active development.
 
+This documentation is out of date, and it will be updated soon.
+
 COMING SOON: You can install easy-llama with pip:
 ```
 pip install easy-llama
