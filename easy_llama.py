@@ -7,10 +7,11 @@ Simple, on-device text inference in Python
 for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 """
 
-# TODO:
-# Model.next_candidates() -> list[str]
-# Automatic detection of METAL, CUDA, OpenBLAS/CPU and set NUM_GPU_LAYERS accordingly
-# Text streaming in Thread.interact?
+# TODO: Switch to low-level API ??
+# TODO: message-based context length handling
+# TODO: Model.next_candidates() -> list[str]
+# TODO: Automatic detection of METAL, CUDA, OpenBLAS/CPU and set NUM_GPU_LAYERS accordingly
+# TODO: Text streaming in Thread.interact?
 
 import os
 import sys
@@ -516,7 +517,6 @@ class Thread(object):
         
         inference_str += self.format.bot_prefix_str
 
-        # TODO: message-based context length handling
         return self.model.trim(inference_str, overwrite=self.format.system_str)
     
     
@@ -533,7 +533,7 @@ class Thread(object):
         elif self.setting == 'low':
             output = self.model.generate_low(self.get_inference_str(), stops=self.format.stops)
         elif self.setting == 'medium':
-            output = self.model.generate(self.get_inference_str(), stops=self.format.stops)
+            output = self.model.generate_medium(self.get_inference_str(), stops=self.format.stops)
         elif self.setting == 'high':
             output = self.model.generate_high(self.get_inference_str(), stops=self.format.stops)
         self.messages.append(_Message(role='bot', text=output))
