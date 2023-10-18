@@ -14,17 +14,111 @@ for complete and up-to-date information, see https://github.com/ddh0/easy-llama
 
 import os
 import sys
-import metadata_gguf
+import struct
+from enum import IntEnum
 
-
-MAX_LEN_TOKENS = 200        # Max length of all generations, in tokens
+MAX_LEN_TOKENS = 256        # Max length of each generation in tokens
 NUM_GPU_LAYERS = 1          # Leave at 1 for Apple Silicon, tweak for CUDA and ROCm, set to 0 for OpenBLAS / CPU
 VERBOSE = False             # Print all backend information as it occurs
 SEED = -1                   # Leave at -1 for random seed
-SUPPRESS_WARNINGS = False   # Warnings contain helpful information
+SUPPRESS_WARNINGS = False   # Warnings are rare and contain helpful information
 
 
-class suppress_if_not_verbose(object):
+class _GGUF_READER:
+    """
+    Credit to oobabooga for most of the code in this class, which is
+    licensed under the AGPL-3.0 license
+    """
+    class GGUFValueType(IntEnum):
+        UINT8 = 0
+        INT8 = 1
+        UINT16 = 2
+        INT16 = 3
+        UINT32 = 4
+        INT32 = 5
+        FLOAT32 = 6
+        BOOL = 7
+        STRING = 8
+        ARRAY = 9
+        UINT64 = 10
+        INT64 = 11
+        FLOAT64 = 12
+
+
+    _simple_value_packing = {
+        GGUFValueType.UINT8: "<B",
+        GGUFValueType.INT8: "<b",
+        GGUFValueType.UINT16: "<H",
+        GGUFValueType.INT16: "<h",
+        GGUFValueType.UINT32: "<I",
+        GGUFValueType.INT32: "<i",
+        GGUFValueType.FLOAT32: "<f",
+        GGUFValueType.UINT64: "<Q",
+        GGUFValueType.INT64: "<q",
+        GGUFValueType.FLOAT64: "<d",
+        GGUFValueType.BOOL: "?",
+    }
+
+    value_type_info = {
+        GGUFValueType.UINT8: 1,
+        GGUFValueType.INT8: 1,
+        GGUFValueType.UINT16: 2,
+        GGUFValueType.INT16: 2,
+        GGUFValueType.UINT32: 4,
+        GGUFValueType.INT32: 4,
+        GGUFValueType.FLOAT32: 4,
+        GGUFValueType.UINT64: 8,
+        GGUFValueType.INT64: 8,
+        GGUFValueType.FLOAT64: 8,
+        GGUFValueType.BOOL: 1,
+    }
+
+
+    def get_single(value_type, file):
+        if value_type == _GGUF_READER.GGUFValueType.STRING:
+            value_length = struct.unpack("<Q", file.read(8))[0]
+            value = file.read(value_length)
+            try:
+                value = value.decode('utf-8')
+            except:
+                pass
+        else:
+            type_str = _GGUF_READER._simple_value_packing.get(value_type)
+            bytes_length = _GGUF_READER.value_type_info.get(value_type)
+            value = struct.unpack(type_str, file.read(bytes_length))[0]
+
+        return value
+
+
+    def load_metadata(fname):
+        metadata = {}
+        with open(fname, 'rb') as file:
+            GGUF_MAGIC = struct.unpack("<I", file.read(4))[0]
+            GGUF_VERSION = struct.unpack("<I", file.read(4))[0]
+            ti_data_count = struct.unpack("<Q", file.read(8))[0]
+            kv_data_count = struct.unpack("<Q", file.read(8))[0]
+
+            if GGUF_VERSION == 1:
+                raise Exception('You are using an outdated GGUF, please download a new one.')
+
+            for i in range(kv_data_count):
+                key_length = struct.unpack("<Q", file.read(8))[0]
+                key = file.read(key_length)
+
+                value_type = _GGUF_READER.GGUFValueType(struct.unpack("<I", file.read(4))[0])
+                if value_type == _GGUF_READER.GGUFValueType.ARRAY:
+                    ltype = _GGUF_READER.GGUFValueType(struct.unpack("<I", file.read(4))[0])
+                    length = struct.unpack("<Q", file.read(8))[0]
+                    for j in range(length):
+                        _ = _GGUF_READER.get_single(ltype, file)
+                else:
+                    value = _GGUF_READER.get_single(value_type, file)
+                    metadata[key.decode()] = value
+
+        return metadata
+
+
+class _suppress_if_not_verbose(object):
     """
     Suppress console output from llama.cpp if easy_llama.VERBOSE is False
 
@@ -74,18 +168,18 @@ class suppress_if_not_verbose(object):
             self.errnull_file.close()
 
 
-with suppress_if_not_verbose():
+with _suppress_if_not_verbose():
         import llama_cpp
 
 
-def print_warning(text: str) -> str:
+def _print_warning(text: str) -> str:
     """
     Print text to stderr unless SUPPRESS_WARNINGS is True,
-    prefixing with 'easy_llama: WARNING: '
+    prefixing with 'easy_llama: '
     """
 
     if not SUPPRESS_WARNINGS:
-        print('easy_llama: WARNING: ' + text, file=sys.stderr)
+        print('easy_llama: ' + text, file=sys.stderr)
 
 
 class Model(object):
@@ -107,20 +201,20 @@ class Model(object):
         assert not os.path.isdir(model_path), 'the given model_path \'%s\' is a directory, not a file' % model_path
         assert os.path.exists(model_path), 'the given model_path \'%s\' does not exist' % model_path
         
-        self.metadata: dict = metadata_gguf.load_metadata(model_path)
+        self.metadata: dict = _GGUF_READER.load_metadata(model_path)
         
         assert isinstance(self.metadata['llama.context_length'], int), \
                'GGUF metadata reports that context_length is not an integer'
         if self.metadata['llama.context_length'] < 2048:
-               print_warning('GGUF metadata reports an unusually small native context length (%s)' % \
+               _print_warning('GGUF metadata reports an unusually small native context length (%s)' % \
                              self.metadata['llama.context_length'])
         if self.metadata['llama.context_length'] > 131072: # 2^17 or ~128k tokens
-               print_warning('GGUF metadata reports an unusually large native context length (%s)' % \
+               _print_warning('GGUF metadata reports an unusually large native context length (%s)' % \
                              self.metadata['llama.context_length'])
 
-        self.context_length = self.metadata['llama.context_length']
+        self.context_length = self.metadata['llama.context_length'] # n_ctx_train
 
-        with suppress_if_not_verbose():
+        with _suppress_if_not_verbose():
             self._internal_model: llama_cpp.Llama = llama_cpp.Llama(model_path=model_path,
                                                                     n_ctx=self.context_length,
                                                                     n_gpu_layers=NUM_GPU_LAYERS,
@@ -142,8 +236,7 @@ class Model(object):
                                                    top_k=1,
                                                    stream=False,
                                                    stop=None,
-                                                   repeat_penalty=1
-                                                   )
+                                                   repeat_penalty=1)
     
 
     def trim(self, text: str, overwrite: str=None) -> str:
@@ -200,9 +293,9 @@ class Model(object):
                 assert isinstance(item, str), "some item in stops list is not of type str"
 
         if MAX_LEN_TOKENS > self.context_length:
-           print_warning("easy_llama.MAX_LEN_TOKENS is greater than this model's context length")
+           _print_warning("MAX_LEN_TOKENS is greater than this model's context length")
         
-        with suppress_if_not_verbose():
+        with _suppress_if_not_verbose():
             return self._internal_model.create_completion(prompt,
                                                           max_tokens=MAX_LEN_TOKENS,
                                                           top_p=0,
@@ -235,9 +328,9 @@ class Model(object):
                 assert isinstance(item, str), "some item in stops list is not of type str"
 
         if MAX_LEN_TOKENS > self.context_length:
-           print_warning("easy_llama.MAX_LEN_TOKENS is greater than this model's context length")
+           _print_warning("MAX_LEN_TOKENS is greater than this model's context length")
         
-        with suppress_if_not_verbose():
+        with _suppress_if_not_verbose():
             return self._internal_model.create_completion(prompt,
                                                           max_tokens=MAX_LEN_TOKENS,
                                                           top_k=4,
@@ -270,9 +363,9 @@ class Model(object):
                 assert isinstance(item, str), "some item in stops list is not of type str"
 
         if MAX_LEN_TOKENS > self.context_length:
-           print_warning("easy_llama.MAX_LEN_TOKENS is greater than this model's context length")
+           _print_warning("MAX_LEN_TOKENS is greater than this model's context length")
         
-        with suppress_if_not_verbose():
+        with _suppress_if_not_verbose():
             return self._internal_model.create_completion(prompt,
                                                           max_tokens=MAX_LEN_TOKENS,
                                                           top_k=4,
@@ -304,9 +397,9 @@ class Model(object):
                 assert isinstance(item, str), "some item in stops list is not of type str"
 
         if MAX_LEN_TOKENS > self.context_length:
-           print_warning("easy_llama.MAX_LEN_TOKENS is greater than this model's context length")
+           _print_warning("MAX_LEN_TOKENS is greater than this model's context length")
         
-        with suppress_if_not_verbose():
+        with _suppress_if_not_verbose():
             return self._internal_model.create_completion(prompt,
                                                           max_tokens=MAX_LEN_TOKENS,
                                                           top_k=4,
@@ -325,7 +418,7 @@ class Model(object):
         assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
 
 
-class Message(object):
+class _Message(object):
 
     def __init__(self, role: str, text: str) -> None:
         assert isinstance(text, str), 'Message: text should be str'
@@ -365,8 +458,8 @@ class Thread(object):
             assert hasattr(format, 'stops'), 'Thread: format is missing required attribute stops'
             self.format = format
         else:
-            print_warning("Thread: init: no format was provided, so none will be used. \
-                           Unless you're using a base model, this will affect the quality of outputs.")
+            _print_warning("Thread: no format was provided, so none will be used. \
+                           unless you're using a base model, this will affect the quality of outputs")
             self.format = Formats.Blank
         assert isinstance(setting, str), 'Thread: setting should be str'
         assert setting.lower() in ['greedy', 'low', 'medium', 'high'], \
@@ -383,7 +476,7 @@ class Thread(object):
 
         # list will contain all messages in thread regardless of context length,
         # with the system message at the start and the newest message at the end
-        self.messages = [Message(role='system', text=self.format.system_str)]
+        self.messages = [_Message(role='system', text=self.format.system_str)]
     
 
     def get_inference_str(self) -> str:
@@ -434,7 +527,7 @@ class Thread(object):
         assert isinstance(prompt, str), 'Thread.send: prompt should be str'
         # do not allow empty input, as that would mess up the format
         assert prompt != '', 'Thread.send: empty prompts are not allowed in threads'
-        self.messages.append(Message(role='user', text=prompt))
+        self.messages.append(_Message(role='user', text=prompt))
         if self.setting == 'greedy':
             output = self.model.greedy(self.get_inference_str(), stops=self.format.stops)
         elif self.setting == 'low':
@@ -443,7 +536,7 @@ class Thread(object):
             output = self.model.generate(self.get_inference_str(), stops=self.format.stops)
         elif self.setting == 'high':
             output = self.model.generate_high(self.get_inference_str(), stops=self.format.stops)
-        self.messages.append(Message(role='bot', text=output))
+        self.messages.append(_Message(role='bot', text=output))
         return output
     
 
@@ -459,10 +552,10 @@ class Thread(object):
                 prompt = input('  > ')
                 print() # Put the cursor where the generated text is about to appear
                 if prompt == '':
-                    print('easy_llama: empty prompts are not allowed in threads\n')
+                    _print_warning('empty prompts are not allowed in threads\n')
                     continue
                 else:
-                    self.messages.append(Message(role='user', text=prompt))
+                    self.messages.append(_Message(role='user', text=prompt))
                     if self.setting == 'greedy':
                         output = self.model.greedy(self.get_inference_str(), stops=self.format.stops)
                     elif self.setting == 'low':
@@ -471,7 +564,7 @@ class Thread(object):
                         output = self.model.generate_medium(self.get_inference_str(), stops=self.format.stops)
                     elif self.setting == 'high':
                         output = self.model.generate_high(self.get_inference_str(), stops=self.format.stops)
-                    self.messages.append(Message(role='bot', text=output))
+                    self.messages.append(_Message(role='bot', text=output))
 
                 # Strip all leading and trailing spaces and newlines from displayed output
                 # This is only done for Thread.interact()
@@ -490,13 +583,13 @@ class Thread(object):
         """
         Erase all messages, leaving only the system prompt
         """
-        self.messages = [Message(role='system', text=self.format.system_str)]
+        self.messages = [_Message(role='system', text=self.format.system_str)]
 
 
 class Formats:
     """
     This class contains several subclasses, each one corresponding
-    to a common prompt format, such as Alpaca, Llama, etc.
+    to a common prompt format, such as Alpaca, Llama2, etc.
 
     These can be used in two ways. Firstly, each format class has a
     .wrap() method, which takes a single string and returns the string with
@@ -510,7 +603,7 @@ class Formats:
 
     `Llama2 = easy_llama.Model('./Llama-2-Chat.gguf')`
 
-    `MyThread = Thread(model=Llama2, format=easy_llama.Formats.Llama2)`
+    `MyThread = easy_llama.Thread(model=Llama2, format=easy_llama.Formats.Llama2)`
 
     Note that using a format that does not match your model might appear to work,
     but this has the potential to significantly affect the quality of generations.
