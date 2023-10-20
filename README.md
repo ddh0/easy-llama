@@ -84,3 +84,12 @@ You're welcome! If you have any other questions or need help, feel free to ask. 
 
   > 
 ```
+
+### Acknowledgments
+Thank you to [Andrei Belten](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), and to [Georgi Gerganov](https://github.com/ggerganov) for [llama.cpp](https://github.com/ggerganov/llama.cpp) and [GGML](https://github.com/ggerganov/ggml).
+
+##### DISCLAIMER
+All language models tend to produce writing that is factually inaccurate, stereotypically biased, and fundamentally disconnected from reality.
+
+###### LICENSE
+This project is licensed under the terms of the [MIT license](https://github.com/ddh0/easy-llama/blob/main/LICENSE).
