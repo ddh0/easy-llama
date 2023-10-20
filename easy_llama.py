@@ -3,19 +3,18 @@
 
 """
 easy-llama - Natural text generation in Python, made easy
+----------
+https://github.com/ddh0/easy-llama/
 """
 
 # Redo entire format / messages system
-# system prefix, system msg, system postfix, user prefix, user postfix, bot prefix, bot postfix, stops
-# store messages in dict with role and text attr
 #
-# automatic text truncation by generate() ?? probably not 
+# store messages in dict with role and text attr ?
 # 
-# TODO: stops should only be [str] or [] so that append always works
+# TODO: set batch size smartly based on memory or cpu ??
 # TODO: message-based context length handling in threads
 # TODO: Model.next_candidates() -> list[str]
-# TODO: Automatic detection of METAL, CUDA, OpenBLAS/CPU and set NUM_GPU_LAYERS accordingly
-# TODO: Text streaming in Thread.interact?
+# TODO: Automatic detection of METAL, CUDA, OpenBLAS/CPU and set NUM_GPU_LAYERS accordingly?
 
 import os
 import sys
@@ -215,7 +214,7 @@ class Model(object):
         assert not os.path.isdir(model_path), 'the given model_path \'%s\' is a directory, not a file' % model_path
         assert os.path.exists(model_path), 'the given model_path \'%s\' does not exist' % model_path
         
-        self.metadata: dict = _GGUF_READER.load_metadata(model_path)
+        self.metadata = _GGUF_READER.load_metadata(model_path)
         
         assert isinstance(self.metadata['llama.context_length'], int), \
                'GGUF metadata reports that context_length is not an integer'
@@ -316,7 +315,6 @@ class Model(object):
                                                           max_tokens=MAX_LEN_TOKENS,
                                                           top_p=0,
                                                           top_k=1,
-                                                          stream=False,
                                                           stop=stops,
                                                           repeat_penalty=1
                                                           )['choices'][0]['text']
@@ -351,7 +349,6 @@ class Model(object):
                                                           max_tokens=MAX_LEN_TOKENS,
                                                           top_k=4,
                                                           presence_penalty=0.525,
-                                                          stream=False,
                                                           stop=stops,
                                                           )['choices'][0]['text']
     
@@ -371,118 +368,114 @@ class Model(object):
 
         assert isinstance(prompt, str), 'prompt should be string, not %s' % type(prompt)
 
+format_template = {
+     'system_prefix': '',
+    'system_content': '',
+    'system_postfix': '',
+       'user_prefix': '',
+      'user_content': '',
+      'user_postfix': '',
+        'bot_prefix': '',
+       'bot_content': '',
+       'bot_postfix': '',
+             'stops': []
+}
 
-class _Message(object):
+chat_ml = {
+     'system_prefix': '<|im_start|>system\n',
+    'system_content': '',
+    'system_postfix': '<|im_end|>\n',
+       'user_prefix': '<|im_start|>user\n',
+      'user_content': '',
+      'user_postfix': '<|im_end|>\n',
+        'bot_prefix': '<|im_start|>assistant\n',
+       'bot_content': '',
+       'bot_postfix': '<|im_end|>\n',
+             'stops': ['<|im_end|>']
+}
 
-    def __init__(self, role: str, text: str):
-        assert isinstance(text, str), 'Message: text should be str'
-        assert role.lower() in ['system', 'user', 'bot'], 'Message: role must be \'system\', \'user\', or \'bot\''
-        self.role = role.lower()
-        self.text = text
+formats: list[dict] = [format_template, chat_ml]
+
+def create_message(format: dict, role: str, content: str) -> dict:
+    try:
+        format['system_prefix']
+        format['system_content']
+        format['system_postfix']
+        format['user_prefix']
+        format['user_content']
+        format['user_postfix']
+        format['bot_prefix']
+        format['bot_content']
+        format['bot_postfix']
+    except KeyError as e:
+        e.add_note('create_message: format is missing one or more required keys, see \
+                   easy_llama.format_template for an example')
+        raise
+    assert role.lower() in ['system', 'user', 'bot'], f'create_message: \
+        role should be \'system\', \'user\', or \'bot\', not \'{role.lower()}\''
+    assert isinstance(content, str), f'create_message: content should be str, not {type(content)}'
+    if role.lower() == 'system':
+        # length key will be set by model, since different models use different tokenization
+        # it should be discarded and recalculated if the model is swapped out
+        return {
+             'prefix': format['system_prefix'],
+            'content': content,
+            'postfix': format['system_postfix'],
+             'length': None
+        }
+    elif role.lower() == 'user':
+        return {
+             'prefix': format['user_prefix'],
+            'content': content,
+            'postfix': format['user_postfix'],
+             'length': None
+        }
+    elif role.lower() == 'bot':
+        return {
+             'prefix': format['bot_prefix'],
+            'content': content,
+            'postfix': format['bot_postfix'],
+             'length': None
+        }
 
 
 class Thread(object):
-    """
-    Provide functionality to facilitate conversation with a model
-    (i.e. remembering past messages.)
 
-    You should specify a format. easy_llama includes several built-in
-    formats within easy_llama.Formats. See that class docstring for details.
-
-    easy_llama.Thread currently does not support double-messaging,
-    i.e if user sends a message, the next message must be from the bot,
-    and vice-versa.
-
-    Remember to set easy_llama.MAX_LEN_TOKENS to suit your needs.
-    """
-
-    def __init__(self, model: Model, format=None):
-
+    def __init__(self, model: Model, format: dict):
         assert isinstance(model, Model), 'Thread: model should be an instance of easy_llama.Model'
-        if format is not None:
-            assert hasattr(format, 'system_str'), 'Thread: format is missing required attribute system_str'
-            assert hasattr(format, 'user_prefix_str'), 'Thread: format is missing required attribute user_prefix_str'
-            assert hasattr(format, 'bot_prefix_str'), 'Thread: format is missing required attribute bot_prefix_str'
-            assert hasattr(format, 'bot_postfix_str'), 'Thread: format is missing required attribute bot_postfix_str'
-            assert hasattr(format, 'stops'), 'Thread: format is missing required attribute stops'
-            self.format = format
-        else:
-            _print_warning("Thread: no format was provided, so none will be used. \
-                           unless you're using a base model, this will affect the quality of outputs")
-            self.format = Formats.Blank
-
+        try:
+            # Q: why don't you just check if the format is in the formats list?
+            # A: user should be able to create and use their own format without mangling the default formats
+            format['system_prefix']
+            format['system_content']
+            format['system_postfix']
+            format['user_prefix']
+            format['user_content']
+            format['user_postfix']
+            format['bot_prefix']
+            format['bot_content']
+            format['bot_postfix']
+            format['stops']
+        except KeyError as e:
+            e.add_note('Thread: format is missing one or more required keys, see \
+                    easy_llama.format_template for an example')
+            raise
+        assert isinstance(format['stops'], list[str], type(None)), \
+            f"Thread: format['stops'] should be list[str] or None, not {type(format['stops'])}"
         self.model: Model = model
-
-        # Calculate these only once and save them for later
-        self.system_len = model.get_length(self.format.system_str)
-        self.user_prefix_len = model.get_length(self.format.user_prefix_str)
-        self.bot_prefix_len = model.get_length(self.format.bot_prefix_str)
-        self.bot_postfix_len = model.get_length(self.format.bot_postfix_str)
-
-        # list will contain all messages in thread regardless of context length,
-        # with the system message at the start and the newest message at the end
-        self.messages = [_Message(role='system', text=self.format.system_str)]
+        self.format: dict = format
+        self.messages: list[dict] = [create_message(format, 'system', format['system_content'])]
     
-
-    def get_inference_str(self) -> str:
-        """
-        Using the list of messages, return a string suitable for text inference.
-
-        Old messages will be discarded as needed to fit the model's context length,
-        while always keeping the system message first.
-        """
-        assert self.messages[0].role == 'system', 'Thread: get_inference_str: first message is not system message'
-        inference_str = self.messages[0].text
-
-        # iterate over messages from newest to oldest (i.e. in reverse)
-        # 
-        # as you go, subtract tokens from (context length - system message length)
-        # and build the inference string in reverse
-        # once you hit 1, break and return string without including the current message
-
-        previous_message_role = 'system'
-        for message in self.messages[1:]: # starting at first non-system message
-            assert message.role != 'system', 'easy_llama.Thread only supports one system message'
-            
-            if message.role == 'user':
-                if previous_message_role == 'system':
-                    # first message from user, directly after system prompt
-                    inference_str += self.format.user_prefix_str + message.text
-                elif previous_message_role == 'bot':
-                    # last message was from bot, this message is from user
-                    inference_str += self.format.bot_postfix_str + self.format.user_prefix_str + message.text
-                previous_message_role = 'user'
-            
-            elif message.role == 'bot':
-                inference_str += self.format.bot_prefix_str + message.text
-                previous_message_role = 'bot'
-        
-        # now inference_str ends with the text of the last message
-        
-        inference_str += self.format.bot_prefix_str
-
-        return self.model.trim(inference_str, overwrite=self.format.system_str)
-    
+    def reset(self) -> None:
+        self.messages = [create_message(self.format, 'system', self.format['system_content'])]
     
     def send(self, prompt: str) -> str:
-        """
-        Send a message in this Thread
-        """
         assert isinstance(prompt, str), 'Thread.send: prompt should be str'
         # do not allow empty input, as that would mess up the format
         assert prompt != '', 'Thread.send: empty prompts are not allowed in threads'
-        self.messages.append(_Message(role='user', text=prompt))
-        output = self.model.generate(self.get_inference_str(), stops=self.format.stops)
-        self.messages.append(_Message(role='bot', text=output))
-        return output
     
 
     def interact(self) -> None:
-        """
-        Start an interactive chat session from this Thread.
-        Designed for use in interactive python shells.
-        Quit using KeyboardInterrupt (CTRL+C).
-        """
         print()
         try:
             while True:
@@ -492,9 +485,9 @@ class Thread(object):
                     _print_warning('empty prompts are not allowed in threads\n')
                     continue
                 else:
-                    self.messages.append(_Message(role='user', text=prompt))
+                    #X
                     output = self.model.generate(self.get_inference_str(), stops=self.format.stops)
-                    self.messages.append(_Message(role='bot', text=output))
+                    #X
 
                 # Strip all leading and trailing spaces and newlines from displayed output
                 # This is only done for Thread.interact()
@@ -507,213 +500,3 @@ class Thread(object):
         except KeyboardInterrupt:
             print('\n')
             return
-
-
-    def reset(self) -> None:
-        """
-        Erase all messages, leaving only the system prompt
-        """
-        self.messages = [_Message(role='system', text=self.format.system_str)]
-
-
-class Formats:
-    """
-    This class contains several subclasses, each one corresponding
-    to a common prompt format, such as Alpaca, Llama2, etc.
-
-    These can be used in two ways. Firstly, each format class has a
-    .wrap() method, which takes a single string and returns the string with
-    all the necessary formatting required for one-off generations.
-
-    Second, when creating a Thread (easy_llama.Thread), you can specify one
-    of these formats, and all messages in the thead will be appropriately
-    formatted.
-
-    For example:
-
-    `Llama2 = easy_llama.Model('./Llama-2-Chat.gguf')`
-
-    `MyThread = easy_llama.Thread(model=Llama2, format=easy_llama.Formats.Llama2)`
-
-    Note that using a format that does not match your model might appear to work,
-    but this has the potential to significantly affect the quality of generations.
-
-    You can create your own format class, and it does not need to inherit from
-    this class. However, it must have the following attributes:
-    - system_str: str
-    - user_prefix_str: str
-    - bot_prefix_str: str
-    - bot_postfix_str: str
-    - stops: list[str] | str | None
-
-    Additionally, it should have the .wrap() method as described above.
-    """
-
-    class Blank:
-        system_str = ''
-        user_prefix_str = ''
-        bot_prefix_str = ''
-        bot_postfix_str = ''
-        stops = None
-
-        def wrap(text: str) -> str:
-            return text
-
-
-    class Alpaca:
-        system_str = 'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n'
-        user_prefix_str = '### Instruction:\n'
-        bot_prefix_str = '\n\n### Response:\n'
-        bot_postfix_str = '\n\n'
-        stops = ['###', '\nInstruction:']
-
-        def wrap(text: str) -> str:
-            return Formats.Alpaca.system_str + Formats.Alpaca.user_prefix_str + \
-                   text + Formats.Alpaca.bot_prefix_str
-
-
-    class Llama2:
-        system_str = '<s>[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant.\n<</SYS>>\n\n'
-        user_prefix_str = ''
-        bot_prefix_str = ' [/INST] '
-        bot_postfix_str = '</s><s>[INST] '
-        stops = ['</s>', '[INST]']
-
-        def wrap(text: str) -> str:
-            return Formats.Llama2.system_str + Formats.Llama2.user_prefix_str + \
-                   text + Formats.Llama2.bot_prefix_str
-
-
-    class Vicuna:
-        system_str = ''
-        user_prefix_str = 'USER: '
-        bot_prefix_str = '\nASSISTANT: '
-        bot_postfix_str = '\n'
-        stops = ['</s>', '\nUSER:']
-
-        def wrap(text: str) -> str:
-            return Formats.Vicuna.system_str + Formats.Vicuna.user_prefix_str + \
-                   text + Formats.Vicuna.bot_prefix_str
-
-
-    class Airoboros:
-        system_str = '<s>[INST] <<SYS>>\nYou are Airoboros, a helpful, unbiased, uncensored AI assistant.\n<</SYS>>\n\n'
-        user_prefix_str = ''
-        bot_prefix_str = ' [/INST] '
-        bot_postfix_str = '</s><s>[INST] '
-        stops = ['</s>', '[INST]']
-
-        def wrap(text: str) -> str:
-            return Formats.Airoboros.system_str + Formats.Airoboros.user_prefix_str + \
-                   text + Formats.Airoboros.bot_prefix_str
-
-
-    class MistralInstruct:
-        # This system prompt is from Mistral 7B's official release PDF on arXiv
-        # The other format strings are from Mistral 7B's official HF page
-        system_str = '<s>Always assist with care, respect, and truth. Respond with utmost utility yet securely. Avoid harmful, unethical, prejudiced, or negative content. Ensure replies promote fairness and positivity. '
-        user_prefix_str = '[INST] '
-        bot_prefix_str = ' [/INST] '
-        bot_postfix_str = '</s> '
-        stops = ['</s>']
-
-        def wrap(text: str) -> str:
-            return Formats.MistralInstruct.system_str + Formats.MistralInstruct.user_prefix_str + \
-                   text + Formats.MistralInstruct.bot_prefix_str
-
-
-    class MistralOrca:
-        system_str = '<|im_start|>system\nYou are MistralOrca, a large language model trained by Alignment Lab AI. Write out your reasoning step-by-step to be sure you get the right answers!\n<|im_end|>\n'
-        user_prefix_str = '<|im_start|>user\n'
-        bot_prefix_str = '<|im_end|>\n<|im_start|>assistant\n'
-        bot_postfix_str = '<|im_end|>\n'
-        stops = ['<|im_end|>', '<|im_start|>']
-
-        def wrap(text: str) -> str:
-            return Formats.MistralOrca.system_str + Formats.MistralOrca.user_prefix_str + \
-                   text + Formats.MistralOrca.bot_prefix_str
-
-
-    class Jackalope:
-        system_str = '<|im_start|>system\nYou are JackalopeAI, a large language model trained by OpenAccess AI Collective. Write out your reasoning step-by-step to be sure you get the right answers!\n<|im_end|>\n'
-        user_prefix_str = '<|im_start|>user\n'
-        bot_prefix_str = '<|im_end|>\n<|im_start|>assistant\n'
-        bot_postfix_str = '<|im_end|>\n'
-        stops = ['<|im_end|>', '<|im_start|>']
-
-        def wrap(text: str) -> str:
-            return Formats.Jackalope.system_str + Formats.Jackalope.user_prefix_str + \
-                   text + Formats.Jackalope.bot_prefix_str
-
-
-    class Dolphin:
-        system_str = '<|im_start|>system\nYou are Dolphin, a helpful AI assistant.<|im_end|>\n'
-        user_prefix_str = '<|im_start|>user\n'
-        bot_prefix_str = '<|im_end|>\n<|im_start|>assistant\n'
-        bot_postfix_str = '<|im_end|>\n'
-        stops = ['<|im_end|>', '<|im_start|>']
-
-        def wrap(text: str) -> str:
-            return Formats.Dolphin.system_str + Formats.Dolphin.user_prefix_str + \
-                   text + Formats.Dolphin.bot_prefix_str
-
-
-    class Samantha:
-        system_str = '<|im_start|>system\nYou are a caring and empathetic sentient AI companion named Samantha.<|im_end|>\n'
-        user_prefix_str = '<|im_start|>user\n'
-        bot_prefix_str = '<|im_end|>\n<|im_start|>assistant\n'
-        bot_postfix_str = '<|im_end|>\n'
-        stops = ['<|im_start|>', '<|im_end|>']
-
-        def wrap(text: str) -> str:
-            return Formats.Samantha.system_str + Formats.Samantha.user_prefix_str + \
-                   text + Formats.Samantha.bot_prefix_str
-
-
-    class Guanaco:
-        system_str = 'A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human\'s questions.\n\n'
-        user_prefix_str = '### Human: '
-        bot_prefix_str = '\n### Assistant: '
-        bot_postfix_str = '\n'
-        stops = ['###', '\nHuman:']
-
-        def wrap(text: str) -> str:
-            return Formats.Guanaco.system_str + Formats.Guanaco.user_prefix_str + \
-                   text + Formats.Guanaco.bot_prefix_str
-
-
-    class OrcaMini:
-        system_str = '### System:\nYou are an AI assistant that follows instruction extremely well. Help as much as you can.\n\n'
-        user_prefix_str = '### User:\n'
-        bot_prefix_str = '\n\n### Assistant:\n'
-        bot_postfix_str = '\n\n'
-        stops = ['###', '\nUser:']
-
-        def wrap(text: str) -> str:
-            return Formats.OrcaMini.system_str + Formats.OrcaMini.user_prefix_str + \
-                   text + Formats.OrcaMini.bot_prefix_str
-
-
-    class Zephyr:
-        system_str = '<|system|>\nYou are Zephyr, an artificial intelligence assistant. You are helpful and polite.</s>\n'
-        user_prefix_str = '<|user|>\n'
-        bot_prefix_str = '</s>\n<|assistant|>\n'
-        bot_postfix_str = '</s>\n'
-        stops = ['</s>', '<|user|>', '<|assistant|>']
-
-        def wrap(text: str) -> str:
-            return Formats.Zephyr.system_str + Formats.Zephyr.user_prefix_str + \
-                   text + Formats.Zephyr.bot_prefix_str
-
-
-    class Metharme:
-        # This is used for Pygmalion models, and is different from ChatML
-        system_str = '<|system|>You are an artificial intelligence assistant. You are helpful and polite.'
-        user_prefix_str = '<|user|>'
-        bot_prefix_str = '<|model|>'
-        bot_postfix_str = ''
-        stops = ['<|user|>', '<|model|>']
-
-        def wrap(text: str) -> str:
-            return Formats.Metharme.system_str + Formats.Metharme.user_prefix_str + \
-                   text + Formats.Metharme.bot_prefix_str
