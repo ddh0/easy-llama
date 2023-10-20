@@ -12,7 +12,7 @@ For example, the following design choices are made:
   - `stops` is list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
 - Optimal number of threads is determined based on your hardware - `n_threads` as well as `n_threads_batch`
-- Extensive sanity checks and helpful error messages
+- Extensive type hinting and helpful error messages
 
 
 ## Other features
