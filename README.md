@@ -1,22 +1,32 @@
 # easy-llama
-Natural text generation in Python, made easy
+#### Natural text generation in Python, made easy
 
 ## Overview
-TODO
+easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
+
+For example, the following design choices are made:
+
+- `Model` has only two generation methods:
+  - `.greedy()` for greedy decoding, where the most likely token is always chosen
+  - `.generate()` for Contrastive Search, which generates more human-like text ([HuggingFace](https://huggingface.co/blog/introducing-csearch), [arXiv](https://arxiv.org/abs/2210.14140))
+- Each generation method takes only two parameters:
+  - `prompt` is the text to be evaluated by the model
+  - `stops` is list of strings at which to end the generation early. defaults to `None`
+- Context length is set automatically thanks to GGUF
+- Optimal number of threads is determined based on your hardware - `n_threads` as well as `n_threads_batch`
 
 
-## Features
-- ✅ Human-level text generation using [Contrastive Search](https://huggingface.co/blog/introducing-csearch)
-- ✅ Automatic detection of model's native context length via GGUF
+## Other features
 - ✅ Hardware acceleration on Apple Silicon (Metal), NVIDIA (CUDA), AMD (ROCm), OpenBLAS
-- ✅ Programmatic multi-turn interaction
 - ✅ Terminal-based interactive chat
+- ✅ Programmatic multi-turn interaction
 - ⚠️ Several common prompt formats built-in, e.g Alpaca, Vicuna, Llama2, ChatML, etc
 - ⚠️ Message-based context-length handling
 - ☑️ Retrieve sorted list of candidates for the most likely next token (i.e. logits)
-- ✅ Support all [models](https://github.com/ggerganov/llama.cpp#description) supported by llama.cpp
+- ✅ Support all models supported by llama.cpp. [See here](https://github.com/ggerganov/llama.cpp#description)
 
 > ✅ implemented ⚠️ needs work ☑️ todo
+
 
 ## Examples
 #### Basic example
