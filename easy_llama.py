@@ -224,9 +224,9 @@ class Model(object):
                     use_mmap=False,
                     use_mlock=False,
                     logits_all=True,
-                    n_batch=512,
-                    n_threads=max(os.cpu_count()//2, 1),
-                    n_threads_batch=os.cpu_count(),
+                    n_batch=os.cpu_count() * 64,
+                    n_threads=max(os.cpu_count()//2, 1), # optimal if == physical cores (most cases)
+                    n_threads_batch=os.cpu_count(), # always optimal
                     mul_mat_q=True,
                     verbose=VERBOSE
                     )
@@ -501,7 +501,7 @@ class Thread(object):
             format['stops']
         except KeyError as e:
             e.add_note('Thread: format is missing one or more required keys, see \
-                easy_llama.format_template for an example')
+                easy_llama.blank for an example')
             raise
         assert isinstance(format['stops'], (list, type(None))), \
             f"Thread: format['stops'] should be list[str] or None, not {type(format['stops'])}"
