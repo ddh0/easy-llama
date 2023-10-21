@@ -1,7 +1,7 @@
 # easy-llama
 
 > [!WARNING]
-> This project is still under heavy development, and some functionality may be missing, incomplete, or broken.
+> This project is still under heavy development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.
 
 ## Natural text generation in Python, made easy
 easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
