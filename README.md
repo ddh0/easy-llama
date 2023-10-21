@@ -23,7 +23,19 @@ For example, the following design choices are made:
 - ✅ Hardware acceleration on Apple Silicon (Metal), NVIDIA (CUDA), AMD (ROCm), OpenBLAS
 - ✅ Terminal-based interactive chat
 - ✅ Programmatic multi-turn interaction
-- ✅ Several common prompt formats built-in, e.g Alpaca, Vicuna, Llama2, ChatML, etc
+- ✅ Several common prompt formats built-in
+  -  `blank`
+  -  `chatml`
+  -  `llama2chat`
+  -  `alpaca`
+  -  `vicuna`
+  -  `mistral_instruct`
+  -  `mistral_openorca`
+  -  `dolphin`
+  -  `samantha`
+  -  `guanaco`
+  -  `orca_mini`
+  -  `airoboros`
 - ✅ Message-based context-length handling
 - ☑️ Retrieve sorted list of candidates for the most likely next token (i.e. logits)
 - ✅ Support all models supported by llama.cpp. [See here](https://github.com/ggerganov/llama.cpp#description)
