@@ -2,17 +2,18 @@
 # Python 3.11.6
 
 """
-easy-llama - Natural text generation in Python, made easy
+Natural text generation in Python, made easy
 ----------
 https://github.com/ddh0/easy-llama/
 """
 
-# functions to transfer a list of messages between disk / models, handle token count
-# 
-# TODO: set batch size smartly based on memory or cpu ??
-# TODO: message-based context length handling in threads
+# TODO: functions to transfer a list of messages between disk / models, handle token count
+# TODO: wrap function that uses any format
+# TODO: function to do summarization to compress context ?
+# TODO: text streaming in Thread.interact()
+# TODO: verify message-based context length handling works
 # TODO: Model.next_candidates() -> list[str]
-# TODO: Automatic detection of METAL, CUDA, OpenBLAS/CPU and set NUM_GPU_LAYERS accordingly?
+# TODO: Automatic detection of BLAS backend and set NUM_GPU_LAYERS accordingly?
 
 import os
 import sys
@@ -41,7 +42,11 @@ class _GGUF_READER:
     """
     Peek at file header for GGUF metadata
 
-    Credit to oobabooga for the majority of the code in this class
+    Raise ValueError if file is not GGUF or is outdated
+
+    Credit to oobabooga for the parts of the code in this class
+
+    Format spec: https://github.com/philpax/ggml/blob/gguf-spec/docs/gguf.md
     """
     class GGUFValueType(IntEnum):
         UINT8 = 0
@@ -104,14 +109,18 @@ class _GGUF_READER:
     def load_metadata(fname) -> dict:
         metadata = {}
         with open(fname, 'rb') as file:
-            GGUF_MAGIC = struct.unpack("<I", file.read(4))[0]
+            GGUF_MAGIC = file.read(4)
             GGUF_VERSION = struct.unpack("<I", file.read(4))[0]
             ti_data_count = struct.unpack("<Q", file.read(8))[0]
             kv_data_count = struct.unpack("<Q", file.read(8))[0]
+            
+            if GGUF_MAGIC != b'GGUF':
+                raise ValueError(f'easy_llama: Your model file is not a GGUF file \
+                    (magic number mismatch, got {GGUF_MAGIC}, expected b\'GGUF\')')
 
             if GGUF_VERSION == 1:
                 raise ValueError("easy_llama: Your model file reports GGUF version 1, but only \
-                                 version 2 is supported. Re-convert your model or download a newer version.")
+                    version 2 is supported. Re-convert your model or download a newer version.")
 
             for i in range(kv_data_count):
                 key_length = struct.unpack("<Q", file.read(8))[0]
@@ -181,21 +190,39 @@ class _suppress_if_not_verbose(object):
 
 def _print_warning(text: str) -> str:
     if not SUPPRESS_WARNINGS:
-        print('easy_llama:', text, file=sys.stderr)
+        print('easy_llama: warning:', text, file=sys.stderr)
 
 with _suppress_if_not_verbose():
         import llama_cpp
 
 class Model(object):
     """
-    Abstraction of a llama model
+    A high-level abstraction of a llama model
+
+    This is just a brief overview of easy_llama.Model.
+    To see a full description of each method and its parameters,
+    call help(Model), or see the relevant docstring.
+
+    The following methods are available:
+    - .generate(): return a string generated with Contrastive Search,
+    which generates more human-like text
+    - .greedy(): return a string generated with greedy decoding,
+    where the most likely token is always chosen
+    - .get_length(): return the length of a given string in tokens
+    - .trim(): trim a given string to this model's context length
+    - .next_candidates(): return a list of candidates for the most likely next token
+
+    The following attributes are available:
+    - .metadata: the GGUF metadata read from the model file, dict
+    - .context_lenth: the native context length of the model in tokens, int
+    - ._internal_model: the raw llama_cpp.Llama instance
     """
 
     def __init__(self, model_path: str):
         """
-        Initialize a llama model from a file.
+        Given the path to a GGUF file, create a Model instance
 
-        Model must be in GGUF format (but it does not have to be quantized).
+        The model must be in GGUF format.
 
         easy_llama will automatically determine the model's trained
         context length from the GGUF metadata.
@@ -331,12 +358,14 @@ class Model(object):
         if MAX_LEN_TOKENS > self.context_length:
            _print_warning("MAX_LEN_TOKENS is greater than this model's context length, expect poor results")
         
+        # 'presence_penalty' is the alpha value used in contrastive search
+        # easy_llama's official recommenedation for most purposes is 0.55
         with _suppress_if_not_verbose():
             return self._internal_model.create_completion(
                 prompt,
                 max_tokens=MAX_LEN_TOKENS,
                 top_k=4,
-                presence_penalty=0.53,
+                presence_penalty=0.55,
                 stop=stops,
                 )['choices'][0]['text']
  
@@ -383,6 +412,7 @@ chatml = {
 }
 
 # https://huggingface.co/blog/llama2
+# system message relaxed to avoid undue refusals
 llama2chat = {
      'system_prefix': '<s>[INST] <<SYS>>\n',
     'system_content': 'You are a helpful AI assistant.',
@@ -466,11 +496,13 @@ orca_mini = {
              'stops': ['###', 'User:']
 }
 
-dolphin = mistral_openorca = samantha = chatml
+mistral_openorca = chatml.copy()
+dolphin = chatml.copy()
+samantha = chatml.copy()
 dolphin['system_content'] = 'You are Dolphin, a helpful AI assistant.'
 mistral_openorca['system_content'] = 'You are MistralOrca, a large language model trained by Alignment Lab AI. Write out your reasoning step-by-step to be sure you get the right answers!'
 samantha['system_content'] = 'You are a caring and empathetic sentient AI companion named Samantha.'
-airoboros = llama2chat
+airoboros = llama2chat.copy()
 airoboros['system_content'] = 'You are a helpful, unbiased, uncensored assistant.'
 
 formats: list[dict] = [
@@ -586,27 +618,48 @@ class Thread(object):
                 prompt = input('  > ')
                 print() # Put the cursor where the generated text is about to appear
                 if prompt == '':
+                    
                     # another assistant message
-                    output = self.model.generate(
+                    token_generator = self.model._internal_model.create_completion(
                         self.inference_str_from_messages(),
-                        stops=self.format['stops']
+                        max_tokens=MAX_LEN_TOKENS,
+                        top_k=4,
+                        stream=True,
+                        presence_penalty=0.55,
+                        stop=self.format['stops'],
                         )
-                    self.messages.append(self.create_message('bot', output))
-                else:
-                    self.messages.append(self.create_message('user', prompt))
-                    output = self.model.generate(
-                        self.inference_str_from_messages(),
-                        stops=self.format['stops']
-                        )
+                    
+                    output = ''
+                    for i in token_generator:
+                        token = i['choices'][0]['text']
+                        output += token
+                        print(token, end='')
+                        sys.stdout.flush()
+
                     self.messages.append(self.create_message('bot', output))
 
-                # Strip all leading and trailing spaces and newlines from displayed output
-                # This is only done for Thread.interact()
-                while output.startswith(' ') or output.startswith('\n'):
-                    output = output[1:]
-                while output.endswith('\n') or output.endswith(' '):
-                    output = output[:-1]
-                print(output + '\n')
+                else:
+                    self.messages.append(self.create_message('user', prompt))
+
+                    token_generator = self.model._internal_model.create_completion(
+                        self.inference_str_from_messages(),
+                        max_tokens=MAX_LEN_TOKENS,
+                        top_k=4,
+                        stream=True,
+                        presence_penalty=0.55,
+                        stop=self.format['stops'],
+                        )
+                    
+                    output = ''
+                    for i in token_generator:
+                        token = i['choices'][0]['text']
+                        output += token
+                        print(token, end='')
+                        sys.stdout.flush()
+
+                    self.messages.append(self.create_message('bot', output))
+                
+                print('\n')
         
         except KeyboardInterrupt:
             print('\n')
