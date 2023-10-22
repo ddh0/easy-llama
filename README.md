@@ -15,13 +15,13 @@ For example, the following design choices are made:
   - `prompt` is the text to be evaluated by the model
   - `stops` is list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
-- Optimal number of threads is determined based on your hardware - `n_threads` as well as `n_threads_batch`
-- Extensive type hinting and helpful error messages
+- `n_batch`, `n_threads`, and `n_threads_batch` are determined automatically 
+- Extensive type hinting and helpful, informative error messages
 
 
 ## Other features
 - ✅ Hardware acceleration on Apple Silicon (Metal), NVIDIA (CUDA), AMD (ROCm), OpenBLAS
-- ✅ Terminal-based interactive chat
+- ✅ Terminal-based interactive chat with text streaming
 - ✅ Programmatic multi-turn interaction
 - ✅ Several common prompt formats built-in
   -  `blank`
