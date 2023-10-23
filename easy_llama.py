@@ -16,37 +16,33 @@ https://github.com/ddh0/easy-llama/
 # set per pip package
 # 'metal' | 'cuda' | 'rocm' | 'cpu' 
 # NOTE TO END USER: DO NOT TOUCH!
-__backend = None
+_backend = 'metal'
 
 import os
 import sys
 import struct
 from enum import IntEnum
 
-NO_VALID_BACKEND_FLAG = False
-
-if __backend == 'metal':
+if _backend == 'metal':
     # Must be 1
     NUM_GPU_LAYERS: int = 1
     MUL_MAT_Q = True
-elif __backend == 'cuda':
+elif _backend == 'cuda':
     # Tweak between 1 and 10000000
     # Set to -1 to move all layers to CUDA
     NUM_GPU_LAYERS: int = 1
     MUL_MAT_Q = False
-elif __backend == 'rocm':
+elif _backend == 'rocm':
     # Tweak between 1 and 10000000
     # Set to -1 to move all layers to ROCm
     NUM_GPU_LAYERS: int = 1
     MUL_MAT_Q = True
-elif __backend == 'cpu':
+elif _backend == 'cpu':
     # Must be 0
     NUM_GPU_LAYERS: int = 0
     MUL_MAT_Q = True
 else:
-    NO_VALID_BACKEND_FLAG = True
-    NUM_GPU_LAYERS: int = 1
-    MUL_MAT_Q = True
+    raise RuntimeError(f'easy_llama: _backend \'{_backend}\' is invalid. this is unexpected')
 
 # Max length of each generation in tokens
 MAX_LEN_TOKENS: int = 2048
@@ -276,7 +272,7 @@ class Model(object):
                     n_batch=os.cpu_count() * 64,
                     n_threads=max(os.cpu_count()//2, 1), # optimal if == physical cores (most cases)
                     n_threads_batch=os.cpu_count(), # always optimal
-                    mul_mat_q=True,
+                    mul_mat_q=MUL_MAT_Q,
                     verbose=VERBOSE
                 )
             
@@ -293,10 +289,11 @@ class Model(object):
                 repeat_penalty=1
             )
 
-            print(f'easy-llama: __backend             == {__backend}')
-            print(f'easy-llama: NO_VALID_BACKEND_FLAG == {NO_VALID_BACKEND_FLAG}')
-            print(f'easy-llama: NUM_GPU_LAYERS        == {NUM_GPU_LAYERS}')
-            print(f'easy-llama: MUL_MAT_Q             == {MUL_MAT_Q}')
+            print(f'------------------------------------------')
+            print(f'easy_llama: _backend              == {_backend}')
+            print(f'easy_llama: NUM_GPU_LAYERS        == {NUM_GPU_LAYERS}')
+            print(f'easy_llama: MUL_MAT_Q             == {MUL_MAT_Q}')
+            print()
 
     def trim(self, text: str, overwrite: str=None) -> str:
         """
@@ -331,44 +328,9 @@ class Model(object):
         """
         return len(self._internal_model.tokenize(text.encode('utf-8', errors='ignore')))
 
-    def greedy(self, prompt: str, stops: list[str] | None=None) -> str:
-        """
-        Given a prompt, return a generated string using greedy decoding,
-        where the most likely token is always chosen.
-
-        The following parameter is optional:
-        
-        stops: list[str] | None: a list of strings at which to end the generation early
-        """
-
-        assert isinstance(prompt, str), f'prompt should be string, not {type(prompt)}'
-        if isinstance(stops, list):
-            for item in stops:
-                assert isinstance(item, str), f'item {item} in stops list is not a string'
-        else:
-            assert stops is None, f'stops should be list[str] or None, not {type(stops)}'
-
-        if MAX_LEN_TOKENS > self.context_length:
-           _print_warning("MAX_LEN_TOKENS is greater than this model's context length, expect poor results")
-        
-        with _suppress_if_not_verbose():
-            return self._internal_model.create_completion(
-                prompt,
-                max_tokens=MAX_LEN_TOKENS,
-                top_p=0,
-                top_k=1,
-                stop=stops,
-                repeat_penalty=1
-            )['choices'][0]['text']
-
     def generate(self, prompt: str, stops: list[str] | None=None) -> str:
         """
-        Given a prompt, return a generated string using constrastive search
-        with a moderate alpha value. This is the method easy_llama recommends
-        for most cases.
-
-        For more information on contrastive search, see here:
-        https://huggingface.co/blog/introducing-csearch
+        Given a prompt, return a generated string.
 
         The following parameter is optional:
         
@@ -385,6 +347,10 @@ class Model(object):
         if MAX_LEN_TOKENS > self.context_length:
            _print_warning("MAX_LEN_TOKENS is greater than this model's context length, expect poor results")
         
+        # see https://github.com/facebookresearch/llama/issues/217
+        if prompt[-1] == ' ':
+            _print_warning('prompt has trailing whitespace, this is known to reduce the quality of generations\n')
+
         # 'presence_penalty' is the alpha value used in contrastive search
         # easy_llama's official recommenedation for most purposes is 0.55
         with _suppress_if_not_verbose():
@@ -398,8 +364,8 @@ class Model(object):
  
     def next_candidates(self, prompt: str, k: int) -> list[str]:
         """
-        Given a prompt, return a sorted list of the top k candidates for
-        most likely next token
+        Given prompt (str) and k (int), return a sorted list of the
+        top k candidates for most likely next token
         """
 
         # Good luck to self
@@ -602,7 +568,7 @@ class Thread(object):
 
     def inference_str_from_messages(self) -> str:
         inference_str = ''
-        # 3 = bos + eos + off-by-one errors
+        # bos + eos + off-by-one errors == 3
         context_len_budget = self.model.context_length - 3
         system_message = self.messages[0]
         context_len_budget -= system_message['length']
@@ -692,4 +658,4 @@ class Thread(object):
             return
 
 if __name__ == '__main__':
-    raise RuntimeError('easy-llama cannot be run directly, please import it into your environment')
+    raise RuntimeError('easy_llama cannot be run directly, please import it into your environment')
