@@ -5,7 +5,7 @@
 ## Natural text generation in Python, made easy
 easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [`llama-cpp-python`](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [`llama.cpp`](https://github.com/ggerganov/llama.cpp) library.
 
-All generations utilize **contrastive search**, which has been shown to produce more human-like text ([HuggingFace](https://huggingface.co/blog/introducing-csearch), [arXiv](https://arxiv.org/abs/2210.14140)) The following hyperparameters are chosen:
+All generations utilize **contrastive search**, which (has been shown)[https://github.com/ddh0/easy-llama#references] to produce more human-like text. The following hyperparameters are chosen:
 ```math
 a=0.55, k=4
 ```
@@ -106,6 +106,11 @@ You're welcome! If you have any other questions or need help, feel free to ask. 
 
 ### Acknowledgments
 Thank you to [Andrei Belten](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), and to [Georgi Gerganov](https://github.com/ggerganov) for [llama.cpp](https://github.com/ggerganov/llama.cpp) and [GGML](https://github.com/ggerganov/ggml).
+
+##### References
+[arXiv](https://arxiv.org/abs/2210.14140): Contrastive Search Is What You Need For Neural Text Generation (25 Oct 2022, Yixuan Su, Nigel Collier)
+
+[HuggingFace](https://huggingface.co/blog/introducing-csearch): Generating Human-level Text with Contrastive Search in Transformers 🤗 (Nov 8 2022)
 
 ###### DISCLAIMER
 All language models tend to produce writing that is factually inaccurate, stereotypically biased, and fundamentally disconnected from reality.
