@@ -4,7 +4,7 @@
 > This project is still under heavy development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.
 
 ## Natural text generation in Python, made easy
-easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
+easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [`llama-cpp-python`](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [`llama.cpp`](https://github.com/ggerganov/llama.cpp) library.
 
 For example, the following design choices are made:
 
@@ -15,7 +15,8 @@ For example, the following design choices are made:
   - `prompt` is the text to be evaluated by the model
   - `stops` is list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
-- `n_batch`, `n_threads`, and `n_threads_batch` are determined automatically 
+- `n_batch`, `n_threads`, `n_threads_batch`, `MUL_MAT_Q` are determined automatically
+- On Apple Silicon and CPU, `NUM_GPU_LAYERS` is set automatically
 - Extensive type hinting and helpful, informative error messages
 
 
