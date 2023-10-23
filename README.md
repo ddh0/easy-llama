@@ -12,7 +12,7 @@ a=0.55, k=4
 where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is top-k, the number of candidate tokens that are considered from the language model's probability distribution.
 
 The following design choices are made:
-- Each generation method takes only two parameters
+- `Model.generate()` takes only two parameters
   - `prompt` is the text to be evaluated by the model
   - `stops` is list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
@@ -26,18 +26,7 @@ The following design choices are made:
 - ✅ Terminal-based interactive chat with text streaming
 - ✅ Programmatic multi-turn interaction
 - ✅ Several common prompt formats built-in
-  -  `blank`
-  -  `chatml`
-  -  `llama2chat`
-  -  `alpaca`
-  -  `vicuna`
-  -  `mistral_instruct`
-  -  `mistral_openorca`
-  -  `dolphin`
-  -  `samantha`
-  -  `guanaco`
-  -  `orca_mini`
-  -  `airoboros`
+  - `blank`, `chatml`, `llama2chat`, `alpaca`, `vicuna`, `mistral_instruct`, `mistral_openorca`, `dolphin`, `samantha`, `guanaco`, `orca_mini`, `airoboros`
 - ✅ Message-based context-length handling
 - ☑️ Retrieve sorted list of candidates for the most likely next token (i.e. logits)
 - ✅ Support all models supported by llama.cpp. [See here](https://github.com/ggerganov/llama.cpp#description)
@@ -64,15 +53,6 @@ The following design choices are made:
 '1. Male lions are called "mantles" because their manes resemble a cloak or mantle worn around their necks.\n2. Lions roar at an average volume of 50 decibels, which is about as loud as a car alarm.\n3. A group of lions is known as a "pride," and they often hunt together in coordinated teams.\n4. Lions are the only cats that live in groups with their cubs and non-related adults.\n5. Lions are excellent swimmers and can reach speeds of up to 36 miles per hour in water.'
 >>> Thread.send('Now tell me a joke about them.')
 "1. Why don't lions play cards in the wild? Too many cheetahs!\n2. What do you call a lion with no teeth? A gummy bear!\n3. How do lions like their jokes? With a lot of roar-ing laughter!\n4. Why did the lion join a band? He wanted to play the drums and be the king of rock!\n5. What do you call a lion that's bad at making decisions? A indecisive roar!"
->>> Thread.messages
-[<easy_llama._Message object at 0x105cdf150>, <easy_llama._Message object at 0x106ef92d0>, <easy_llama._Message object at 0x106dd23d0>, <easy_llama._Message object at 0x106ef9590>, <easy_llama._Message object at 0x106e69710>]
->>> for msg in Thread.messages: print(msg.role)
-... 
-system
-user
-bot
-user
-bot
 >>> 
 ```
 
