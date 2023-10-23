@@ -10,29 +10,51 @@ https://github.com/ddh0/easy-llama/
 # TODO: functions to transfer a list of messages between disk / models, handle token count
 # TODO: wrap function that uses any format
 # TODO: function to do summarization to compress context ?
-# TODO: text streaming in Thread.interact()
 # TODO: verify message-based context length handling works
 # TODO: Model.next_candidates() -> list[str]
-# TODO: Automatic detection of BLAS backend and set NUM_GPU_LAYERS accordingly?
+
+# set per pip package
+# 'metal' | 'cuda' | 'rocm' | 'cpu' 
+# NOTE TO END USER: DO NOT TOUCH!
+__backend = None
 
 import os
 import sys
 import struct
 from enum import IntEnum
 
-# Set to 1 for Apple Silicon
-# Set to 0 for CPU / OpenBLAS
-# Tweak as needed for CUDA / ROCm
-# Set to -1 to move all layers to CUDA / ROCm
-NUM_GPU_LAYERS: int = 1
+NO_VALID_BACKEND_FLAG = False
+
+if __backend == 'metal':
+    # Must be 1
+    NUM_GPU_LAYERS: int = 1
+    MUL_MAT_Q = True
+elif __backend == 'cuda':
+    # Tweak between 1 and 10000000
+    # Set to -1 to move all layers to CUDA
+    NUM_GPU_LAYERS: int = 1
+    MUL_MAT_Q = False
+elif __backend == 'rocm':
+    # Tweak between 1 and 10000000
+    # Set to -1 to move all layers to ROCm
+    NUM_GPU_LAYERS: int = 1
+    MUL_MAT_Q = True
+elif __backend == 'cpu':
+    # Must be 0
+    NUM_GPU_LAYERS: int = 0
+    MUL_MAT_Q = True
+else:
+    NO_VALID_BACKEND_FLAG = True
+    NUM_GPU_LAYERS: int = 1
+    MUL_MAT_Q = True
 
 # Max length of each generation in tokens
-MAX_LEN_TOKENS: int = 64
+MAX_LEN_TOKENS: int = 2048
 
-# Print all backend information as it occurs
+# Do not suppress llama.cpp output
 VERBOSE: bool = False
 
-# Leave at -1 for random seed. Used when loading models
+# Leave at -1 for random seed
 SEED: int = -1
 
 # Warnings are infrequent and contain helpful information
@@ -115,7 +137,7 @@ class _GGUF_READER:
             kv_data_count = struct.unpack("<Q", file.read(8))[0]
             
             if GGUF_MAGIC != b'GGUF':
-                raise ValueError(f'easy_llama: Your model file is not a GGUF file \
+                raise ValueError(f'easy_llama: Your model file is not a valid GGUF file \
                     (magic number mismatch, got {GGUF_MAGIC}, expected b\'GGUF\')')
 
             if GGUF_VERSION == 1:
@@ -256,7 +278,7 @@ class Model(object):
                     n_threads_batch=os.cpu_count(), # always optimal
                     mul_mat_q=True,
                     verbose=VERBOSE
-                    )
+                )
             
             # The first inference on a freshly loaded model has a little extra delay
             # This gets that out of the way before the user's first actual generation
@@ -269,7 +291,12 @@ class Model(object):
                 top_k=1,
                 stop=None,
                 repeat_penalty=1
-                )
+            )
+
+            print(f'easy-llama: __backend             == {__backend}')
+            print(f'easy-llama: NO_VALID_BACKEND_FLAG == {NO_VALID_BACKEND_FLAG}')
+            print(f'easy-llama: NUM_GPU_LAYERS        == {NUM_GPU_LAYERS}')
+            print(f'easy-llama: MUL_MAT_Q             == {MUL_MAT_Q}')
 
     def trim(self, text: str, overwrite: str=None) -> str:
         """
@@ -332,7 +359,7 @@ class Model(object):
                 top_k=1,
                 stop=stops,
                 repeat_penalty=1
-                )['choices'][0]['text']
+            )['choices'][0]['text']
 
     def generate(self, prompt: str, stops: list[str] | None=None) -> str:
         """
@@ -367,7 +394,7 @@ class Model(object):
                 top_k=4,
                 presence_penalty=0.55,
                 stop=stops,
-                )['choices'][0]['text']
+            )['choices'][0]['text']
  
     def next_candidates(self, prompt: str, k: int) -> list[str]:
         """
@@ -575,14 +602,15 @@ class Thread(object):
 
     def inference_str_from_messages(self) -> str:
         inference_str = ''
-        context_len_budget = self.model.context_length - 2
-        system_message: dict = self.messages[0]
+        # 3 = bos + eos + off-by-one errors
+        context_len_budget = self.model.context_length - 3
+        system_message = self.messages[0]
         context_len_budget -= system_message['length']
         context_len_budget -= self.model.get_length(self.format['bot_prefix'])
         sys_msg_str = system_message['prefix'] + system_message['content'] + system_message['postfix']
 
         # now inference_str contains system message
-        # and context_len_budget equals n_ctx - (2 + system msg length)
+        # and context_len_budget equals n_ctx - (3 + system msg len + bot prefix len)
 
         # start at most recent message and work backwards up the history
         # excluding system message. once we exceed the model's context length,
@@ -607,7 +635,7 @@ class Thread(object):
         output = self.model.generate(
             self.inference_str_from_messages(),
             stops=self.format['stops']
-            )
+        )
         self.messages.append(self.create_message('bot', output))
         return output
         
@@ -618,7 +646,7 @@ class Thread(object):
                 prompt = input('  > ')
                 print() # Put the cursor where the generated text is about to appear
                 if prompt == '':
-                    
+
                     # another assistant message
                     token_generator = self.model._internal_model.create_completion(
                         self.inference_str_from_messages(),
@@ -627,14 +655,13 @@ class Thread(object):
                         stream=True,
                         presence_penalty=0.55,
                         stop=self.format['stops'],
-                        )
+                    )
                     
                     output = ''
                     for i in token_generator:
                         token = i['choices'][0]['text']
                         output += token
-                        print(token, end='')
-                        sys.stdout.flush()
+                        print(token, end='', flush=True)
 
                     self.messages.append(self.create_message('bot', output))
 
@@ -648,14 +675,13 @@ class Thread(object):
                         stream=True,
                         presence_penalty=0.55,
                         stop=self.format['stops'],
-                        )
+                    )
                     
                     output = ''
                     for i in token_generator:
                         token = i['choices'][0]['text']
                         output += token
-                        print(token, end='')
-                        sys.stdout.flush()
+                        print(token, end='', flush=True)
 
                     self.messages.append(self.create_message('bot', output))
                 
@@ -664,3 +690,6 @@ class Thread(object):
         except KeyboardInterrupt:
             print('\n')
             return
+
+if __name__ == '__main__':
+    raise RuntimeError('easy-llama cannot be run directly, please import it into your environment')
