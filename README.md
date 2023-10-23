@@ -1,27 +1,28 @@
 # easy-llama
 
-> [!WARNING]
-> This project is still under heavy development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.
+*This project is still under heavy development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.*
 
 ## Natural text generation in Python, made easy
 easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [`llama-cpp-python`](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [`llama.cpp`](https://github.com/ggerganov/llama.cpp) library.
 
-For example, the following design choices are made:
+All generations utilize **contrastive search**, which has been shown to produce more human-like text ([HuggingFace](https://huggingface.co/blog/introducing-csearch), [arXiv](https://arxiv.org/abs/2210.14140)) The following hyperparameters are chosen:
+```math
+a=0.55, k=4
+```
+where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is top-k, the number of candidate tokens that are considered from the language model's probability distribution.
 
-- `Model` has only two generation methods
-  - `.greedy()` for greedy decoding, where the most likely token is always chosen
-  - `.generate()` for Contrastive Search, which generates more human-like text ([HuggingFace](https://huggingface.co/blog/introducing-csearch), [arXiv](https://arxiv.org/abs/2210.14140))
+The following design choices are made:
 - Each generation method takes only two parameters
   - `prompt` is the text to be evaluated by the model
   - `stops` is list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
-- `n_batch`, `n_threads`, `n_threads_batch`, `MUL_MAT_Q` are determined automatically
+- `n_batch`, `n_threads`, `n_threads_batch`, and `MUL_MAT_Q` are determined automatically
 - On Apple Silicon and CPU, `NUM_GPU_LAYERS` is set automatically
 - Extensive type hinting and helpful, informative error messages
 
 
 ## Other features
-- ✅ Hardware acceleration on Apple Silicon (Metal), NVIDIA (CUDA), AMD (ROCm), OpenBLAS
+- ✅ Hardware acceleration on Apple Silicon (Metal), NVIDIA (CUDA), AMD (ROCm), and OpenBLAS
 - ✅ Terminal-based interactive chat with text streaming
 - ✅ Programmatic multi-turn interaction
 - ✅ Several common prompt formats built-in
@@ -58,7 +59,7 @@ For example, the following design choices are made:
 ```python
 >>> import easy_llama as ez
 >>> Mistral = ez.Model('mistral-7B-instruct-v0.1-f16.gguf')
->>> Thread = ez.Thread(Mistral, format=ez.Formats.MistralInstruct)
+>>> Thread = ez.Thread(Mistral, format=ez.mistral_instruct)
 >>> Thread.send('Tell me a fun fact about Lions.')
 '1. Male lions are called "mantles" because their manes resemble a cloak or mantle worn around their necks.\n2. Lions roar at an average volume of 50 decibels, which is about as loud as a car alarm.\n3. A group of lions is known as a "pride," and they often hunt together in coordinated teams.\n4. Lions are the only cats that live in groups with their cubs and non-related adults.\n5. Lions are excellent swimmers and can reach speeds of up to 36 miles per hour in water.'
 >>> Thread.send('Now tell me a joke about them.')
