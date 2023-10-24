@@ -9,7 +9,7 @@ All generations utilize **contrastive search**, which [has been shown](#referenc
 ```math
 a=0.55, k=4
 ```
-where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is top-k, the number of candidate tokens that are considered from the language model's probability distribution.
+where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is the number of candidate tokens that are considered from the language model's probability distribution.
 
 The following design choices are made:
 - `Model.generate()` takes only two parameters
