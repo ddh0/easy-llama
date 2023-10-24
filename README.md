@@ -14,7 +14,7 @@ where $a$ is the degeneration penalty—which limits the similarity of new token
 The following design choices are made:
 - `Model.generate()` takes only two parameters
   - `prompt` is the text to be evaluated by the model
-  - `stops` is list of strings at which to end the generation early. defaults to `None`
+  - `stops` is a list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
 - `n_batch`, `n_threads`, `n_threads_batch`, and `MUL_MAT_Q` are determined automatically
 - On Apple Silicon and CPU, `NUM_GPU_LAYERS` is set automatically
