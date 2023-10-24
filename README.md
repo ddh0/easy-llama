@@ -3,7 +3,16 @@
 *This project is still under heavy development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.*
 
 ## Natural text generation in Python, made easy
-easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [`llama-cpp-python`](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [`llama.cpp`](https://github.com/ggerganov/llama.cpp) library.
+
+```python
+>>> import easy_llama as ez
+>>> Carl = ez.Model('llama-2-13b.Q6_K.gguf')
+>>> Carl.generate('The sky is')
+' blue and the sun is shining.\nI have no idea why I feel so happy today, but I do. It\'s a good feeling.\nThe weather has been beautiful for weeks now. I love springtime in Florida, it\'s just perfect.\nMy husband and I went to see "R'
+>>> 
+```
+
+easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
 
 All generations utilize **contrastive search**, which [has been shown](#references) to produce more human-like text. The following hyperparameters are chosen:
 ```math
@@ -35,14 +44,6 @@ The following design choices are made:
 
 
 ## Examples
-#### Basic example
-```python
->>> import easy_llama as ez
->>> Carl = ez.Model('llama-2-13b.Q6_K.gguf')
->>> Carl.generate('The sky is')
-' blue and the sun is shining.\nI have no idea why I feel so happy today, but I do. It\'s a good feeling.\nThe weather has been beautiful for weeks now. I love springtime in Florida, it\'s just perfect.\nMy husband and I went to see "R'
->>> 
-```
 
 #### Programmatic chat example
 ```python
@@ -60,7 +61,7 @@ The following design choices are made:
 ```python
 >>> import easy_llama as ez
 >>> Dolphin = ez.Model('dolphin-2.1-mistral-7b-f16.gguf')
->>> Thread = ez.Thread(Dolphin, format=ez.Formats.Dolphin)
+>>> Thread = ez.Thread(Dolphin, format=ez.dolphin)
 >>> Thread.interact()
 ```
 ```
