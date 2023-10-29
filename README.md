@@ -16,7 +16,7 @@ easy-llama is designed to be as simple as possible to use, at the expense of som
 
 All generations utilize **contrastive search**, which [has been shown](#references) to produce more human-like text. The following hyperparameters are chosen:
 ```math
-a=0.55, k=4
+a=0.5, k=4
 ```
 where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is the number of candidate tokens that are considered from the language model's probability distribution.
 
