@@ -9,7 +9,6 @@ https://github.com/ddh0/easy-llama/
 
 # TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
 # TODO: functions to transfer a list of messages between disk / models, handle token count
-# TODO: wrap function that uses any format
 # TODO: function to do summarization to compress context ?
 # TODO: verify message-based context length handling works
 # TODO: Model.next_candidates() -> list[str]
@@ -540,7 +539,7 @@ class Thread(object):
             inference_str += time.strftime('[at %a %I:%M %p] ')
         return inference_str
     
-    def send(self, prompt: str, bool=False) -> str:
+    def send(self, prompt: str) -> str:
         assert isinstance(prompt, str), f'Thread.send: prompt should be str, not {type(prompt)}'
         assert prompt != '', 'Thread.send: empty prompts are not allowed in threads'
 
