@@ -14,7 +14,7 @@
 
 easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
 
-All generations utilize **contrastive search**, which [has been shown](#references) to produce more human-like text. The following hyperparameters are chosen:
+All generations utilize **contrastive search**, which has been shown to produce more human-like text (see references below). The following hyperparameters are chosen:
 ```math
 a=0.5, k=4
 ```
@@ -48,7 +48,7 @@ The following design choices are made:
 
 ## Examples
 
-#### Programmatic chat example
+#### Programmatic chat
 ```python
 >>> import easy_llama as ez
 >>> Mistral = ez.Model('mistral-7B-instruct-v0.1-f16.gguf')
@@ -60,7 +60,7 @@ The following design choices are made:
 >>> 
 ```
 
-#### Interactive chat example
+#### Interactive chat
 ```python
 >>> import easy_llama as ez
 >>> Dolphin = ez.Model('dolphin-2.1-mistral-7b-f16.gguf')
