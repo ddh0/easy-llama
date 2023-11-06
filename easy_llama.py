@@ -1084,7 +1084,8 @@ formats: list[dict] = [
     mistral_instruct,
     zephyr,
     naberius,
-    autocorrect
+    autocorrect,
+    hermes
 ]
 
 
