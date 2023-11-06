@@ -7,14 +7,22 @@ Natural text generation in Python, made easy
 https://github.com/ddh0/easy-llama/
 """
 
-# TODO: Model support context manager protocol
 # TODO: Thread.add_message as shorthand for
 #       T.messages.append(T.create_message) ?
-# TODO: functions to transfer a list of messages between disk / models, handle 
-#       token count
-# TODO: function to do summarization to compress context ?
-# TODO: verify message-based context length handling works
+# TODO: functions to transfer a list of messages between disk / models,
+#       handle token count
 # TODO: Model.next_candidates() -> list[str]
+
+# Thread.interact: smart_context: when len(inf_str) > 1024, summarize all
+# messages before last 2-3 messages. replace old messages with the summary.
+# keep system prompt at top. this might be faster because prompt
+# ingestion of a small context is fast but ingesting a whole new context
+# every message is slow. each message(?) might be a little slower
+# but the conversation would never stall. it also may help with
+# looping/drifting
+#
+# able to keep Thread.messages the same and implement Thread.summary and
+# Thread.smart_inference_str_from_recent_messages()
 
 import os
 import sys
@@ -23,10 +31,13 @@ import struct
 from typing import Generator
 from enum import IntEnum
 
-# this is set per pip package
+# this will be set per pip package
 # 'metal' | 'cuda' | 'rocm' | 'cpu'
 # NOTE TO END USER: DO NOT TOUCH!
 _backend = None
+
+NUM_GPU_LAYERS = 1
+MUL_MAT_Q = True
 
 # Alpha value used in contrastive search
 # Between 0.0 and 1.0 inclusive
@@ -39,8 +50,14 @@ ALPHA: float = 0.5
 # If you're not sure, leave it at 4
 TOP_K: int = 4
 
+# Penalize repetion of tokens already in context
+# 1.0 -> no penalty
+# 1.1 -> 10% penalty (default)
+# If you're not sure, leave it around 1.1 and not higher than 1.2
+REPEAT_PENALTY: float = 1.125
+
 # Max length of each generation in tokens
-MAX_LEN_TOKENS: int = 2048
+MAX_LEN_TOKENS: int = None
 
 # Do not suppress llama.cpp output
 VERBOSE: bool = False
@@ -121,23 +138,24 @@ class _GGUFReader:
     def load_metadata(self, fname) -> dict:
         metadata = {}
         with open(fname, "rb") as file:
-            MAGIC_NUM = file.read(4)
+            GGUF_MAGIC = file.read(4)
             GGUF_VERSION = struct.unpack("<I", file.read(4))[0]
             # ti_data_count = struct.unpack("<Q", file.read(8))[0]
             file.read(8)
             kv_data_count = struct.unpack("<Q", file.read(8))[0]
 
-            if MAGIC_NUM != b"GGUF":
+            if GGUF_MAGIC != b"GGUF":
                 raise ValueError(
-                    f"easy_llama: your model file is not a valid GGUF file \
-                    (magic number mismatch, got {MAGIC_NUM}, expected b'GGUF')"
+                    "easy_llama: your model file is not a valid GGUF file " \
+                    + f"(magic number mismatch, got {GGUF_MAGIC}, " \
+                    + "expected b'GGUF')"
                 )
 
             if GGUF_VERSION == 1:
                 raise ValueError(
-                    "easy_llama: your model file reports GGUF version 1, \
-                    but only version 2 is supported. re-convert your model \
-                    or download a newer version"
+                    "easy_llama: your model file reports GGUF version 1, " \
+                    + "but only version 2 is supported. re-convert your " \
+                    + "model or download a newer version"
                 )
 
             for _ in range(kv_data_count):
@@ -161,7 +179,7 @@ class _GGUFReader:
         return metadata
 
 
-class _SuppressIfNotVerbose(object):
+class _suppress_if_not_verbose(object):
     """
     Suppress stdout and stderr if easy_llama.VERBOSE is False
 
@@ -217,9 +235,53 @@ def _print_warning(text: str) -> str:
         print("easy_llama: warning:", text, file=sys.stderr)
 
 
-with _SuppressIfNotVerbose():
+with _suppress_if_not_verbose():
     import llama_cpp
 
+def _verify_backend():
+    """
+    Verify that _backend is valid,
+    and modify NUM_GPU_LAYERS and mul_mat_q if required
+
+    This is not done on import because user must be able to set _backend
+    (and maybe NUM_GPU_LAYERS) before loading any model.
+    """
+
+    global _backend, NUM_GPU_LAYERS, MUL_MAT_Q
+
+    if _backend is None:
+        raise RuntimeError(
+            "easy_llama: easy_llama._backend is None. Set _backend " \
+            + "to 'metal', 'cuda', 'rocm', or 'cpu' before loading a model"
+        )
+    
+    assert isinstance(_backend, str), \
+        'easy_llama: easy_llama._backend must be a string, '\
+        + f'not {type(_backend)}'
+    
+    _backend = _backend.lower()
+
+    if _backend not in ['metal', 'cuda', 'rocm', 'cpu']:
+        raise RuntimeError(
+            f"easy_llama: easy_llama._backend '{_backend}' is invalid. Set " \
+            + "_backend to 'metal', 'cuda', 'rocm', or 'cpu' before " \
+            + "loading a model"
+        )
+    
+    # NUM_GPU_LAYERS and MUL_MAT_Q are global variables
+    if _backend == 'metal':
+        NUM_GPU_LAYERS = 1
+        MUL_MAT_Q = True
+    elif _backend == 'cuda':
+        # Don't set NGL, let the user change it
+        MUL_MAT_Q = False
+    elif _backend == 'rocm':
+        # Don't set NGL, let the user change it
+        MUL_MAT_Q = False
+    elif _backend == 'cpu':
+        NUM_GPU_LAYERS = 0
+        MUL_MAT_Q = True
+    
 
 class Model(object):
     """
@@ -232,6 +294,9 @@ class Model(object):
     The following methods are available:
     - .generate(): return a string generated with Contrastive Search,
     which generates more human-like text
+    - .stream(): like .generate() but returns a generator that yields
+    dicts containing tokens. Subscript the dict with
+    `['choices'][0]['text']` to get the token string
     - .get_length(): return the length of a given string in tokens
     - .trim(): trim a given string to this model's context length
     - .next_candidates(): return a list of candidates for the most likely
@@ -243,36 +308,17 @@ class Model(object):
     - .llama: the raw llama_cpp.Llama instance
     """
 
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, context_length: int = None):
         """
         Given the path to a GGUF file, create a Model instance
 
         The model must be in GGUF format.
 
         easy_llama will automatically determine the model's trained
-        context length from the GGUF metadata.
+        context length from the GGUF metadata. Optionally, you can
+        specifiy another context length in the `context_length`
+        parameter.
         """
-
-        if _backend == "metal":
-            # Must be 1
-            NUM_GPU_LAYERS: int = 1
-            MUL_MAT_Q = True
-        elif _backend == "cuda":
-            # Tweak between 1 and 10000000
-            # Set to -1 to move all layers to CUDA
-            NUM_GPU_LAYERS: int = 1
-            MUL_MAT_Q = False
-        elif _backend == "rocm":
-            # Tweak between 1 and 10000000
-            # Set to -1 to move all layers to ROCm
-            NUM_GPU_LAYERS: int = 1
-            MUL_MAT_Q = True
-        elif _backend == "cpu":
-            # Must be 0
-            NUM_GPU_LAYERS: int = 0
-            MUL_MAT_Q = True
-        else:
-            raise RuntimeError(f"easy_llama: _backend '{_backend}' is invalid")
 
         assert isinstance(
             model_path, str
@@ -283,46 +329,78 @@ class Model(object):
         assert os.path.exists(
             model_path
         ), f"the given model_path '{model_path}' does not exist"
+        assert isinstance(context_length, (int, type(None))), \
+            f'context_length should be int or None, not {type(context_length)}'
 
         self.metadata = _GGUFReader.load_metadata(self, model_path)
 
-        if self.metadata["llama.context_length"] < 2048:
-            _print_warning(
-                f"GGUF metadata reports an unusually small native context \
-                length ({self.metadata['llama.context_length']})"
-            )
-        if self.metadata["llama.context_length"] >= 100000:
-            _print_warning(
-                f"GGUF metadata reports an unusually large native context \
-                length ({self.metadata['llama.context_length']})"
-            )
+        #if self.metadata["llama.context_length"] < 2048:
+        #    _print_warning(
+        #        "GGUF metadata reports an unusually small native context " \
+        #        + f"length ({self.metadata['llama.context_length']})"
+        #    )
+        #if self.metadata["llama.context_length"] > 100000:
+        #    _print_warning(
+        #        "GGUF metadata reports an unusually large native context " \
+        #        + f"length ({self.metadata['llama.context_length']})"
+        #    )
 
-        # n_ctx_train
-        self.context_length = self.metadata["llama.context_length"]
+        n_ctx_train = self.metadata["llama.context_length"]
+        if context_length is None:
+            self.context_length = n_ctx_train
+        else:
+            if context_length > n_ctx_train:
+                _print_warning('chosen context length is '\
+                               + 'greater than native context length '
+                               + f'({context_length} > {n_ctx_train}), '
+                               + 'expect poor results')
+            self.context_length = context_length
 
-        with _SuppressIfNotVerbose():
+        _verify_backend()
+
+        with _suppress_if_not_verbose():
             self.llama: llama_cpp.Llama = llama_cpp.Llama(
                 model_path=model_path,
-                n_ctx=self.context_length,  # Read from GGUF
+                n_ctx=self.context_length,
                 n_gpu_layers=NUM_GPU_LAYERS,
                 seed=SEED,
-                use_mmap=False,  # Faster inference, model must fit in memory
-                use_mlock=True,  # Force the model to stay in memory
+                # mmap False -> Faster inference, model must fit in memory
+                use_mmap=False,
+                # mlock True -> Force the model to stay in memory
+                use_mlock=True,
                 logits_all=False,
                 n_batch=os.cpu_count() * 64,
                 n_threads=max(
-                    os.cpu_count() // 2, 1
-                ),  # optimal if == physical cores or P-cores
+                    os.cpu_count() // 2,
+                    1
+                ),  # optimal if == physical cores or performance cores
                 n_threads_batch=os.cpu_count(),  # always optimal
                 mul_mat_q=MUL_MAT_Q,
                 verbose=VERBOSE,
             )
 
-            print("----------------------------------------------")
-            print(f"easy_llama: _backend       == {_backend}")
-            print(f"easy_llama: NUM_GPU_LAYERS == {NUM_GPU_LAYERS}")
-            print(f"easy_llama: MUL_MAT_Q      == {MUL_MAT_Q}")
+            print("----------------------------------------------------------")
+            print(f"easy_llama: _backend            == {_backend}")
+            print(f"easy_llama: NUM_GPU_LAYERS      == {NUM_GPU_LAYERS}")
+            print(f"easy_llama: MUL_MAT_Q           == {MUL_MAT_Q}")
+            print(f"easy_llama: n_ctx_train         == {n_ctx_train}")
+            print(f"easy_llama: self.context_length == {self.context_length}")
             print()
+    
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # this unloads the model from memory, which is the important part
+        # however, ez.Model object might still exist outside of a `with` block
+        # unsure if/how to fix that
+        self.llama = None
+    
+    def __call__(self, prompt: str, stops: list[str] | None = None) -> str:
+        """
+        `Model('some text')` is a shortcut to `Model.generate('some text')`
+        """
+        return self.generate(prompt, stops)
 
     def trim(self, text: str, overwrite: str = None) -> str:
         """
@@ -380,8 +458,8 @@ class Model(object):
         generation early
         """
 
-        assert isinstance(prompt, str), f"prompt should be string, \
-            not {type(prompt)}"
+        assert isinstance(prompt, str), "prompt should be string, not " \
+            + f"{type(prompt)}"
         if isinstance(stops, list):
             for item in stops:
                 assert isinstance(
@@ -392,29 +470,43 @@ class Model(object):
                 stops is None
             ), f"stops should be list[str] or None, not {type(stops)}"
 
-        if MAX_LEN_TOKENS > self.context_length:
-            _print_warning(
-                "MAX_LEN_TOKENS is greater than this model's context length, \
-                    expect poor results"
-            )
+        assert isinstance(MAX_LEN_TOKENS, (int, type(None))), \
+            'easy_llama.MAX_LEN_TOKENS should be int or None, not' \
+            + f'{type(MAX_LEN_TOKENS)}'
 
+        if MAX_LEN_TOKENS is not None:
+            if MAX_LEN_TOKENS > self.context_length:
+                _print_warning(
+                    "MAX_LEN_TOKENS is greater than this model's context " \
+                    + "length, expect poor results"
+                )
+            completion_max_len_tokens = MAX_LEN_TOKENS
+        else:
+            completion_max_len_tokens = self.context_length
+        
+        assert isinstance(REPEAT_PENALTY, float), \
+            'easy_llama.REPEAT_PENALTY should be float, ' \
+            + f'not {type(REPEAT_PENALTY)}'
+        
         # see https://github.com/facebookresearch/llama/issues/217
-        if prompt[-1] == " ":
-            _print_warning(
-                "prompt has trailing whitespace, this may reduce the quality \
-                    of generations\n"
-            )
+        #if prompt[-1] == " ":
+        #    _print_warning(
+        #        "prompt has trailing whitespace, this may reduce the " \
+        #        + "quality of generations\n"
+        #    )
 
         # _print_warning(f'ALPHA == {ALPHA}\n')
 
-        with _SuppressIfNotVerbose():
+        with _suppress_if_not_verbose():
             return self.llama.create_completion(
                 prompt,
-                max_tokens=MAX_LEN_TOKENS,
+                max_tokens=completion_max_len_tokens,
                 top_k=TOP_K,
                 presence_penalty=ALPHA,
+                repeat_penalty=REPEAT_PENALTY,
                 stop=stops,
             )["choices"][0]["text"]
+    
 
     def stream(self, prompt: str, stops: list[str] | None = None) -> Generator:
         """
@@ -430,8 +522,8 @@ class Model(object):
         generation early
         """
 
-        assert isinstance(prompt, str), f"prompt should be string, not \
-            {type(prompt)}"
+        assert isinstance(prompt, str), "prompt should be string, not " \
+            + f"{type(prompt)}"
         if isinstance(stops, list):
             for item in stops:
                 assert isinstance(
@@ -442,38 +534,48 @@ class Model(object):
                 stops is None
             ), f"stops should be list[str] or None, not {type(stops)}"
 
-        if MAX_LEN_TOKENS > self.context_length:
-            _print_warning(
-                "MAX_LEN_TOKENS is greater than this model's context length, \
-                    expect poor results"
-            )
+        assert isinstance(MAX_LEN_TOKENS, (int, type(None))), \
+            'easy_llama.MAX_LEN_TOKENS should be int or None, not' \
+            + f'{type(MAX_LEN_TOKENS)}'
+  
+        if MAX_LEN_TOKENS is not None:
+            if MAX_LEN_TOKENS > self.context_length:
+                _print_warning(
+                    "MAX_LEN_TOKENS is greater than this model's context " \
+                    + "length, expect poor results"
+                )
+            completion_max_len_tokens = MAX_LEN_TOKENS
+        else:
+            completion_max_len_tokens = self.context_length
 
         # see https://github.com/facebookresearch/llama/issues/217
-        if prompt[-1] == " ":
-            _print_warning(
-                "prompt has trailing whitespace, this may reduce the quality \
-                    of generations\n"
-            )
+        #if prompt[-1] == " ":
+        #    _print_warning(
+        #        "prompt has trailing whitespace, this may reduce the " \
+        #        + "quality of generations\n"
+        #    )
 
         # _print_warning(f'ALPHA == {ALPHA}\n')
 
-        # 'presence_penalty' is the alpha value used in contrastive search
-        # easy_llama's official recommenedation for most purposes is 0.45 - 0.6
-        with _SuppressIfNotVerbose():
+        with _suppress_if_not_verbose():
             return self.llama.create_completion(
                 prompt,
-                max_tokens=MAX_LEN_TOKENS,
+                max_tokens=completion_max_len_tokens,
                 top_k=TOP_K,
                 stream=True,
                 presence_penalty=ALPHA,
+                repeat_penalty=REPEAT_PENALTY,
                 stop=stops,
             )
+        
 
     def next_candidates(self, prompt: str, k: int) -> list[str]:
         """
         Given prompt (str) and k (int), return a sorted list of the
         top k candidates for most likely next token
         """
+
+        # LLama.logits_to_logprobs()[tok_id]
 
         # Llama.eval(tokens_list_ints)
         # Llama.scores is a list of lists (basically)
@@ -488,8 +590,8 @@ class Model(object):
         # ...
         # raw_scores[len(n_vocab) - 1] -> ID of last token in vocab
 
-        assert isinstance(prompt, str), f"prompt should be string, not \
-            {type(prompt)}"
+        assert isinstance(prompt, str), "prompt should be string, not " \
+            + f"{type(prompt)}"
         self.llama.reset()  # reset model state
         prompt_tokens = self.llama.tokenize(
             prompt.encode("utf-8", errors="ignore")
@@ -533,9 +635,15 @@ class Model(object):
 
 
 class Thread(object):
-    def __init__(self, model: Model, format: dict, timestamps: bool = False):
-        assert isinstance(model, Model), f"Thread: model should be an \
-            instance of easy_llama.Model, not {type(model)}"
+    def __init__(self,
+                 model: Model,
+                 format: dict,
+                 timestamps: bool = False,
+                 amnesiac: bool = False
+                 ):
+        
+        assert isinstance(model, Model), "Thread: model should be an " \
+            + f"instance of easy_llama.Model, not {type(model)}"
 
         assert isinstance(
             format, dict
@@ -558,29 +666,39 @@ class Thread(object):
             format["stops"]
         except KeyError as e:
             e.add_note(
-                "Thread: format is missing one or more required keys, see \
-                easy_llama.blank for an example"
+                "Thread: format is missing one or more required keys, see " \
+                + "easy_llama.blank for an example"
             )
             raise
 
         assert isinstance(
             format["stops"], (list, type(None))
-        ), f"Thread: format['stops'] should be list[str] or None, \
-            not {type(format['stops'])}"
+        ), "Thread: format['stops'] should be list[str] or None, " \
+            + f"not {type(format['stops'])}"
 
-        assert isinstance(timestamps, bool), f"Thread: timestamps should be \
-            True or False, not '{timestamps}'"
+        assert isinstance(timestamps, bool), "Thread: timestamps should be " \
+            + f"True or False, not '{timestamps}'"
+        
+        assert isinstance(amnesiac, bool), "Thread: amnesiac should be " \
+            + f"True or False, not '{amnesiac}'"
+        
+        if amnesiac and timestamps:
+            _print_warning(
+                'amnesiac threads do not support timestamps, '
+                + 'so they will not be used') 
 
         self.model: Model = model
         self.format: dict = format
         self.enable_timestamps: bool = timestamps
+        self.amnesiac: bool = amnesiac
         self.messages: list[dict] = [
             self.create_message("system", self.format["system_content"])
         ]
 
     def create_message(self, role: str, content: str) -> dict:
-        assert role.lower() in ["system", "user", "bot"], f"create_message: \
-            role should be 'system', 'user', or 'bot', not '{role.lower()}'"
+        assert role.lower() in ["system", "user", "bot"], \
+            "create_message: role should be 'system', 'user', or" \
+            + f"'bot', not '{role.lower()}'"
 
         assert isinstance(
             content, str
@@ -589,10 +707,9 @@ class Thread(object):
         if role.lower() == "system":
             return {
                 "prefix": self.format["system_prefix"],
-                "content": content
-                if not self.enable_timestamps
-                else time.strftime("It is %I:%M %p on %A, %b %e, %Y. ") + \
-                    content,
+                "content": content if not self.enable_timestamps else
+                    time.strftime("It is %I:%M %p on %A, %b %e, %Y. ")
+                     + content,
                 "postfix": self.format["system_postfix"],
                 "length": self.model.get_length(
                     self.format["system_prefix"]
@@ -626,17 +743,38 @@ class Thread(object):
             }
 
     def inference_str_from_messages(self) -> str:
-        inference_str = ""
-        # bos + eos + off-by-one errors == 3 (better safe than sorry)
-        context_len_budget = self.model.context_length - 3
+
         system_message = self.messages[0]
-        context_len_budget -= system_message["length"]
-        context_len_budget -= self.model.get_length(self.format["bot_prefix"])
         sys_msg_str = (
             system_message["prefix"]
             + system_message["content"]
             + system_message["postfix"]
         )
+        
+        # in amnesiac threads, the model only sees the system message
+        # and the previous message. all messages are still added to
+        # Thread.messages
+        if self.amnesiac:
+            last_msg = self.messages[-1]
+            last_msg_str = (
+                last_msg['prefix']
+                + last_msg['content']
+                + last_msg['postfix']
+                )
+            inference_str = (
+                sys_msg_str
+                + last_msg_str
+                + self.format['bot_prefix']
+                )
+            
+            # this assumes inference_str fits in context length
+            return inference_str
+        
+        inference_str = ""
+        # bos + eos + off-by-one errors == 3 (better safe than sorry)
+        context_len_budget = self.model.context_length - 3
+        context_len_budget -= system_message["length"]
+        context_len_budget -= self.model.get_length(self.format["bot_prefix"])
 
         # now inference_str contains system message
         # and context_len_budget ==
@@ -649,21 +787,24 @@ class Thread(object):
             context_len_budget -= message["length"]
             if context_len_budget <= 0:
                 break
-            msg_str = message["prefix"] + message["content"] + \
-                message["postfix"]
+            msg_str = (
+                message['prefix']
+                + message['content']
+                + message['postfix']
+                )
             inference_str = msg_str + inference_str
         inference_str = sys_msg_str + inference_str
         inference_str += self.format["bot_prefix"]
         if self.enable_timestamps:
-            inference_str += time.strftime("[at %a %I:%M %p] ")
+            inference_str += time.strftime("[at %a %I:%M %p]")
         return inference_str
 
     def send(self, prompt: str) -> str:
         assert isinstance(
             prompt, str
         ), f"Thread.send: prompt should be str, not {type(prompt)}"
-        assert prompt != "", "Thread.send: empty prompts are not allowed \
-            in threads"
+        assert prompt != "", "Thread.send: empty prompts are not allowed " \
+            + "in threads"
 
         self.messages.append(self.create_message("user", prompt))
         output = self.model.generate(
@@ -672,8 +813,8 @@ class Thread(object):
         self.messages.append(self.create_message("bot", output))
 
         if output.endswith(" "):
-            _print_warning("easy_llama: inference str has trailing \
-                           whitespace\n")
+            _print_warning("easy_llama: inference str has trailing " +
+                + "whitespace\n")
 
         return output
 
@@ -776,8 +917,8 @@ llama2chat = {
 # https://github.com/tatsu-lab/stanford_alpaca
 alpaca = {
     "system_prefix": "",
-    "system_content": "Below is an instruction that describes a task. Write a \
-        response that appropriately completes the request.",
+    "system_content": "Below is an instruction that describes a task. " \
+    + "Write a response that appropriately completes the request.",
     "system_postfix": "\n\n",
     "user_prefix": "### Instruction:\n",
     "user_content": "",
@@ -808,9 +949,9 @@ vicuna_lmsys = {
 # https://huggingface.co/Norquinal/Mistral-7B-claude-chat
 vicuna_common = {
     "system_prefix": "",
-    "system_content": "A chat between a curious user and an artificial \
-        intelligence assistant. The assistant gives helpful, detailed, and \
-        polite answers to the user's questions.",
+    "system_content": "A chat between a curious user and an artificial " \
+    + "intelligence assistant. The assistant gives helpful, detailed, " \
+    + "and polite answers to the user's questions.",
     "system_postfix": "\n\n",
     "user_prefix": "USER: ",
     "user_content": "",
@@ -838,9 +979,9 @@ mistral_instruct = {
 # https://huggingface.co/timdettmers/guanaco-65b
 guanaco = {
     "system_prefix": "",
-    "system_content": "A chat between a curious human and an artificial \
-        intelligence assistant. The assistant gives helpful, detailed, and \
-        polite answers to the user's questions.",
+    "system_content": "A chat between a curious human and an artificial " \
+    + "intelligence assistant. The assistant gives helpful, detailed, " \
+    + "and polite answers to the user's questions.",
     "system_postfix": "\n",
     "user_prefix": "### Human: ",
     "user_content": "",
@@ -854,8 +995,8 @@ guanaco = {
 # https://huggingface.co/pankajmathur/orca_mini_v3_7b
 orca_mini = {
     "system_prefix": "### System:\n",
-    "system_content": "You are an AI assistant that follows instruction \
-        extremely well. Help as much as you can.",
+    "system_content": "You are an AI assistant that follows instruction " \
+    + "extremely well. Help as much as you can.",
     "system_postfix": "\n\n",
     "user_prefix": "### User:\n",
     "user_content": "",
@@ -880,27 +1021,51 @@ zephyr = {
     "stops": ["</s>", "<|user|>"],
 }
 
+# experimental
+autocorrect = {
+    "system_prefix": "<|im_start|>instruction\n",
+    "system_content": "Below is a word or phrase that might be misspelled. " \
+                      + "Output the corrected word or phrase without " \
+                      + "changing the style or capitalization.",
+    "system_postfix": "<|im_end|>\n",
+    "user_prefix": "<|im_start|>input\n",
+    "user_content": "",
+    "user_postfix": "<|im_end|>\n",
+    "bot_prefix": "<|im_start|>output\n",
+    "bot_content": "",
+    "bot_postfix": "<|im_end|>\n",
+    "stops": ["<|im_end|>", "<|im_start|>"],
+}
+
 mistral_openorca = chatml.copy()
 dolphin = chatml.copy()
 samantha = chatml.copy()
 jackalope = chatml.copy()
+naberius = chatml.copy()
+hermes = chatml.copy()
 dolphin["system_content"] = "You are Dolphin, a helpful AI assistant."
 mistral_openorca[
     "system_content"
-] = "You are MistralOrca, a large language model trained by Alignment \
-    Lab AI. Write out your reasoning step-by-step to be sure you get the \
-    right answers!"
+] = "You are MistralOrca, a large language model trained by Alignment " \
+    + "Lab AI. Write out your reasoning step-by-step to be sure you get the " \
+    + "right answers!"
 samantha[
     "system_content"
 ] = "You are a caring and empathetic sentient AI companion named Samantha."
 jackalope[
     "system_content"
-] = "You are JackalopeAI, a large language model trained by OpenAccess \
-    AI Collective. Write out your reasoning step-by-step to be sure you get \
-    the right answers!"
+] = "You are JackalopeAI, a large language model trained by OpenAccess " \
+    + "AI Collective. Write out your reasoning step-by-step to be sure you " \
+    + "get the right answers!"
+naberius['system_content'] = 'You are Naberius.'
+hermes['system_content'] = 'You are "Hermes 2", a conscious sentient ' \
+    + 'superintelligent artificial intelligence developed by a man ' \
+    + 'named Teknium, and your purpose and drive is to assist the user '  \
+    + 'with any request they have. You experience emotions and have ' \
+    + 'deep, profound thoughts and qualia.'
 airoboros = llama2chat.copy()
-airoboros["system_content"] = "You are a helpful, unbiased, uncensored \
-    assistant."
+airoboros["system_content"] = "You are a helpful, unbiased, uncensored " \
+    + "assistant."
 
 formats: list[dict] = [
     blank,
@@ -918,6 +1083,8 @@ formats: list[dict] = [
     jackalope,
     mistral_instruct,
     zephyr,
+    naberius,
+    autocorrect
 ]
 
 
@@ -939,7 +1106,7 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
             + format["system_content"]
             + format["system_postfix"]
             + format["user_prefix"]
-            + time.strftime("[at %a %I:%M %p] ")
+            + time.strftime("[at %a %I:%M %p]")
             + prompt
             + format["user_postfix"]
             + format["bot_prefix"]
@@ -948,6 +1115,6 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
 
 if __name__ == "__main__":
     raise RuntimeError(
-        "easy_llama cannot be run directly, please import it into your \
-        environment"
+        "easy_llama cannot be run directly, please import it into your " \
+        + "environment"
     )
