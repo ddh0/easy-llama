@@ -18,15 +18,16 @@ All generations utilize **contrastive search**, which has been shown to produce 
 ```math
 a=0.5, k=4
 ```
-where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is the number of candidate tokens that are considered from the language model's probability distribution.
+where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is the number of candidate tokens that are considered from the language model's probability distribution. Additionally, the default repetition penalty of 1.1 is bumped to 1.125.
 
 The following design choices are made:
-- `Model.generate()` and `Model.stream()` take only two parameters
+- `Model.generate()` and `Model.stream()` require only one parameter, `prompt`
   - `prompt` is the text to be evaluated by the model
   - `stops` is a list of strings at which to end the generation early. defaults to `None`
 - Context length is set automatically thanks to GGUF
 - `n_batch`, `n_threads`, `n_threads_batch`, and `MUL_MAT_Q` are determined automatically
 - On Apple Silicon and CPU, `NUM_GPU_LAYERS` is set automatically
+- `MUL_MAT_Q` is set automatically based on backend
 - Extensive type hinting and helpful, informative error messages
 
 
@@ -36,7 +37,7 @@ The following design choices are made:
 - ✅ Programmatic multi-turn interaction
 - ✅ (Optional) time-aware interactions via timestamps in Threads
 - ✅ Several common prompt formats built-in
-  - `blank`, `chatml`, `llama2chat`, `alpaca`, `vicuna_lmsys`, `vicuna_common`, `mistral_openorca`, `dolphin`, `samantha`, `guanaco`, `orca_mini`, `airoboros`, `jackalope`, `mistral_instruct`, `zephyr`
+  - `blank`, `chatml`, `llama2chat`, `alpaca`, `vicuna_lmsys`, `vicuna_common`, `mistral_openorca`, `dolphin`, `samantha`, `guanaco`, `orca_mini`, `airoboros`, `jackalope`, `mistral_instruct`, `zephyr`, `naberius`, `autocorrect`, `hermes`
   - Easily extend, duplicate and modify built-in formats
   - `easy_llama.wrap()` - Wrap a given string in any prompt format for single-turn completion
 - ✅ Message-based context length handling
