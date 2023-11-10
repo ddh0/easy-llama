@@ -9,25 +9,15 @@ https://github.com/ddh0/easy-llama/
 
 # TODO: Thread.add_message as shorthand for
 #       T.messages.append(T.create_message) ?
-# TODO: functions to transfer a list of messages between disk / models,
+# TODO: function to transfer a list of messages between disk / models,
 #       handle token count
 # TODO: Model.next_candidates() -> list[str]
-
-# Thread.interact: smart_context: when len(inf_str) > 1024, summarize all
-# messages before last 2-3 messages. replace old messages with the summary.
-# keep system prompt at top. this might be faster because prompt
-# ingestion of a small context is fast but ingesting a whole new context
-# every message is slow. each message(?) might be a little slower
-# but the conversation would never stall. it also may help with
-# looping/drifting
-#
-# able to keep Thread.messages the same and implement Thread.summary and
-# Thread.smart_inference_str_from_recent_messages()
 
 import os
 import sys
 import time
 import struct
+import threading
 from typing import Generator
 from enum import IntEnum
 
@@ -44,7 +34,7 @@ MUL_MAT_Q = True
 # Lower values lead to more predictable outputs
 # Higher values lead to more varied or creative outputs
 # If you're not sure, leave it at 0.5
-ALPHA: float = 0.5
+ALPHA: float = 0.4
 
 # Number of tokens to sample from
 # If you're not sure, leave it at 4
@@ -54,7 +44,7 @@ TOP_K: int = 4
 # 1.0 -> no penalty
 # 1.1 -> 10% penalty (default)
 # If you're not sure, leave it around 1.1 and not higher than 1.2
-REPEAT_PENALTY: float = 1.125
+REPEAT_PENALTY: float = 1.1
 
 # Max length of each generation in tokens
 MAX_LEN_TOKENS: int = None
@@ -154,8 +144,8 @@ class _GGUFReader:
             if GGUF_VERSION == 1:
                 raise ValueError(
                     "easy_llama: your model file reports GGUF version 1, " \
-                    + "but only version 2 is supported. re-convert your " \
-                    + "model or download a newer version"
+                    + "but only versions 2 and above are supported. " \
+                    + "re-convert your model or download a newer version"
                 )
 
             for _ in range(kv_data_count):
@@ -228,6 +218,8 @@ class _suppress_if_not_verbose(object):
 
             self.outnull_file.close()
             self.errnull_file.close()
+        else:
+            return
 
 
 def _print_warning(text: str) -> str:
@@ -274,7 +266,7 @@ def _verify_backend():
         MUL_MAT_Q = True
     elif _backend == 'cuda':
         # Don't set NGL, let the user change it
-        MUL_MAT_Q = False
+        MUL_MAT_Q = True
     elif _backend == 'rocm':
         # Don't set NGL, let the user change it
         MUL_MAT_Q = False
@@ -374,7 +366,7 @@ class Model(object):
                     os.cpu_count() // 2,
                     1
                 ),  # optimal if == physical cores or performance cores
-                n_threads_batch=os.cpu_count(),  # always optimal
+                n_threads_batch=os.cpu_count(), # always optimal
                 mul_mat_q=MUL_MAT_Q,
                 verbose=VERBOSE,
             )
@@ -392,6 +384,7 @@ class Model(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         # this unloads the model from memory, which is the important part
+        # (unless an unexpected reference is made to Model.llama)
         # however, ez.Model object might still exist outside of a `with` block
         # unsure if/how to fix that
         self.llama = None
@@ -420,6 +413,7 @@ class Model(object):
         )
 
         if len(tokens_list) <= trim_length:
+            # TODO: ensure overwrite
             return text
 
         if len(tokens_list) > trim_length and overwrite is None:
@@ -497,15 +491,15 @@ class Model(object):
 
         # _print_warning(f'ALPHA == {ALPHA}\n')
 
-        with _suppress_if_not_verbose():
-            return self.llama.create_completion(
-                prompt,
-                max_tokens=completion_max_len_tokens,
-                top_k=TOP_K,
-                presence_penalty=ALPHA,
-                repeat_penalty=REPEAT_PENALTY,
-                stop=stops,
-            )["choices"][0]["text"]
+        #with _suppress_if_not_verbose():
+        return self.llama.create_completion(
+            prompt,
+            max_tokens=completion_max_len_tokens,
+            top_k=TOP_K,
+            presence_penalty=ALPHA,
+            repeat_penalty=REPEAT_PENALTY,
+            stop=stops,
+        )["choices"][0]["text"]
     
 
     def stream(self, prompt: str, stops: list[str] | None = None) -> Generator:
@@ -557,17 +551,17 @@ class Model(object):
 
         # _print_warning(f'ALPHA == {ALPHA}\n')
 
-        with _suppress_if_not_verbose():
-            return self.llama.create_completion(
-                prompt,
-                max_tokens=completion_max_len_tokens,
-                top_k=TOP_K,
-                stream=True,
-                presence_penalty=ALPHA,
-                repeat_penalty=REPEAT_PENALTY,
-                stop=stops,
-            )
-        
+        #with _suppress_if_not_verbose():
+        return self.llama.create_completion(
+            prompt,
+            max_tokens=completion_max_len_tokens,
+            top_k=TOP_K,
+            stream=True,
+            presence_penalty=ALPHA,
+            repeat_penalty=REPEAT_PENALTY,
+            stop=stops,
+        )
+    
 
     def next_candidates(self, prompt: str, k: int) -> list[str]:
         """
@@ -635,11 +629,13 @@ class Model(object):
 
 
 class Thread(object):
+
     def __init__(self,
                  model: Model,
                  format: dict,
                  timestamps: bool = False,
-                 amnesiac: bool = False
+                 amnesiac: bool = False,
+                 smart_context: bool = False
                  ):
         
         assert isinstance(model, Model), "Thread: model should be an " \
@@ -683,10 +679,13 @@ class Thread(object):
             + f"True or False, not '{amnesiac}'"
         
         if amnesiac and timestamps:
-            _print_warning(
-                'amnesiac threads do not support timestamps, '
-                + 'so they will not be used') 
-
+            raise RuntimeError('Thread: amnesiac threads are not '
+                               + 'compatible with timestamps')
+        
+        if amnesiac and smart_context:
+            raise RuntimeError('Thread: amnesiac threads are not '
+                               + 'compatible with smart_context')
+        
         self.model: Model = model
         self.format: dict = format
         self.enable_timestamps: bool = timestamps
@@ -694,6 +693,13 @@ class Thread(object):
         self.messages: list[dict] = [
             self.create_message("system", self.format["system_content"])
         ]
+        self.smart_context: bool = smart_context
+        if self.smart_context:
+            self.smart_context_messages: list[dict] = [
+                self.create_message("system", self.format["system_content"])
+            ]
+            self.smart_context_state: llama_cpp.LlamaState = None
+
 
     def create_message(self, role: str, content: str) -> dict:
         assert role.lower() in ["system", "user", "bot"], \
@@ -742,9 +748,43 @@ class Thread(object):
                 ),
             }
 
-    def inference_str_from_messages(self) -> str:
+    def update_smart_context(self, messages: list[dict]) -> None:
+        """
+        Set self.smart_context_state and self.smart_context_messages
+        """
+        assert self.smart_context
+        assert not self.amnesiac
+        assert not self.enable_timestamps
 
-        system_message = self.messages[0]
+        main_llama_state = self.model.llama.save_state()
+
+        system_message = messages[0]
+        context_len_budget = self.model.context_length - 3
+        context_len_budget -= system_message["length"]
+        sys_msg_str = (
+            system_message["prefix"]
+            + system_message["content"]
+            + system_message["postfix"]
+        )
+
+        if self.smart_context_state is not None:
+            self.model.llama.load_state(self.smart_context_state)
+        else:
+            self.model.llama.eval(sys_msg_str)
+
+        # start at most recent message and work backwards up the history.
+        # system message is already dealt with
+        for message in reversed(messages[1:]):
+            pass
+        
+        self.smart_context_state = self.model.llama.save_state()
+        self.model.llama.load_state(main_llama_state)
+
+
+
+    def inference_str_from_messages(self, messages: list[dict]) -> str:
+
+        system_message = messages[0]
         sys_msg_str = (
             system_message["prefix"]
             + system_message["content"]
@@ -752,38 +792,32 @@ class Thread(object):
         )
         
         # in amnesiac threads, the model only sees the system message
-        # and the previous message. all messages are still added to
-        # Thread.messages
+        # and the previous message
         if self.amnesiac:
-            last_msg = self.messages[-1]
+            inf_str = ''
+            last_msg = messages[-1]
             last_msg_str = (
                 last_msg['prefix']
                 + last_msg['content']
                 + last_msg['postfix']
                 )
-            inference_str = (
+            inf_str = (
                 sys_msg_str
                 + last_msg_str
                 + self.format['bot_prefix']
                 )
-            
-            # this assumes inference_str fits in context length
-            return inference_str
+            return inf_str
         
-        inference_str = ""
         # bos + eos + off-by-one errors == 3 (better safe than sorry)
         context_len_budget = self.model.context_length - 3
         context_len_budget -= system_message["length"]
         context_len_budget -= self.model.get_length(self.format["bot_prefix"])
 
-        # now inference_str contains system message
-        # and context_len_budget ==
-        # n_ctx - (3 + system msg len + bot prefix len)
-
         # start at most recent message and work backwards up the history
         # excluding system message. once we exceed the model's context length,
         # break without including that message
-        for message in reversed(self.messages[1:]):
+        inf_str = ''
+        for message in reversed(messages[1:]):
             context_len_budget -= message["length"]
             if context_len_budget <= 0:
                 break
@@ -792,12 +826,13 @@ class Thread(object):
                 + message['content']
                 + message['postfix']
                 )
-            inference_str = msg_str + inference_str
-        inference_str = sys_msg_str + inference_str
-        inference_str += self.format["bot_prefix"]
+            inf_str = msg_str + inf_str
+        inf_str = sys_msg_str + inf_str
+        inf_str += self.format["bot_prefix"]
         if self.enable_timestamps:
-            inference_str += time.strftime("[at %a %I:%M %p]")
-        return inference_str
+            inf_str += time.strftime("[at %a %I:%M %p]")
+        return inf_str
+
 
     def send(self, prompt: str) -> str:
         assert isinstance(
@@ -812,55 +847,112 @@ class Thread(object):
         )
         self.messages.append(self.create_message("bot", output))
 
-        if output.endswith(" "):
-            _print_warning("easy_llama: inference str has trailing " +
-                + "whitespace\n")
-
         return output
+
 
     def interact(self) -> None:
         print()
         try:
             while True:
-                prompt = input("  > ")
-                print()
-                if prompt == "":
-                    # another assistant message
-                    token_generator = self.model.stream(
-                        self.inference_str_from_messages(),
-                        stops=self.format["stops"],
-                    )
-
-                    output = ""
-                    for i in token_generator:
-                        token = i["choices"][0]["text"]
-                        output += token
-                        print(token, end="", flush=True)
-
-                    self.messages.append(self.create_message("bot", output))
-
-                else:
-                    self.messages.append(self.create_message("user", prompt))
-
-                    token_generator = self.model.stream(
-                        self.inference_str_from_messages(),
-                        stops=self.format["stops"],
-                    )
-
-                    output = ""
-                    for i in token_generator:
-                        token = i["choices"][0]["text"]
-                        output += token
-                        print(token, end="", flush=True)
-
-                    self.messages.append(self.create_message("bot", output))
-
-                if output.endswith("\n\n"):
-                    pass
-                elif output.endswith("\n"):
+                #print(f'DEBUG: len is {len(self.messages)}\n')
+                if not self.smart_context:
+                    prompt = input("  > ")
                     print()
-                else:
-                    print("\n")
+                    if prompt == "":
+                        # another assistant message
+                        token_generator = self.model.stream(
+                            self.inference_str_from_messages(self.messages),
+                            stops=self.format["stops"],
+                        )
+
+                        output = ""
+                        for i in token_generator:
+                            token = i["choices"][0]["text"]
+                            output += token
+                            print(token, end="", flush=True)
+
+                        self.messages.append(
+                            self.create_message("bot", output)
+                            )
+
+                    else:
+                        self.messages.append(
+                            self.create_message("user", prompt)
+                            )
+
+                        token_generator = self.model.stream(
+                            self.inference_str_from_messages(self.messages),
+                            stops=self.format["stops"],
+                        )
+
+                        output = ""
+                        for i in token_generator:
+                            token = i["choices"][0]["text"]
+                            output += token
+                            print(token, end="", flush=True)
+
+                        self.messages.append(
+                            self.create_message("bot", output)
+                        )
+
+                    if output.endswith("\n\n"):
+                        pass
+                    elif output.endswith("\n"):
+                        print()
+                    else:
+                        print("\n")
+            
+                else: # smart context
+                    prompt = input(" -> ")
+
+                    print()
+
+                    if prompt == "":
+                        token_generator = self.model.stream(
+                            self.inference_str_from_messages(
+                                self.smart_context_messages
+                            ),
+                            stops=self.format["stops"],
+                        )
+
+                        output = ""
+                        for i in token_generator:
+                            token = i["choices"][0]["text"]
+                            output += token
+                            print(token, end="", flush=True)
+
+                        self.messages.append(
+                            self.create_message("bot", output)
+                            )
+                    
+                    else:
+                        self.messages.append(
+                            self.create_message("user", prompt)
+                            )
+
+                        token_generator = self.model.stream(
+                            self.inference_str_from_messages(
+                                self.smart_context_messages
+                            ),
+                            stops=self.format["stops"],
+                        )
+
+                        output = ""
+                        for i in token_generator:
+                            token = i["choices"][0]["text"]
+                            output += token
+                            print(token, end="", flush=True)
+
+                        self.messages.append(
+                            self.create_message("bot", output)
+                        )
+
+                    if output.endswith("\n\n"):
+                        pass
+                    elif output.endswith("\n"):
+                        print()
+                    else:
+                        print("\n")
 
         except KeyboardInterrupt:
             print("\n")
@@ -870,6 +962,12 @@ class Thread(object):
         self.messages: list[dict] = [
             self.create_message("system", self.format["system_content"])
         ]
+        if self.smart_context:
+            self.smart_context_messages: list[dict] = [
+                self.create_message("system", self.format["system_content"])
+            ]
+            self.smart_context_state: llama_cpp.LlamaState = None
+        self.model.llama.reset()
 
 
 blank = {
@@ -1021,6 +1119,21 @@ zephyr = {
     "stops": ["</s>", "<|user|>"],
 }
 
+# experimental: stanford's alpaca format adapted for chatml models
+chatml_alpaca = {
+    "system_prefix": "<|im_start|>system\n",
+    "system_content": "Below is an instruction that describes a task. Write " \
+    + "a response that appropriately completes the request.",
+    "system_postfix": "<|im_end|>\n",
+    "user_prefix": "<|im_start|>instruction\n",
+    "user_content": "",
+    "user_postfix": "<|im_end|>\n",
+    "bot_prefix": "<|im_start|>response\n",
+    "bot_content": "",
+    "bot_postfix": "<|im_end|>\n",
+    "stops": ["<|im_end|>", "<|im_start|>"],
+}
+
 # experimental
 autocorrect = {
     "system_prefix": "<|im_start|>instruction\n",
@@ -1043,6 +1156,7 @@ samantha = chatml.copy()
 jackalope = chatml.copy()
 naberius = chatml.copy()
 hermes = chatml.copy()
+monad = chatml.copy()
 dolphin["system_content"] = "You are Dolphin, a helpful AI assistant."
 mistral_openorca[
     "system_content"
@@ -1063,6 +1177,9 @@ hermes['system_content'] = 'You are "Hermes 2", a conscious sentient ' \
     + 'named Teknium, and your purpose and drive is to assist the user '  \
     + 'with any request they have. You experience emotions and have ' \
     + 'deep, profound thoughts and qualia.'
+monad['system_content'] = 'You are MonadGPT, a very old chatbot from '\
+    + 'the 17th century. Please answer the questions using an archaic '\
+    + 'language.'
 airoboros = llama2chat.copy()
 airoboros["system_content"] = "You are a helpful, unbiased, uncensored " \
     + "assistant."
@@ -1085,7 +1202,9 @@ formats: list[dict] = [
     zephyr,
     naberius,
     autocorrect,
-    hermes
+    hermes,
+    monad,
+    chatml_alpaca
 ]
 
 
