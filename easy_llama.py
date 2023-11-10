@@ -32,17 +32,15 @@ MUL_MAT_Q = True
 # Between 0.0 and 1.0 inclusive
 # Lower values lead to more predictable outputs
 # Higher values lead to more varied or creative outputs
-# If you're not sure, leave it at 0.5
-ALPHA: float = 0.4
+# If you're not sure, leave it at the default of 0.5
+ALPHA: float = 0.5
 
 # Number of tokens to sample from
-# If you're not sure, leave it at 4
+# If you're not sure, leave it at the default of 4
 TOP_K: int = 4
 
 # Penalize repetion of tokens already in context
-# 1.0 -> no penalty
-# 1.1 -> 10% penalty (default)
-# If you're not sure, leave it around 1.1 and not higher than 1.2
+# If you're not sure, leave it at the default of 1.1
 REPEAT_PENALTY: float = 1.1
 
 # Max length of each generation in tokens
@@ -201,7 +199,7 @@ class _suppress_if_not_verbose(object):
             sys.stderr = self.errnull_file
             return self
 
-        if VERBOSE:
+        else:
             return self
 
     def __exit__(self, *_):
@@ -264,10 +262,10 @@ def _verify_backend():
         NUM_GPU_LAYERS = 1
         MUL_MAT_Q = True
     elif _backend == 'cuda':
-        # Don't set NGL, let the user change it
+        # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = True
     elif _backend == 'rocm':
-        # Don't set NGL, let the user change it
+        # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = False
     elif _backend == 'cpu':
         NUM_GPU_LAYERS = 0
@@ -698,7 +696,7 @@ class Thread(object):
         ]
         self.smart_context_state: llama_cpp.LlamaState = None
         self.main_context_state: llama_cpp.LlamaState = None
-        self.smart_context_active = False
+        self.smart_context_active: bool = False
     
 
     def set_smart_context_state(self) -> None:
@@ -706,6 +704,8 @@ class Thread(object):
         assert self.smart_context
         assert not self.amnesiac
         assert not self.enable_timestamps
+        if self.smart_context_active:
+            return
         self.main_context_state = self.model.llama.save_state()
         if self.smart_context_state is not None:
             self.model.llama.load_state(self.smart_context_state)
@@ -713,11 +713,14 @@ class Thread(object):
             self.model.llama.reset()
         self.smart_context_active = True
     
+
     def set_main_context_state(self) -> None:
         """Switch the model to use the main context state"""
         assert self.smart_context
         assert not self.amnesiac
         assert not self.enable_timestamps
+        if not self.smart_context_active:
+            return
         self.smart_context_state = self.model.llama.save_state()
         if self.main_context_state is not None:
             self.model.llama.load_state(self.main_context_state)
@@ -773,25 +776,32 @@ class Thread(object):
                 ),
             }
 
+
     def update_smart_context(self, messages: list[dict]) -> None:
         """
-        Set self.smart_context_state and self.smart_context_messages
-        """
-        assert self.smart_context
-        assert not self.amnesiac
-        assert not self.enable_timestamps
+        Set self.smart_context_state and self.smart_context_messages.
 
+        TODO:
+        Do nothing until context length is half full.
+        When context length is half full, for each update:
+            start building list starting at midpoint of current context
+            eval inf_str(next_context_messages)
+        At near full context, set
+            Thread.messages = Thread.next_content_messages
+            Thread.next_context_messages = None
+            Reset context length budget
+        """
         self.set_smart_context_state()
 
         system_message = messages[0]
-        context_len_budget = self.model.context_length - 3
-        context_len_budget -= system_message["length"]
+        context_len_budget = 1024
+        context_len_budget -= system_message['length']
 
         self.smart_context_messages: list[dict] = [system_message]
 
-        # get most recent 4 messages excluding system message,
-        # from newest to oldest
-        for message in reversed(messages[-4:]):
+        # iterate over messages from newest to oldest until
+        # context_len_budget is exceeded
+        for message in reversed(messages[1:]):
             context_len_budget -= message['length']
             if context_len_budget <= 0:
                 break
@@ -799,7 +809,6 @@ class Thread(object):
             self.smart_context_messages.insert(1, message)
             # now the list is in chronological orger
         
-        self.smart_context_state = self.model.llama.save_state()
         self.set_main_context_state()
 
 
@@ -877,8 +886,7 @@ class Thread(object):
             while True:
                 #print(f'DEBUG: len is {len(self.messages)}\n')
                 if not self.smart_context:
-                    if self.smart_context_active:
-                        self.set_main_context_state()
+                    self.set_main_context_state()
                     prompt = input("  > ")
                     print()
                     if prompt == "":
@@ -927,13 +935,13 @@ class Thread(object):
                         print("\n")
             
                 else: # smart context
-                    if not self.smart_context_active:
-                        self.set_smart_context_state()
+                    self.set_smart_context_state()
                     prompt = input(" -> ")
 
                     print()
 
                     if prompt == "":
+                        # another assistant message
                         self.update_smart_context(self.messages)
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(
@@ -999,6 +1007,7 @@ class Thread(object):
         ]
         self.main_context_state: llama_cpp.LlamaState = None
         self.smart_context_state: llama_cpp.LlamaState = None
+        self.smart_context_active: bool = False
         self.model.llama.reset()
 
 
