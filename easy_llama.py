@@ -17,7 +17,6 @@ import os
 import sys
 import time
 import struct
-import threading
 from typing import Generator
 from enum import IntEnum
 
@@ -694,11 +693,37 @@ class Thread(object):
             self.create_message("system", self.format["system_content"])
         ]
         self.smart_context: bool = smart_context
-        if self.smart_context:
-            self.smart_context_messages: list[dict] = [
-                self.create_message("system", self.format["system_content"])
-            ]
-            self.smart_context_state: llama_cpp.LlamaState = None
+        self.smart_context_messages: list[dict] = [
+            self.create_message("system", self.format["system_content"])
+        ]
+        self.smart_context_state: llama_cpp.LlamaState = None
+        self.main_context_state: llama_cpp.LlamaState = None
+        self.smart_context_active = False
+    
+
+    def set_smart_context_state(self) -> None:
+        """Switch the model to use the smart context state"""
+        assert self.smart_context
+        assert not self.amnesiac
+        assert not self.enable_timestamps
+        self.main_context_state = self.model.llama.save_state()
+        if self.smart_context_state is not None:
+            self.model.llama.load_state(self.smart_context_state)
+        else:
+            self.model.llama.reset()
+        self.smart_context_active = True
+    
+    def set_main_context_state(self) -> None:
+        """Switch the model to use the main context state"""
+        assert self.smart_context
+        assert not self.amnesiac
+        assert not self.enable_timestamps
+        self.smart_context_state = self.model.llama.save_state()
+        if self.main_context_state is not None:
+            self.model.llama.load_state(self.main_context_state)
+        else:
+            self.model.llama.reset()
+        self.smart_context_active = False
 
 
     def create_message(self, role: str, content: str) -> dict:
@@ -756,30 +781,26 @@ class Thread(object):
         assert not self.amnesiac
         assert not self.enable_timestamps
 
-        main_llama_state = self.model.llama.save_state()
+        self.set_smart_context_state()
 
         system_message = messages[0]
         context_len_budget = self.model.context_length - 3
         context_len_budget -= system_message["length"]
-        sys_msg_str = (
-            system_message["prefix"]
-            + system_message["content"]
-            + system_message["postfix"]
-        )
 
-        if self.smart_context_state is not None:
-            self.model.llama.load_state(self.smart_context_state)
-        else:
-            self.model.llama.eval(sys_msg_str)
+        self.smart_context_messages: list[dict] = [system_message]
 
-        # start at most recent message and work backwards up the history.
-        # system message is already dealt with
-        for message in reversed(messages[1:]):
-            pass
+        # get most recent 4 messages excluding system message,
+        # from newest to oldest
+        for message in reversed(messages[-4:]):
+            context_len_budget -= message['length']
+            if context_len_budget <= 0:
+                break
+            # keep sys msg at index 0
+            self.smart_context_messages.insert(1, message)
+            # now the list is in chronological orger
         
         self.smart_context_state = self.model.llama.save_state()
-        self.model.llama.load_state(main_llama_state)
-
+        self.set_main_context_state()
 
 
     def inference_str_from_messages(self, messages: list[dict]) -> str:
@@ -856,6 +877,8 @@ class Thread(object):
             while True:
                 #print(f'DEBUG: len is {len(self.messages)}\n')
                 if not self.smart_context:
+                    if self.smart_context_active:
+                        self.set_main_context_state()
                     prompt = input("  > ")
                     print()
                     if prompt == "":
@@ -880,6 +903,7 @@ class Thread(object):
                             self.create_message("user", prompt)
                             )
 
+                        
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(self.messages),
                             stops=self.format["stops"],
@@ -903,11 +927,14 @@ class Thread(object):
                         print("\n")
             
                 else: # smart context
+                    if not self.smart_context_active:
+                        self.set_smart_context_state()
                     prompt = input(" -> ")
 
                     print()
 
                     if prompt == "":
+                        self.update_smart_context(self.messages)
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(
                                 self.smart_context_messages
@@ -929,6 +956,8 @@ class Thread(object):
                         self.messages.append(
                             self.create_message("user", prompt)
                             )
+                        
+                        self.update_smart_context(self.messages)
 
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(
@@ -946,7 +975,7 @@ class Thread(object):
                         self.messages.append(
                             self.create_message("bot", output)
                         )
-
+                    
                     if output.endswith("\n\n"):
                         pass
                     elif output.endswith("\n"):
@@ -956,17 +985,20 @@ class Thread(object):
 
         except KeyboardInterrupt:
             print("\n")
+            if self.smart_context_active:
+                self.update_smart_context(self.messages)
+                self.set_main_context_state()
             return
 
     def reset(self) -> None:
         self.messages: list[dict] = [
             self.create_message("system", self.format["system_content"])
         ]
-        if self.smart_context:
-            self.smart_context_messages: list[dict] = [
-                self.create_message("system", self.format["system_content"])
-            ]
-            self.smart_context_state: llama_cpp.LlamaState = None
+        self.smart_context_messages: list[dict] = [
+            self.create_message("system", self.format["system_content"])
+        ]
+        self.main_context_state: llama_cpp.LlamaState = None
+        self.smart_context_state: llama_cpp.LlamaState = None
         self.model.llama.reset()
 
 
