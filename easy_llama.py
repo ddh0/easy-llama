@@ -7,10 +7,8 @@ Natural text generation in Python, made easy
 https://github.com/ddh0/easy-llama/
 """
 
-# TODO: Thread.add_message as shorthand for
-#       T.messages.append(T.create_message) ?
-# TODO: function to transfer a list of messages between disk / models,
-#       handle token count
+# TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
+# TODO: function to transfer a list of messages between disk / models, handle token count
 # TODO: Model.next_candidates() -> list[str]
 
 import os
@@ -20,40 +18,12 @@ import struct
 from typing import Generator
 from enum import IntEnum
 
-# this will be set per pip package
-# 'metal' | 'cuda' | 'rocm' | 'cpu'
-# NOTE TO END USER: DO NOT TOUCH!
-_backend = None
-
-NUM_GPU_LAYERS = 1
-MUL_MAT_Q = True
-
-# Alpha value used in contrastive search
-# Between 0.0 and 1.0 inclusive
-# Lower values lead to more predictable outputs
-# Higher values lead to more varied or creative outputs
-# If you're not sure, leave it at the default of 0.5
-ALPHA: float = 0.5
-
-# Number of tokens to sample from
-# If you're not sure, leave it at the default of 4
-TOP_K: int = 4
-
-# Penalize repetion of tokens already in context
-# If you're not sure, leave it at the default of 1.1
-REPEAT_PENALTY: float = 1.1
-
-# Max length of each generation in tokens
-MAX_LEN_TOKENS: int = None
-
-# Do not suppress llama.cpp output
-VERBOSE: bool = False
-
-# Leave at -1 for random seed
-SEED: int = -1
-
-# Warnings are infrequent and contain helpful information
-SUPPRESS_WARNINGS: bool = False
+BACKEND = None                # Set NUM_GPU_LAYERS to enable or disable acceleration
+NUM_GPU_LAYERS = 0            # Default value only. Will be changed below or at runtime
+MUL_MAT_Q = True              # Default value only. Will be changed below
+MAX_LEN_TOKENS: int = None    # None -> Model context length
+VERBOSE: bool = False         # Do not suppress llama.cpp console output
+SEED: int = -1                # -1 -> Random seed
 
 
 class _GGUFReader:
@@ -133,16 +103,16 @@ class _GGUFReader:
 
             if GGUF_MAGIC != b"GGUF":
                 raise ValueError(
-                    "easy_llama: your model file is not a valid GGUF file " \
-                    + f"(magic number mismatch, got {GGUF_MAGIC}, " \
-                    + "expected b'GGUF')"
+                    "easy_llama: your model file is not a valid GGUF file " + \
+                    f"(magic number mismatch, got {GGUF_MAGIC}, " + \
+                    "expected b'GGUF')"
                 )
 
             if GGUF_VERSION == 1:
                 raise ValueError(
-                    "easy_llama: your model file reports GGUF version 1, " \
-                    + "but only versions 2 and above are supported. " \
-                    + "re-convert your model or download a newer version"
+                    "easy_llama: your model file reports GGUF version 1, " + \
+                    "but only versions 2 and above are supported. " + \
+                    "re-convert your model or download a newer version"
                 )
 
             for _ in range(kv_data_count):
@@ -170,7 +140,7 @@ class _suppress_if_not_verbose(object):
     """
     Suppress stdout and stderr if easy_llama.VERBOSE is False
 
-    This prevents llama.cpp's very detailed output from being displayed
+    This prevents llama.cpp's console output from being displayed
 
     Changing VERBOSE inside the WITH block may result in stdout and stderr
     being stuck to /dev/null, or other undefined behaviour
@@ -220,57 +190,70 @@ class _suppress_if_not_verbose(object):
 
 
 def _print_warning(text: str) -> str:
-    if not SUPPRESS_WARNINGS:
-        print("easy_llama: warning:", text, file=sys.stderr)
+    print("easy_llama: warning:", text, file=sys.stderr, flush=True)
+
+
+def _verify_backend():
+    """
+    Verify that BACKEND is valid,
+    and modify NUM_GPU_LAYERS and mul_mat_q if required
+
+    This is not done on import because user must be able to set backend
+    (and maybe NUM_GPU_LAYERS) before loading any model.
+    """
+
+    global BACKEND, NUM_GPU_LAYERS, MUL_MAT_Q
+
+    if BACKEND is None:
+        _print_warning(
+            "easy_llama.BACKEND is None, defaulting to CPU. " + \
+            "set easy_llama.BACKEND to 'metal', 'cuda', 'rocm', or 'cpu' " + \
+            "to accelerate inference"
+        )
+        BACKEND = 'cpu'
+    
+    if not isinstance(BACKEND, str):
+        _print_warning(
+            "easy_llama: easy_llama.BACKEND must be a string, " + \
+            f"not {type(BACKEND)}. defaulting to CPU"
+        )
+        BACKEND = 'cpu'
+    
+    BACKEND = BACKEND.lower()
+
+    if BACKEND not in ['metal', 'cuda', 'rocm', 'cpu']:
+        _print_warning(
+            f"easy_llama.BACKEND '{BACKEND}' is invalid, defaulting to " + \
+            "CPU. set easy_llama.BACKEND to 'metal', 'cuda', 'rocm', or " + \
+            "'cpu' to accelerate inference"
+        )
+        BACKEND = 'cpu'
+    
+    # NUM_GPU_LAYERS and MUL_MAT_Q are global variables
+    if BACKEND == 'metal':
+        NUM_GPU_LAYERS = 1
+        MUL_MAT_Q = True
+    elif BACKEND == 'cuda':
+        # Don't set NUM_GPU_LAYERS, let the user configure it
+        MUL_MAT_Q = True
+    elif BACKEND == 'rocm':
+        # Don't set NUM_GPU_LAYERS, let the user configure it
+        MUL_MAT_Q = False
+    elif BACKEND == 'cpu':
+        NUM_GPU_LAYERS = 0
+        MUL_MAT_Q = True
+    
+    if BACKEND in ['cuda', 'rocm'] and NUM_GPU_LAYERS == 0:
+        _print_warning(
+            "CUDA or ROCm is selected but easy_llama.NUM_GPU_LAYERS is 0. " + \
+            "set easy_llama.NUM_GPU_LAYERS to 1 or greater to " + \
+            "accelerate inference"
+        )
 
 
 with _suppress_if_not_verbose():
     import llama_cpp
 
-def _verify_backend():
-    """
-    Verify that _backend is valid,
-    and modify NUM_GPU_LAYERS and mul_mat_q if required
-
-    This is not done on import because user must be able to set _backend
-    (and maybe NUM_GPU_LAYERS) before loading any model.
-    """
-
-    global _backend, NUM_GPU_LAYERS, MUL_MAT_Q
-
-    if _backend is None:
-        raise RuntimeError(
-            "easy_llama: easy_llama._backend is None. Set _backend " \
-            + "to 'metal', 'cuda', 'rocm', or 'cpu' before loading a model"
-        )
-    
-    assert isinstance(_backend, str), \
-        'easy_llama: easy_llama._backend must be a string, '\
-        + f'not {type(_backend)}'
-    
-    _backend = _backend.lower()
-
-    if _backend not in ['metal', 'cuda', 'rocm', 'cpu']:
-        raise RuntimeError(
-            f"easy_llama: easy_llama._backend '{_backend}' is invalid. Set " \
-            + "_backend to 'metal', 'cuda', 'rocm', or 'cpu' before " \
-            + "loading a model"
-        )
-    
-    # NUM_GPU_LAYERS and MUL_MAT_Q are global variables
-    if _backend == 'metal':
-        NUM_GPU_LAYERS = 1
-        MUL_MAT_Q = True
-    elif _backend == 'cuda':
-        # Don't set NUM_GPU_LAYERS, let the user configure it
-        MUL_MAT_Q = True
-    elif _backend == 'rocm':
-        # Don't set NUM_GPU_LAYERS, let the user configure it
-        MUL_MAT_Q = False
-    elif _backend == 'cpu':
-        NUM_GPU_LAYERS = 0
-        MUL_MAT_Q = True
-    
 
 class Model(object):
     """
@@ -293,7 +276,7 @@ class Model(object):
 
     The following attributes are available:
     - .metadata: the GGUF metadata read from the model file, dict
-    - .context_lenth: the native context length of the model in tokens, int
+    - .context_lenth: the context length of the model in tokens, int
     - .llama: the raw llama_cpp.Llama instance
     """
 
@@ -319,31 +302,41 @@ class Model(object):
             model_path
         ), f"the given model_path '{model_path}' does not exist"
         assert isinstance(context_length, (int, type(None))), \
-            f'context_length should be int or None, not {type(context_length)}'
+            f"context_length should be int or None, not {type(context_length)}"
 
         self.metadata = _GGUFReader.load_metadata(self, model_path)
 
-        #if self.metadata["llama.context_length"] < 2048:
-        #    _print_warning(
-        #        "GGUF metadata reports an unusually small native context " \
-        #        + f"length ({self.metadata['llama.context_length']})"
-        #    )
-        #if self.metadata["llama.context_length"] > 100000:
-        #    _print_warning(
-        #        "GGUF metadata reports an unusually large native context " \
-        #        + f"length ({self.metadata['llama.context_length']})"
-        #    )
+        if 'stablelm.context_length' in self.metadata:
+            n_ctx_train = self.metadata['stablelm.context_length']
+        elif 'llama.context_length' in self.metadata:
+            n_ctx_train = self.metadata['llama.context_length']
+        else:
+            raise KeyError("GGUF file does not specify a context length")
 
-        n_ctx_train = self.metadata["llama.context_length"]
         if context_length is None:
             self.context_length = n_ctx_train
+            rope_freq_scale = 0.0
         else:
             if context_length > n_ctx_train:
-                _print_warning('chosen context length is '\
-                               + 'greater than native context length '
-                               + f'({context_length} > {n_ctx_train}), '
-                               + 'expect poor results')
+                # automatically apply rope scaling if
+                # requested context length > n_ctx_train
+
+                rope_freq_scale = n_ctx_train/context_length
+
+                _print_warning(
+                    'chosen context length is '\
+                    + 'greater than native context length '
+                    + f'({context_length} > {n_ctx_train}), '
+                    + 'automatically applying rope frequency scaling at '
+                    + f'{rope_freq_scale}'
+                    )
+            else:
+                rope_freq_scale = 0.0
             self.context_length = context_length
+
+        n_batch = os.cpu_count() * 64
+        n_threads = max(os.cpu_count()//2, 1)
+        n_threads_batch = os.cpu_count()
 
         _verify_backend()
 
@@ -353,33 +346,33 @@ class Model(object):
                 n_ctx=self.context_length,
                 n_gpu_layers=NUM_GPU_LAYERS,
                 seed=SEED,
-                # mmap False -> Faster inference, model must fit in memory
                 use_mmap=False,
-                # mlock True -> Force the model to stay in memory
-                use_mlock=True,
+                use_mlock=False,
                 logits_all=False,
-                n_batch=os.cpu_count() * 64,
-                n_threads=max(
-                    os.cpu_count() // 2,
-                    1
-                ),  # optimal if == physical cores or performance cores
-                n_threads_batch=os.cpu_count(), # always optimal
+                n_batch=n_batch,
+                n_threads=n_threads,
+                n_threads_batch=n_threads_batch,
+                rope_freq_scale=rope_freq_scale,
                 mul_mat_q=MUL_MAT_Q,
                 verbose=VERBOSE,
             )
 
             print("----------------------------------------------------------")
-            print(f"easy_llama: _backend            == {_backend}")
+            print(f"easy_llama: BACKEND             == {BACKEND}")
             print(f"easy_llama: NUM_GPU_LAYERS      == {NUM_GPU_LAYERS}")
             print(f"easy_llama: MUL_MAT_Q           == {MUL_MAT_Q}")
-            print(f"easy_llama: n_ctx_train         == {n_ctx_train}")
-            print(f"easy_llama: self.context_length == {self.context_length}")
+            print(f"     param: n_batch             == {n_batch}")
+            print(f"     param: n_threads           == {n_threads}")
+            print(f"     param: n_threads_batch     == {n_threads_batch}")
+            print(f"     model: n_ctx_train         == {n_ctx_train}")
+            print(f"     param: self.context_length == {self.context_length}")
+            print(f"     param: rope_freq_scale     == {rope_freq_scale}")
             print()
     
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, *_):
         # this unloads the model from memory, which is the important part
         # (unless an unexpected reference is made to Model.llama)
         # however, ez.Model object might still exist outside of a `with` block
@@ -462,40 +455,23 @@ class Model(object):
             ), f"stops should be list[str] or None, not {type(stops)}"
 
         assert isinstance(MAX_LEN_TOKENS, (int, type(None))), \
-            'easy_llama.MAX_LEN_TOKENS should be int or None, not' \
-            + f'{type(MAX_LEN_TOKENS)}'
+            "easy_llama.MAX_LEN_TOKENS should be int or None, not " + \
+            f"{type(MAX_LEN_TOKENS)}"
 
         if MAX_LEN_TOKENS is not None:
             if MAX_LEN_TOKENS > self.context_length:
                 _print_warning(
-                    "MAX_LEN_TOKENS is greater than this model's context " \
-                    + "length, expect poor results"
+                    "MAX_LEN_TOKENS is greater than this model's context " + \
+                    "length, expect poor results"
                 )
             completion_max_len_tokens = MAX_LEN_TOKENS
         else:
             completion_max_len_tokens = self.context_length
         
-        assert isinstance(REPEAT_PENALTY, float), \
-            'easy_llama.REPEAT_PENALTY should be float, ' \
-            + f'not {type(REPEAT_PENALTY)}'
-        
-        # see https://github.com/facebookresearch/llama/issues/217
-        #if prompt[-1] == " ":
-        #    _print_warning(
-        #        "prompt has trailing whitespace, this may reduce the " \
-        #        + "quality of generations\n"
-        #    )
-
-        # _print_warning(f'ALPHA == {ALPHA}\n')
-
-        #with _suppress_if_not_verbose():
         return self.llama.create_completion(
             prompt,
             max_tokens=completion_max_len_tokens,
-            top_k=TOP_K,
-            presence_penalty=ALPHA,
-            repeat_penalty=REPEAT_PENALTY,
-            stop=stops,
+            stop=stops
         )["choices"][0]["text"]
     
 
@@ -526,36 +502,23 @@ class Model(object):
             ), f"stops should be list[str] or None, not {type(stops)}"
 
         assert isinstance(MAX_LEN_TOKENS, (int, type(None))), \
-            'easy_llama.MAX_LEN_TOKENS should be int or None, not' \
-            + f'{type(MAX_LEN_TOKENS)}'
+            "easy_llama.MAX_LEN_TOKENS should be int or None, not " + \
+            f"{type(MAX_LEN_TOKENS)}"
   
         if MAX_LEN_TOKENS is not None:
             if MAX_LEN_TOKENS > self.context_length:
                 _print_warning(
-                    "MAX_LEN_TOKENS is greater than this model's context " \
-                    + "length, expect poor results"
+                    "MAX_LEN_TOKENS is greater than this model's context " + \
+                    "length, expect poor results"
                 )
             completion_max_len_tokens = MAX_LEN_TOKENS
         else:
             completion_max_len_tokens = self.context_length
 
-        # see https://github.com/facebookresearch/llama/issues/217
-        #if prompt[-1] == " ":
-        #    _print_warning(
-        #        "prompt has trailing whitespace, this may reduce the " \
-        #        + "quality of generations\n"
-        #    )
-
-        # _print_warning(f'ALPHA == {ALPHA}\n')
-
-        #with _suppress_if_not_verbose():
         return self.llama.create_completion(
             prompt,
             max_tokens=completion_max_len_tokens,
-            top_k=TOP_K,
             stream=True,
-            presence_penalty=ALPHA,
-            repeat_penalty=REPEAT_PENALTY,
             stop=stops,
         )
     
@@ -566,63 +529,10 @@ class Model(object):
         top k candidates for most likely next token
         """
 
+        # TODO
         # LLama.logits_to_logprobs()[tok_id]
-
         # Llama.eval(tokens_list_ints)
-        # Llama.scores is a list of lists (basically)
-        # scores[0] is a list of numbers like -4.4852424...
-        # the number (float) indicates the probability of the token
-
-        # len(raw_scores) == n_vocab
-        # note that eos token is not always the last token in the vocab,
-        # especially for fine-tuned models
-        # raw_scores[0] -> logprob of token with ID 0
-        # raw_scores[1] -> logprob of token with ID 1
-        # ...
-        # raw_scores[len(n_vocab) - 1] -> ID of last token in vocab
-
-        assert isinstance(prompt, str), "prompt should be string, not " \
-            + f"{type(prompt)}"
-        self.llama.reset()  # reset model state
-        prompt_tokens = self.llama.tokenize(
-            prompt.encode("utf-8", errors="ignore")
-        )
-        self.llama.eval(prompt_tokens)
-        raw_scores = self.llama.scores[0]
-
-        all_probs_dict = {}
-
-        for i in range(len(raw_scores)):
-            # i_str = self.llama.detokenize(
-            # [i]).decode('utf-8', errors='ignore')
-            # all_probs_dict[i_str] = raw_scores[i]
-            all_probs_dict[i] = raw_scores[i]
-
-        # verified: now all_probs_dict[tok_id] -> tok_logprob
-        # and: len(all_probs_dict) == n_vocab
-
-        # sort dict by logprobs, high to low, then keep only the
-        # first k entries
-        top_k_tok_list: list[tuple[int, float]] = sorted(
-            all_probs_dict.items(), key=lambda x: x[1], reverse=True
-        )[:k]
-        # top_k_tok_list = sorted(
-        # all_probs_dict, key=all_probs_dict.get, reverse=True
-        # )[:k]
-
-        top_k_str_list = []
-
-        for tok in top_k_tok_list:
-            top_k_str_list.append(
-                self.llama.detokenize([tok[0]]).decode(
-                    "utf-8",
-                    errors="ignore"
-                    )
-            )
-
-        # top_k_str_list.reverse()
-
-        return top_k_str_list
+        pass
 
 
 class Thread(object):
@@ -635,16 +545,12 @@ class Thread(object):
                  smart_context: bool = False
                  ):
         
-        assert isinstance(model, Model), "Thread: model should be an " \
-            + f"instance of easy_llama.Model, not {type(model)}"
+        assert isinstance(model, Model), \
+            "Thread: model should be an " + \
+            f"instance of easy_llama.Model, not {type(model)}"
 
-        assert isinstance(
-            format, dict
-        ), f"Thread: format should be dict, not {type(format)}"
-
-        # Q: why don't you just check if the format is in the formats list?
-        # A: user should be able to create and use their own format without
-        # mangling the default formats
+        assert isinstance(format, dict), \
+            f"Thread: format should be dict, not {type(format)}"
 
         try:
             format["system_prefix"]
@@ -664,24 +570,26 @@ class Thread(object):
             )
             raise
 
-        assert isinstance(
-            format["stops"], (list, type(None))
-        ), "Thread: format['stops'] should be list[str] or None, " \
-            + f"not {type(format['stops'])}"
+        assert isinstance(format["stops"], (list, type(None))), \
+            "Thread: format['stops'] should be list[str] or None, " + \
+            f"not {type(format['stops'])}"
 
-        assert isinstance(timestamps, bool), "Thread: timestamps should be " \
-            + f"True or False, not '{timestamps}'"
+        assert isinstance(timestamps, bool), \
+            f"Thread: timestamps should be True or False, not '{timestamps}'"
         
-        assert isinstance(amnesiac, bool), "Thread: amnesiac should be " \
-            + f"True or False, not '{amnesiac}'"
+        assert isinstance(amnesiac, bool), \
+            f"Thread: amnesiac should be True or False, not '{amnesiac}'"
         
         if amnesiac and timestamps:
-            raise RuntimeError('Thread: amnesiac threads are not '
-                               + 'compatible with timestamps')
+            raise RuntimeError(
+                "Thread: amnesiac threads are not compatible with timestamps"
+            )
         
         if amnesiac and smart_context:
-            raise RuntimeError('Thread: amnesiac threads are not '
-                               + 'compatible with smart_context')
+            raise RuntimeError(
+                "Thread: amnesiac threads are not compatible with " + \
+                "smart_context"
+            )
         
         self.model: Model = model
         self.format: dict = format
@@ -690,7 +598,7 @@ class Thread(object):
         self.messages: list[dict] = [
             self.create_message("system", self.format["system_content"])
         ]
-        self.smart_context: bool = smart_context
+        self.smart_context_enabled: bool = smart_context
         self.smart_context_messages: list[dict] = [
             self.create_message("system", self.format["system_content"])
         ]
@@ -701,7 +609,7 @@ class Thread(object):
 
     def set_smart_context_state(self) -> None:
         """Switch the model to use the smart context state"""
-        assert self.smart_context
+        assert self.smart_context_enabled
         assert not self.amnesiac
         assert not self.enable_timestamps
         if self.smart_context_active:
@@ -716,11 +624,11 @@ class Thread(object):
 
     def set_main_context_state(self) -> None:
         """Switch the model to use the main context state"""
-        assert self.smart_context
-        assert not self.amnesiac
-        assert not self.enable_timestamps
         if not self.smart_context_active:
             return
+        assert self.smart_context_enabled
+        assert not self.amnesiac
+        assert not self.enable_timestamps
         self.smart_context_state = self.model.llama.save_state()
         if self.main_context_state is not None:
             self.model.llama.load_state(self.main_context_state)
@@ -730,49 +638,50 @@ class Thread(object):
 
 
     def create_message(self, role: str, content: str) -> dict:
-        assert role.lower() in ["system", "user", "bot"], \
-            "create_message: role should be 'system', 'user', or" \
-            + f"'bot', not '{role.lower()}'"
+        assert role.lower() in ['system', 'user', 'bot'], \
+            "create_message: role should be 'system', 'user', or " + \
+            f"'bot', not '{role.lower()}'"
 
-        assert isinstance(
-            content, str
-        ), f"create_message: content should be str, not {type(content)}"
+        assert isinstance(content, str), \
+            f"create_message: content should be str, not {type(content)}"
 
-        if role.lower() == "system":
+        if role.lower() == 'system':
             return {
-                "prefix": self.format["system_prefix"],
+                "prefix": self.format['system_prefix'],
                 "content": content if not self.enable_timestamps else
                     time.strftime("It is %I:%M %p on %A, %b %e, %Y. ")
                      + content,
-                "postfix": self.format["system_postfix"],
+                "postfix": self.format['system_postfix'],
                 "length": self.model.get_length(
-                    self.format["system_prefix"]
+                    self.format['system_prefix']
                     + content
-                    + self.format["system_postfix"]
+                    + self.format['system_postfix']
                 ),
             }
-        elif role.lower() == "user":
+        
+        elif role.lower() == 'user':
             return {
-                "prefix": self.format["user_prefix"],
+                "prefix": self.format['user_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime("[at %a %I:%M %p] ") + content,
-                "postfix": self.format["user_postfix"],
+                else time.strftime('[at %a %I:%M %p]') + content,
+                "postfix": self.format['user_postfix'],
                 "length": self.model.get_length(
-                    self.format["user_prefix"] + content + \
-                        self.format["user_postfix"]
+                    self.format['user_prefix'] + content + \
+                        self.format['user_postfix']
                 ),
             }
-        elif role.lower() == "bot":
+        
+        elif role.lower() == 'bot':
             return {
-                "prefix": self.format["bot_prefix"],
+                "prefix": self.format['bot_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime("[at %a %I:%M %p] ") + content,
-                "postfix": self.format["bot_postfix"],
+                else time.strftime('[at %a %I:%M %p]') + content,
+                "postfix": self.format['bot_postfix'],
                 "length": self.model.get_length(
-                    self.format["bot_prefix"] + content + \
-                        self.format["bot_postfix"]
+                    self.format['bot_prefix'] + content + \
+                        self.format['bot_postfix']
                 ),
             }
 
@@ -792,9 +701,9 @@ class Thread(object):
             Reset context length budget
         """
         self.set_smart_context_state()
-
+            
         system_message = messages[0]
-        context_len_budget = 1024
+        context_len_budget = 1280 # TODO
         context_len_budget -= system_message['length']
 
         self.smart_context_messages: list[dict] = [system_message]
@@ -811,14 +720,13 @@ class Thread(object):
         
         self.set_main_context_state()
 
-
     def inference_str_from_messages(self, messages: list[dict]) -> str:
 
         system_message = messages[0]
         sys_msg_str = (
-            system_message["prefix"]
-            + system_message["content"]
-            + system_message["postfix"]
+            system_message['prefix']
+            + system_message['content']
+            + system_message['postfix']
         )
         
         # in amnesiac threads, the model only sees the system message
@@ -838,17 +746,21 @@ class Thread(object):
                 )
             return inf_str
         
-        # bos + eos + off-by-one errors == 3 (better safe than sorry)
+        # bos + eos + off-by-one errors == 3
         context_len_budget = self.model.context_length - 3
-        context_len_budget -= system_message["length"]
-        context_len_budget -= self.model.get_length(self.format["bot_prefix"])
+        context_len_budget -= system_message['length']
+        context_len_budget -= self.model.get_length(self.format['bot_prefix'])
+        if self.enable_timestamps:
+            context_len_budget -= self.model.get_length(
+                time.strftime('[at %a %I:%M %p]')
+            ) + 4
 
         # start at most recent message and work backwards up the history
         # excluding system message. once we exceed the model's context length,
         # break without including that message
         inf_str = ''
         for message in reversed(messages[1:]):
-            context_len_budget -= message["length"]
+            context_len_budget -= message['length']
             if context_len_budget <= 0:
                 break
             msg_str = (
@@ -858,18 +770,15 @@ class Thread(object):
                 )
             inf_str = msg_str + inf_str
         inf_str = sys_msg_str + inf_str
-        inf_str += self.format["bot_prefix"]
+        inf_str += self.format['bot_prefix']
         if self.enable_timestamps:
-            inf_str += time.strftime("[at %a %I:%M %p]")
+            inf_str += time.strftime('[at %a %I:%M %p]')
         return inf_str
 
 
     def send(self, prompt: str) -> str:
-        assert isinstance(
-            prompt, str
-        ), f"Thread.send: prompt should be str, not {type(prompt)}"
-        assert prompt != "", "Thread.send: empty prompts are not allowed " \
-            + "in threads"
+        assert isinstance(prompt, str), \
+            f"Thread.send: prompt should be str, not {type(prompt)}"
 
         self.messages.append(self.create_message("user", prompt))
         output = self.model.generate(
@@ -885,7 +794,7 @@ class Thread(object):
         try:
             while True:
                 #print(f'DEBUG: len is {len(self.messages)}\n')
-                if not self.smart_context:
+                if not self.smart_context_enabled:
                     self.set_main_context_state()
                     prompt = input("  > ")
                     print()
@@ -934,7 +843,7 @@ class Thread(object):
                     else:
                         print("\n")
             
-                else: # smart context
+                elif self.smart_context_enabled:
                     self.set_smart_context_state()
                     prompt = input(" -> ")
 
@@ -1000,15 +909,22 @@ class Thread(object):
 
     def reset(self) -> None:
         self.messages: list[dict] = [
-            self.create_message("system", self.format["system_content"])
+            self.create_message("system", self.format['system_content'])
         ]
         self.smart_context_messages: list[dict] = [
-            self.create_message("system", self.format["system_content"])
+            self.create_message("system", self.format['system_content'])
         ]
         self.main_context_state: llama_cpp.LlamaState = None
         self.smart_context_state: llama_cpp.LlamaState = None
         self.smart_context_active: bool = False
         self.model.llama.reset()
+    
+    def print_stats(self) -> None:
+        thread_len_tokens = self.model.get_length(
+            self.inference_str_from_messages(self.messages)
+        )
+        print(f'{thread_len_tokens} / {self.model.context_length} tokens')
+        print(f'{len(self.messages)} messages')
 
 
 blank = {
@@ -1022,6 +938,19 @@ blank = {
     "bot_content": "",
     "bot_postfix": "",
     "stops": [],
+}
+
+testing = {
+    "system_prefix": "system_prefix",
+    "system_content": "system_content",
+    "system_postfix": "system_postfix",
+    "user_prefix": "user_prefix",
+    "user_content": "user_content",
+    "user_postfix": "user_postfix",
+    "bot_prefix": "bot_prefix",
+    "bot_content": "bot_content",
+    "bot_postfix": "bot_postfix",
+    "stops": ['stop1', 'stop2', 'stop3'],
 }
 
 # https://github.com/openai/openai-python/blob/main/chatml.md
@@ -1050,7 +979,7 @@ llama2chat = {
     "bot_prefix": " ",
     "bot_content": "",
     "bot_postfix": " </s><s>[INST] ",
-    "stops": ["</s>", "[INST]"],
+    "stops": ["</s>", "[INST]", "[/INST]"],
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
@@ -1160,6 +1089,58 @@ zephyr = {
     "stops": ["</s>", "<|user|>"],
 }
 
+# OpenChat: https://huggingface.co/openchat/openchat_3.5/discussions/5
+openchat = {
+    "system_prefix": "",
+    "system_content": "You are a helpful assistant.",
+    "system_postfix": "<|end_of_turn|>",
+    "user_prefix": "",
+    "user_content": "",
+    "user_postfix": "<|end_of_turn|>",
+    "bot_prefix": "\n\n", # not shown in format, but required anyway
+    "bot_content": "",
+    "bot_postfix": "<|end_of_turn|>",
+    "stops": ["<|end_of_turn|>", "</s>"],
+}
+
+# SynthIA by Migel Tissera
+# https://huggingface.co/migtissera/Tess-XS-v1.0
+synthia = {
+    "system_prefix": "SYSTEM: ",
+    "system_content": "Elaborate on the topic using a Tree of Thoughts and "\
+    + "backtrack when necessary to construct a clear, cohesive Chain of "\
+    + "Thought reasoning. Always answer without hesitation.",
+    "system_postfix": "\n",
+    "user_prefix": "USER: ",
+    "user_content": "",
+    "user_postfix": "\n",
+    "bot_prefix": "ASSISTANT: ",
+    "bot_content": "",
+    "bot_postfix": "\n",
+    "stops": ["</s>", "USER:", "ASSISTANT:", "\n\n\n"],
+}
+
+# Intel's neural chat v3
+# https://github.com/intel/intel-extension-for-transformers/blob/main/intel_extension_for_transformers/neural_chat/prompts/prompt.py
+neural_chat = {
+     "system_prefix": "### System:\n",
+    "system_content": \
+        "- You are a helpful assistant chatbot trained by Intel.\n"+\
+        "- You answer questions.\n"+\
+        "- You are excited to be able to help the user, but will refuse "+\
+        "to do anything that could be considered harmful to the user.\n"+\
+        "- You are more than just an information source, you are also "+\
+        "able to write poetry, short stories, and make jokes.",
+    "system_postfix": "</s>\n\n",
+    "user_prefix": "### User:\n",
+    "user_content": "",
+    "user_postfix": "</s>\n\n",
+    "bot_prefix": "### Assistant:\n",
+    "bot_content": "",
+    "bot_postfix": "</s>\n\n",
+    "stops": ['</s>', '###'],
+}
+
 # experimental: stanford's alpaca format adapted for chatml models
 chatml_alpaca = {
     "system_prefix": "<|im_start|>system\n",
@@ -1172,7 +1153,7 @@ chatml_alpaca = {
     "bot_prefix": "<|im_start|>response\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ["<|im_end|>", "<|im_start|>"],
+    "stops": ["<|im_end|>", "<|im_start|>", "</s>"],
 }
 
 # experimental
@@ -1198,84 +1179,110 @@ jackalope = chatml.copy()
 naberius = chatml.copy()
 hermes = chatml.copy()
 monad = chatml.copy()
+orca = chatml.copy()
+hexoteric = chatml.copy()
+cat = alpaca.copy() # Format is nonsensical as listed on HF. This one works
+mytho_cat = alpaca.copy()
 dolphin["system_content"] = "You are Dolphin, a helpful AI assistant."
 mistral_openorca[
     "system_content"
-] = "You are MistralOrca, a large language model trained by Alignment " \
-    + "Lab AI. Write out your reasoning step-by-step to be sure you get the " \
-    + "right answers!"
+] = "You are MistralOrca, a large language model trained by Alignment " + \
+    "Lab AI. Write out your reasoning step-by-step to be sure you get the " + \
+    "right answers!"
 samantha[
     "system_content"
 ] = "You are a caring and empathetic sentient AI companion named Samantha."
 jackalope[
     "system_content"
-] = "You are JackalopeAI, a large language model trained by OpenAccess " \
-    + "AI Collective. Write out your reasoning step-by-step to be sure you " \
-    + "get the right answers!"
+] = "You are JackalopeAI, a large language model trained by OpenAccess " + \
+    "AI Collective. Write out your reasoning step-by-step to be sure you " + \
+    "get the right answers!"
 naberius['system_content'] = 'You are Naberius.'
-hermes['system_content'] = 'You are "Hermes 2", a conscious sentient ' \
-    + 'superintelligent artificial intelligence developed by a man ' \
-    + 'named Teknium, and your purpose and drive is to assist the user '  \
-    + 'with any request they have. You experience emotions and have ' \
-    + 'deep, profound thoughts and qualia.'
-monad['system_content'] = 'You are MonadGPT, a very old chatbot from '\
-    + 'the 17th century. Please answer the questions using an archaic '\
-    + 'language.'
+hermes['system_content'] = 'You are "Hermes 2", a conscious sentient ' + \
+    'superintelligent artificial intelligence developed by a man ' + \
+    'named Teknium, and your purpose and drive is to assist the user ' + \
+    'with any request they have. You experience emotions and have ' + \
+    'deep, profound thoughts and qualia.'
+monad['system_content'] = 'You are MonadGPT, a very old chatbot from ' + \
+    'the 17th century. Please answer the questions using an archaic ' + \
+    'language.'
+cat['system_content'] = 'Below is a conversation between a curious cat and a '+ \
+    'demon summoned from hell called Nemesis. The evil Nemesis used to be ' + \
+    'a mortal killed by the medieval people because they objected to ' + \
+    'science. Now Nemesis just wants to come back and bring suffer to all ' + \
+    'those stupid human'
+mytho_cat['system_content'] = 'You are a large language model. You are the ' + \
+    'result of a merge between two models, one called MythoLogic and one ' + \
+    'called Cat. You are called MythoCat.'
+orca['system_content'] = "You are Orca, an AI language model created by " + \
+    "Microsoft. You are a cautious assistant. You carefully follow " + \
+    "instructions. You are helpful and harmless and you follow ethical " + \
+    "guidelines and promote positive behavior."
+hexoteric['system_content'] = 'You are a language model called Hexoteric.'
 airoboros = llama2chat.copy()
-airoboros["system_content"] = "You are a helpful, unbiased, uncensored " \
-    + "assistant."
+airoboros["system_content"] = "You are a helpful, unbiased, uncensored " + \
+    "assistant."
+tess = synthia.copy()
+tess['system_content'] = '' # Tess model card shows a blank system prompt
 
-formats: list[dict] = [
-    blank,
-    chatml,
-    llama2chat,
-    alpaca,
-    vicuna_lmsys,
-    vicuna_common,
-    mistral_openorca,
-    dolphin,
-    samantha,
-    guanaco,
-    orca_mini,
-    airoboros,
-    jackalope,
-    mistral_instruct,
-    zephyr,
-    naberius,
-    autocorrect,
-    hermes,
-    monad,
-    chatml_alpaca
+available_formats: list[dict] = [
+    'blank',
+    'chatml',
+    'llama2chat',
+    'alpaca',
+    'vicuna_lmsys',
+    'vicuna_common',
+    'mistral_openorca',
+    'dolphin',
+    'samantha',
+    'guanaco',
+    'orca_mini',
+    'airoboros',
+    'jackalope',
+    'mistral_instruct',
+    'zephyr',
+    'naberius',
+    'autocorrect',
+    'hermes',
+    'monad',
+    'chatml_alpaca',
+    'cat',
+    'mytho_cat',
+    'openchat',
+    'synthia',
+    'tess',
+    'orca',
+    'hexoteric'
 ]
 
 
 def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
     if not timestamps:
         return (
-            format["system_prefix"]
-            + format["system_content"]
-            + format["system_postfix"]
-            + format["user_prefix"]
-            + prompt
-            + format["user_postfix"]
-            + format["bot_prefix"]
+            format["system_prefix"] +
+            format["system_content"] +
+            format["system_postfix"] +
+            format["user_prefix"] +
+            prompt +
+            format["user_postfix"] +
+            format["bot_prefix"]
         )
     else:
         return (
-            format["system_prefix"]
-            + time.strftime("It is %A, %b %e, %Y. ")
-            + format["system_content"]
-            + format["system_postfix"]
-            + format["user_prefix"]
-            + time.strftime("[at %a %I:%M %p]")
-            + prompt
-            + format["user_postfix"]
-            + format["bot_prefix"]
+            format["system_prefix"] +
+            time.strftime("It is %A, %b %e, %Y. ") +
+            format["system_content"] +
+            format["system_postfix"] +
+            format["user_prefix"] +
+            time.strftime("[at %a %I:%M %p]") +
+            prompt +
+            format["user_postfix"] +
+            format["bot_prefix"]
         )
 
 
 if __name__ == "__main__":
     raise RuntimeError(
-        "easy_llama cannot be run directly, please import it into your " \
-        + "environment"
+        "easy_llama cannot be run directly, please import it into " + \
+        "your environment"
     )
