@@ -18,10 +18,10 @@ import struct
 from typing import Generator
 from enum import IntEnum
 
-BACKEND = None                # Set NUM_GPU_LAYERS to enable or disable acceleration
+BACKEND = None                # Modifies NUM_GPU_LAYERS to enable or disable acceleration
 NUM_GPU_LAYERS = 0            # Default value only. Will be changed below or at runtime
 MUL_MAT_Q = True              # Default value only. Will be changed below
-MAX_LEN_TOKENS: int = None    # None -> Model context length
+MAX_LEN_TOKENS: int = None    # None -> Use model context length
 VERBOSE: bool = False         # Do not suppress llama.cpp console output
 SEED: int = -1                # -1 -> Random seed
 
@@ -229,7 +229,6 @@ def _verify_backend():
         )
         BACKEND = 'cpu'
     
-    # NUM_GPU_LAYERS and MUL_MAT_Q are global variables
     if BACKEND == 'metal':
         NUM_GPU_LAYERS = 1
         MUL_MAT_Q = True
@@ -314,24 +313,38 @@ class Model(object):
             raise KeyError("GGUF file does not specify a context length")
 
         if context_length is None:
-            self.context_length = n_ctx_train
-            rope_freq_scale = 0.0
+            context_length = n_ctx_train
+            rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
+            #rope_freq_scale = 0
+            #yarn_attn_factor = 1
+            #yarn_ext_factor = -1
+            yarn_orig_ctx = 0
         else:
             if context_length > n_ctx_train:
-                # automatically apply rope scaling if
+
+                # automatically apply dynamic YaRN scaling if
                 # requested context length > n_ctx_train
 
-                rope_freq_scale = n_ctx_train/context_length
-
+                rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_YARN
+                #rope_freq_scale = context_length/n_ctx_train
+                #yarn_attn_factor = context_length/n_ctx_train
+                #yarn_ext_factor = context_length/n_ctx_train
+                #yarn_orig_ctx = context_length
+                
                 _print_warning(
-                    'chosen context length is '\
-                    + 'greater than native context length '
-                    + f'({context_length} > {n_ctx_train}), '
-                    + 'automatically applying rope frequency scaling at '
-                    + f'{rope_freq_scale}'
+                    'chosen context length is ' + \
+                    'greater than native context length ' + \
+                    f'({context_length} > {n_ctx_train}), ' + \
+                    'automatically applying YaRN scaling at ' + \
+                    '{rope_freq_scale}'
                     )
             else:
-                rope_freq_scale = 0.0
+                # Default values as specified in Llama.__init__()
+                rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
+                #rope_freq_scale = 0
+                #yarn_attn_factor = 1
+                #yarn_ext_factor = -1
+                #yarn_orig_ctx = 0
             self.context_length = context_length
 
         n_batch = os.cpu_count() * 64
@@ -352,12 +365,17 @@ class Model(object):
                 n_batch=n_batch,
                 n_threads=n_threads,
                 n_threads_batch=n_threads_batch,
-                rope_freq_scale=rope_freq_scale,
+                rope_scaling_type=rope_scaling_type,
+                #rope_freq_scale=rope_freq_scale,
+                #yarn_attn_factor=yarn_attn_factor,
+                #yarn_ext_factor=yarn_ext_factor,
+                #yarn_orig_ctx=yarn_orig_ctx,
                 mul_mat_q=MUL_MAT_Q,
                 verbose=VERBOSE,
             )
 
             print("----------------------------------------------------------")
+            print(f"{model_path}")
             print(f"easy_llama: BACKEND             == {BACKEND}")
             print(f"easy_llama: NUM_GPU_LAYERS      == {NUM_GPU_LAYERS}")
             print(f"easy_llama: MUL_MAT_Q           == {MUL_MAT_Q}")
@@ -366,7 +384,11 @@ class Model(object):
             print(f"     param: n_threads_batch     == {n_threads_batch}")
             print(f"     model: n_ctx_train         == {n_ctx_train}")
             print(f"     param: self.context_length == {self.context_length}")
-            print(f"     param: rope_freq_scale     == {rope_freq_scale}")
+            print(f"     param: rope_scaling_type   == {rope_scaling_type}")
+            #print(f"     param: rope_freq_scale     == {rope_freq_scale}")
+            #print(f"     param: yarn_attn_factor    == {yarn_attn_factor}")
+            #print(f"     param: yarn_ext_factor     == {yarn_ext_factor}")
+            #print(f"     param: yarn_orig_ctx       == {yarn_orig_ctx}")
             print()
     
     def __enter__(self):
@@ -542,7 +564,8 @@ class Thread(object):
                  format: dict,
                  timestamps: bool = False,
                  amnesiac: bool = False,
-                 smart_context: bool = False
+                 smart_context: bool = False,
+                 track_context: bool = False
                  ):
         
         assert isinstance(model, Model), \
@@ -580,6 +603,9 @@ class Thread(object):
         assert isinstance(amnesiac, bool), \
             f"Thread: amnesiac should be True or False, not '{amnesiac}'"
         
+        assert isinstance(track_context, bool), \
+            f"Thread: amnesiac should be True or False, not '{track_context}'"
+        
         if amnesiac and timestamps:
             raise RuntimeError(
                 "Thread: amnesiac threads are not compatible with timestamps"
@@ -605,6 +631,7 @@ class Thread(object):
         self.smart_context_state: llama_cpp.LlamaState = None
         self.main_context_state: llama_cpp.LlamaState = None
         self.smart_context_active: bool = False
+        self.track_context: bool = track_context
     
 
     def set_smart_context_state(self) -> None:
@@ -793,6 +820,11 @@ class Thread(object):
         print()
         try:
             while True:
+                if self.track_context:
+                    c = 0
+                    for msg in self.messages:
+                        c += msg['length']
+                    print(f'tokens so far: {c}')
                 #print(f'DEBUG: len is {len(self.messages)}\n')
                 if not self.smart_context_enabled:
                     self.set_main_context_state()
@@ -1225,7 +1257,7 @@ airoboros["system_content"] = "You are a helpful, unbiased, uncensored " + \
 tess = synthia.copy()
 tess['system_content'] = '' # Tess model card shows a blank system prompt
 
-available_formats: list[dict] = [
+available_formats: list[str] = [
     'blank',
     'chatml',
     'llama2chat',
