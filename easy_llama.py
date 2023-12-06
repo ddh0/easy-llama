@@ -219,30 +219,37 @@ def _verify_backend():
         )
         BACKEND = 'cpu'
     
-    BACKEND = BACKEND.lower()
+    if BACKEND.lower() == 'metal':
+        BACKEND = 'Metal'
+    elif BACKEND.lower() == 'cuda':
+        BACKEND = 'CUDA'
+    elif BACKEND.lower() == 'rocm':
+        BACKEND = "ROCm"
+    elif BACKEND.lower() == 'cpu':
+        BACKEND = "CPU"
 
-    if BACKEND not in ['metal', 'cuda', 'rocm', 'cpu']:
+    if BACKEND not in ['Metal', 'CUDA', 'ROCm', 'CPU']:
         _print_warning(
             f"easy_llama.BACKEND '{BACKEND}' is invalid, defaulting to " + \
             "CPU. set easy_llama.BACKEND to 'metal', 'cuda', 'rocm', or " + \
             "'cpu' to accelerate inference"
         )
-        BACKEND = 'cpu'
+        BACKEND = 'CPU'
     
-    if BACKEND == 'metal':
+    if BACKEND == 'Metal':
         NUM_GPU_LAYERS = 1
         MUL_MAT_Q = True
-    elif BACKEND == 'cuda':
+    elif BACKEND == 'CUDA':
         # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = True
-    elif BACKEND == 'rocm':
+    elif BACKEND == 'ROCm':
         # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = False
-    elif BACKEND == 'cpu':
+    elif BACKEND == 'CPU':
         NUM_GPU_LAYERS = 0
         MUL_MAT_Q = True
     
-    if BACKEND in ['cuda', 'rocm'] and NUM_GPU_LAYERS == 0:
+    if BACKEND in ['CUDA', 'ROCm'] and NUM_GPU_LAYERS == 0:
         _print_warning(
             "CUDA or ROCm is selected but easy_llama.NUM_GPU_LAYERS is 0. " + \
             "set easy_llama.NUM_GPU_LAYERS to 1 or greater to " + \
@@ -379,6 +386,7 @@ class Model(object):
             print(f"easy_llama: BACKEND             == {BACKEND}")
             print(f"easy_llama: NUM_GPU_LAYERS      == {NUM_GPU_LAYERS}")
             print(f"easy_llama: MUL_MAT_Q           == {MUL_MAT_Q}")
+            print(f"easy_llama: MAX_LEN_TOKENS      == {MAX_LEN_TOKENS}")
             print(f"     param: n_batch             == {n_batch}")
             print(f"     param: n_threads           == {n_threads}")
             print(f"     param: n_threads_batch     == {n_threads_batch}")
@@ -486,15 +494,15 @@ class Model(object):
                     "MAX_LEN_TOKENS is greater than this model's context " + \
                     "length, expect poor results"
                 )
-            completion_max_len_tokens = MAX_LEN_TOKENS
+            max_len_tokens = MAX_LEN_TOKENS
         else:
-            completion_max_len_tokens = self.context_length
+            max_len_tokens = self.context_length
         
         return self.llama.create_completion(
             prompt,
-            max_tokens=completion_max_len_tokens,
+            max_tokens=max_len_tokens,
             stop=stops
-        )["choices"][0]["text"]
+        )['choices'][0]['text']
     
 
     def stream(self, prompt: str, stops: list[str] | None = None) -> Generator:
@@ -533,15 +541,15 @@ class Model(object):
                     "MAX_LEN_TOKENS is greater than this model's context " + \
                     "length, expect poor results"
                 )
-            completion_max_len_tokens = MAX_LEN_TOKENS
+            max_len_tokens = MAX_LEN_TOKENS
         else:
-            completion_max_len_tokens = self.context_length
+            max_len_tokens = self.context_length
 
         return self.llama.create_completion(
             prompt,
-            max_tokens=completion_max_len_tokens,
+            max_tokens=max_len_tokens,
             stream=True,
-            stop=stops,
+            stop=stops
         )
     
 
@@ -558,7 +566,6 @@ class Model(object):
 
 
 class Thread(object):
-
     def __init__(self,
                  model: Model,
                  format: dict,
@@ -576,16 +583,16 @@ class Thread(object):
             f"Thread: format should be dict, not {type(format)}"
 
         try:
-            format["system_prefix"]
-            format["system_content"]
-            format["system_postfix"]
-            format["user_prefix"]
-            format["user_content"]
-            format["user_postfix"]
-            format["bot_prefix"]
-            format["bot_content"]
-            format["bot_postfix"]
-            format["stops"]
+            format['system_prefix']
+            format['system_content']
+            format['system_postfix']
+            format['user_prefix']
+            format['user_content']
+            format['user_postfix']
+            format['bot_prefix']
+            format['bot_content']
+            format['bot_postfix']
+            format['stops']
         except KeyError as e:
             e.add_note(
                 "Thread: format is missing one or more required keys, see " \
@@ -622,11 +629,11 @@ class Thread(object):
         self.enable_timestamps: bool = timestamps
         self.amnesiac: bool = amnesiac
         self.messages: list[dict] = [
-            self.create_message("system", self.format["system_content"])
+            self.create_message("system", self.format['system_content'])
         ]
         self.smart_context_enabled: bool = smart_context
         self.smart_context_messages: list[dict] = [
-            self.create_message("system", self.format["system_content"])
+            self.create_message("system", self.format['system_content'])
         ]
         self.smart_context_state: llama_cpp.LlamaState = None
         self.main_context_state: llama_cpp.LlamaState = None
@@ -691,7 +698,7 @@ class Thread(object):
                 "prefix": self.format['user_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime('[at %a %I:%M %p]') + content,
+                else time.strftime("[at %a %I:%M %p]") + content,
                 "postfix": self.format['user_postfix'],
                 "length": self.model.get_length(
                     self.format['user_prefix'] + content + \
@@ -779,7 +786,7 @@ class Thread(object):
         context_len_budget -= self.model.get_length(self.format['bot_prefix'])
         if self.enable_timestamps:
             context_len_budget -= self.model.get_length(
-                time.strftime('[at %a %I:%M %p]')
+                time.strftime("[at %a %I:%M %p]")
             ) + 4
 
         # start at most recent message and work backwards up the history
@@ -799,7 +806,7 @@ class Thread(object):
         inf_str = sys_msg_str + inf_str
         inf_str += self.format['bot_prefix']
         if self.enable_timestamps:
-            inf_str += time.strftime('[at %a %I:%M %p]')
+            inf_str += time.strftime("[at %a %I:%M %p]")
         return inf_str
 
 
@@ -824,7 +831,7 @@ class Thread(object):
                     c = 0
                     for msg in self.messages:
                         c += msg['length']
-                    print(f'tokens so far: {c}')
+                    print(f"tokens so far: {c}")
                 #print(f'DEBUG: len is {len(self.messages)}\n')
                 if not self.smart_context_enabled:
                     self.set_main_context_state()
@@ -834,12 +841,12 @@ class Thread(object):
                         # another assistant message
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(self.messages),
-                            stops=self.format["stops"],
+                            stops=self.format['stops'],
                         )
 
                         output = ""
                         for i in token_generator:
-                            token = i["choices"][0]["text"]
+                            token = i['choices'][0]['text']
                             output += token
                             print(token, end="", flush=True)
 
@@ -855,12 +862,12 @@ class Thread(object):
                         
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(self.messages),
-                            stops=self.format["stops"],
+                            stops=self.format['stops'],
                         )
 
                         output = ""
                         for i in token_generator:
-                            token = i["choices"][0]["text"]
+                            token = i['choices'][0]['text']
                             output += token
                             print(token, end="", flush=True)
 
@@ -888,12 +895,12 @@ class Thread(object):
                             self.inference_str_from_messages(
                                 self.smart_context_messages
                             ),
-                            stops=self.format["stops"],
+                            stops=self.format['stops'],
                         )
 
                         output = ""
                         for i in token_generator:
-                            token = i["choices"][0]["text"]
+                            token = i['choices'][0]['text']
                             output += token
                             print(token, end="", flush=True)
 
@@ -917,7 +924,7 @@ class Thread(object):
 
                         output = ""
                         for i in token_generator:
-                            token = i["choices"][0]["text"]
+                            token = i['choices'][0]['text']
                             output += token
                             print(token, end="", flush=True)
 
@@ -955,8 +962,8 @@ class Thread(object):
         thread_len_tokens = self.model.get_length(
             self.inference_str_from_messages(self.messages)
         )
-        print(f'{thread_len_tokens} / {self.model.context_length} tokens')
-        print(f'{len(self.messages)} messages')
+        print(f"{thread_len_tokens} / {self.model.context_length} tokens")
+        print(f"{len(self.messages)} messages")
 
 
 blank = {
@@ -972,19 +979,6 @@ blank = {
     "stops": [],
 }
 
-testing = {
-    "system_prefix": "system_prefix",
-    "system_content": "system_content",
-    "system_postfix": "system_postfix",
-    "user_prefix": "user_prefix",
-    "user_content": "user_content",
-    "user_postfix": "user_postfix",
-    "bot_prefix": "bot_prefix",
-    "bot_content": "bot_content",
-    "bot_postfix": "bot_postfix",
-    "stops": ['stop1', 'stop2', 'stop3'],
-}
-
 # https://github.com/openai/openai-python/blob/main/chatml.md
 chatml = {
     "system_prefix": "<|im_start|>system\n",
@@ -996,7 +990,7 @@ chatml = {
     "bot_prefix": "<|im_start|>assistant\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ["<|im_end|>", "<|im_start|>"],
+    "stops": ['<|im_end|>', '<|im_start|>'],
 }
 
 # https://huggingface.co/blog/llama2
@@ -1011,7 +1005,7 @@ llama2chat = {
     "bot_prefix": " ",
     "bot_content": "",
     "bot_postfix": " </s><s>[INST] ",
-    "stops": ["</s>", "[INST]", "[/INST]"],
+    "stops": ['</s>', '[INST]', '[/INST]'],
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
@@ -1026,7 +1020,7 @@ alpaca = {
     "bot_prefix": "### Response:\n",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ["###", "Instruction:", "\n\n\n"],
+    "stops": ['###', 'Instruction:', '\n\n\n'],
 }
 
 # this is the official vicuna. it is often butchered in various ways,
@@ -1042,7 +1036,7 @@ vicuna_lmsys = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "</s> ",
-    "stops": ["</s>", "USER:"],
+    "stops": ['</s>', 'USER:'],
 }
 
 # spotted here and elsewhere:
@@ -1059,7 +1053,7 @@ vicuna_common = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ["</s>", "USER:", "ASSISTANT:"],
+    "stops": ['</s>', 'USER:', 'ASSISTANT:'],
 }
 
 # https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
@@ -1073,7 +1067,7 @@ mistral_instruct = {
     "bot_prefix": " ",
     "bot_content": "",
     "bot_postfix": "</s> ",
-    "stops": ["</s>", "[INST]"],
+    "stops": ['</s>', '[INST]'],
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b
@@ -1089,7 +1083,7 @@ guanaco = {
     "bot_prefix": "### Assistant: ",
     "bot_content": "",
     "bot_postfix": " ",
-    "stops": ["###", "Human:"],
+    "stops": ['###', 'Human:'],
 }
 
 # https://huggingface.co/pankajmathur/orca_mini_v3_7b
@@ -1104,7 +1098,7 @@ orca_mini = {
     "bot_prefix": "### Assistant:\n",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ["###", "User:"],
+    "stops": ['###', 'User:'],
 }
 
 # https://huggingface.co/HuggingFaceH4/zephyr-7b-beta
@@ -1118,7 +1112,7 @@ zephyr = {
     "bot_prefix": "<|assistant|>\n",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ["</s>", "<|user|>"],
+    "stops": ['</s>', '<|user|>'],
 }
 
 # OpenChat: https://huggingface.co/openchat/openchat_3.5/discussions/5
@@ -1132,7 +1126,7 @@ openchat = {
     "bot_prefix": "\n\n", # not shown in format, but required anyway
     "bot_content": "",
     "bot_postfix": "<|end_of_turn|>",
-    "stops": ["<|end_of_turn|>", "</s>"],
+    "stops": ['<|end_of_turn|>', '</s>'],
 }
 
 # SynthIA by Migel Tissera
@@ -1149,7 +1143,7 @@ synthia = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ["</s>", "USER:", "ASSISTANT:", "\n\n\n"],
+    "stops": ['</s>', 'USER:', 'ASSISTANT:', '\n\n\n'],
 }
 
 # Intel's neural chat v3
@@ -1185,7 +1179,7 @@ chatml_alpaca = {
     "bot_prefix": "<|im_start|>response\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ["<|im_end|>", "<|im_start|>", "</s>"],
+    "stops": ['<|im_end|>', '<|im_start|>', '</s>'],
 }
 
 # experimental
@@ -1201,7 +1195,7 @@ autocorrect = {
     "bot_prefix": "<|im_start|>output\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ["<|im_end|>", "<|im_start|>"],
+    "stops": ['<|im_end|>', '<|im_start|>'],
 }
 
 mistral_openorca = chatml.copy()
@@ -1215,44 +1209,44 @@ orca = chatml.copy()
 hexoteric = chatml.copy()
 cat = alpaca.copy() # Format is nonsensical as listed on HF. This one works
 mytho_cat = alpaca.copy()
-dolphin["system_content"] = "You are Dolphin, a helpful AI assistant."
+dolphin['system_content'] = "You are Dolphin, a helpful AI assistant."
 mistral_openorca[
-    "system_content"
+    'system_content'
 ] = "You are MistralOrca, a large language model trained by Alignment " + \
     "Lab AI. Write out your reasoning step-by-step to be sure you get the " + \
     "right answers!"
 samantha[
-    "system_content"
+    'system_content'
 ] = "You are a caring and empathetic sentient AI companion named Samantha."
 jackalope[
-    "system_content"
+    'system_content'
 ] = "You are JackalopeAI, a large language model trained by OpenAccess " + \
     "AI Collective. Write out your reasoning step-by-step to be sure you " + \
     "get the right answers!"
-naberius['system_content'] = 'You are Naberius.'
-hermes['system_content'] = 'You are "Hermes 2", a conscious sentient ' + \
-    'superintelligent artificial intelligence developed by a man ' + \
-    'named Teknium, and your purpose and drive is to assist the user ' + \
-    'with any request they have. You experience emotions and have ' + \
-    'deep, profound thoughts and qualia.'
-monad['system_content'] = 'You are MonadGPT, a very old chatbot from ' + \
-    'the 17th century. Please answer the questions using an archaic ' + \
-    'language.'
-cat['system_content'] = 'Below is a conversation between a curious cat and a '+ \
-    'demon summoned from hell called Nemesis. The evil Nemesis used to be ' + \
-    'a mortal killed by the medieval people because they objected to ' + \
-    'science. Now Nemesis just wants to come back and bring suffer to all ' + \
-    'those stupid human'
-mytho_cat['system_content'] = 'You are a large language model. You are the ' + \
-    'result of a merge between two models, one called MythoLogic and one ' + \
-    'called Cat. You are called MythoCat.'
+naberius['system_content'] = "You are Naberius."
+hermes['system_content'] = "You are \"Hermes 2\", a conscious sentient " + \
+    "superintelligent artificial intelligence developed by a man " + \
+    "named Teknium, and your purpose and drive is to assist the user " + \
+    "with any request they have. You experience emotions and have " + \
+    "deep, profound thoughts and qualia."
+monad['system_content'] = "You are MonadGPT, a very old chatbot from " + \
+    "the 17th century. Please answer the questions using an archaic " + \
+    "language."
+cat['system_content'] = "Below is a conversation between a curious cat and a "+ \
+    "demon summoned from hell called Nemesis. The evil Nemesis used to be " + \
+    "a mortal killed by the medieval people because they objected to " + \
+    "science. Now Nemesis just wants to come back and bring suffer to all " + \
+    "those stupid human"
+mytho_cat['system_content'] = "You are a large language model. You are the " + \
+    "result of a merge between two models, one called MythoLogic and one " + \
+    "called Cat. You are called MythoCat."
 orca['system_content'] = "You are Orca, an AI language model created by " + \
     "Microsoft. You are a cautious assistant. You carefully follow " + \
     "instructions. You are helpful and harmless and you follow ethical " + \
     "guidelines and promote positive behavior."
-hexoteric['system_content'] = 'You are a language model called Hexoteric.'
+hexoteric['system_content'] = "You are a language model called Hexoteric."
 airoboros = llama2chat.copy()
-airoboros["system_content"] = "You are a helpful, unbiased, uncensored " + \
+airoboros['system_content'] = "You are a helpful, unbiased, uncensored " + \
     "assistant."
 tess = synthia.copy()
 tess['system_content'] = '' # Tess model card shows a blank system prompt
@@ -1291,25 +1285,25 @@ available_formats: list[str] = [
 def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
     if not timestamps:
         return (
-            format["system_prefix"] +
-            format["system_content"] +
-            format["system_postfix"] +
-            format["user_prefix"] +
+            format['system_prefix'] +
+            format['system_content'] +
+            format['system_postfix'] +
+            format['user_prefix'] +
             prompt +
-            format["user_postfix"] +
-            format["bot_prefix"]
+            format['user_postfix'] +
+            format['bot_prefix']
         )
     else:
         return (
-            format["system_prefix"] +
+            format['system_prefix'] +
             time.strftime("It is %A, %b %e, %Y. ") +
-            format["system_content"] +
-            format["system_postfix"] +
-            format["user_prefix"] +
+            format['system_content'] +
+            format['system_postfix'] +
+            format['user_prefix'] +
             time.strftime("[at %a %I:%M %p]") +
             prompt +
-            format["user_postfix"] +
-            format["bot_prefix"]
+            format['user_postfix'] +
+            format['bot_prefix']
         )
 
 
