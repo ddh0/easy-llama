@@ -312,49 +312,52 @@ class Model(object):
 
         self.metadata = _GGUFReader.load_metadata(self, model_path)
 
-        if 'stablelm.context_length' in self.metadata:
-            n_ctx_train = self.metadata['stablelm.context_length']
-        elif 'llama.context_length' in self.metadata:
+        if 'llama.context_length' in self.metadata:
             n_ctx_train = self.metadata['llama.context_length']
+        elif 'stablelm.context_length' in self.metadata:
+            n_ctx_train = self.metadata['stablelm.context_length']
         else:
             raise KeyError("GGUF file does not specify a context length")
+        
+        if 'llama.rope.freq_base' in self.metadata:
+            rope_freq_base_train = self.metadata['llama.rope.freq_base']
+        elif 'stablelm.rope.freq_base' in self.metadata:
+            rope_freq_base_train = self.metadata['stablelm.rope.freq_base']
+        else:
+            raise KeyError("GGUF file does not specify a rope frequency base'")
 
         if context_length is None:
-            context_length = n_ctx_train
+            self.context_length = n_ctx_train
+            ctx_ratio = 1.0
             rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
-            #rope_freq_scale = 0
-            #yarn_attn_factor = 1
-            #yarn_ext_factor = -1
-            yarn_orig_ctx = 0
+            rope_freq_base = 0
         else:
             if context_length > n_ctx_train:
 
-                # automatically apply dynamic YaRN scaling if
+                # automatically apply NTK scaling if
                 # requested context length > n_ctx_train
 
+                ctx_ratio = context_length/n_ctx_train
+
                 rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_YARN
-                #rope_freq_scale = context_length/n_ctx_train
-                #yarn_attn_factor = context_length/n_ctx_train
-                #yarn_ext_factor = context_length/n_ctx_train
-                #yarn_orig_ctx = context_length
+                rope_freq_base = ctx_ratio*rope_freq_base_train
                 
                 _print_warning(
                     'chosen context length is ' + \
                     'greater than native context length ' + \
                     f'({context_length} > {n_ctx_train}), ' + \
-                    'automatically applying YaRN scaling at ' + \
-                    '{rope_freq_scale}'
+                    'automatically applying NTK scaling at ' + \
+                    f'factor {ctx_ratio}'
                     )
             else:
                 # Default values as specified in Llama.__init__()
                 rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
-                #rope_freq_scale = 0
-                #yarn_attn_factor = 1
-                #yarn_ext_factor = -1
-                #yarn_orig_ctx = 0
+                rope_freq_base = 0
+                ctx_ratio = 1.0
+
             self.context_length = context_length
 
-        n_batch = os.cpu_count() * 64
+        n_batch = os.cpu_count() * 16
         n_threads = max(os.cpu_count()//2, 1)
         n_threads_batch = os.cpu_count()
 
@@ -373,30 +376,25 @@ class Model(object):
                 n_threads=n_threads,
                 n_threads_batch=n_threads_batch,
                 rope_scaling_type=rope_scaling_type,
-                #rope_freq_scale=rope_freq_scale,
-                #yarn_attn_factor=yarn_attn_factor,
-                #yarn_ext_factor=yarn_ext_factor,
-                #yarn_orig_ctx=yarn_orig_ctx,
+                rope_freq_base=rope_freq_base,
                 mul_mat_q=MUL_MAT_Q,
                 verbose=VERBOSE,
             )
 
             print("----------------------------------------------------------")
             print(f"{model_path}")
-            print(f"easy_llama: BACKEND             == {BACKEND}")
-            print(f"easy_llama: NUM_GPU_LAYERS      == {NUM_GPU_LAYERS}")
-            print(f"easy_llama: MUL_MAT_Q           == {MUL_MAT_Q}")
-            print(f"easy_llama: MAX_LEN_TOKENS      == {MAX_LEN_TOKENS}")
-            print(f"     param: n_batch             == {n_batch}")
-            print(f"     param: n_threads           == {n_threads}")
-            print(f"     param: n_threads_batch     == {n_threads_batch}")
-            print(f"     model: n_ctx_train         == {n_ctx_train}")
-            print(f"     param: self.context_length == {self.context_length}")
-            print(f"     param: rope_scaling_type   == {rope_scaling_type}")
-            #print(f"     param: rope_freq_scale     == {rope_freq_scale}")
-            #print(f"     param: yarn_attn_factor    == {yarn_attn_factor}")
-            #print(f"     param: yarn_ext_factor     == {yarn_ext_factor}")
-            #print(f"     param: yarn_orig_ctx       == {yarn_orig_ctx}")
+            print(f"easy_llama: BACKEND              == {BACKEND}")
+            print(f"easy_llama: NUM_GPU_LAYERS       == {NUM_GPU_LAYERS}")
+            print(f"easy_llama: MUL_MAT_Q            == {MUL_MAT_Q}")
+            print(f"easy_llama: MAX_LEN_TOKENS       == {MAX_LEN_TOKENS}")
+            print(f"     param: n_batch              == {n_batch}")
+            print(f"     param: n_threads            == {n_threads}")
+            print(f"     param: n_threads_batch      == {n_threads_batch}")
+            print(f"     model: n_ctx_train          == {n_ctx_train}")
+            print(f"     param: self.context_length  == {self.context_length}")
+            print(f"     model: rope_freq_base_train == {rope_freq_base_train}")
+            print(f"     param: rope_freq_base       == {rope_freq_base}")
+            print(f"      info: ctx_ratio            == {ctx_ratio}")
             print()
     
     def __enter__(self):
@@ -408,6 +406,9 @@ class Model(object):
         # however, ez.Model object might still exist outside of a `with` block
         # unsure if/how to fix that
         self.llama = None
+        del self.llama
+        self = None
+        del self
     
     def __call__(self, prompt: str, stops: list[str] | None = None) -> str:
         """
@@ -816,7 +817,7 @@ class Thread(object):
 
         self.messages.append(self.create_message("user", prompt))
         output = self.model.generate(
-            self.inference_str_from_messages(), stops=self.format["stops"]
+            self.inference_str_from_messages(self.messages), stops=self.format["stops"]
         )
         self.messages.append(self.create_message("bot", output))
 
