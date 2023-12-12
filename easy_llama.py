@@ -19,12 +19,13 @@ from typing import Generator
 from enum import IntEnum
 
 BACKEND = None                # Modifies NUM_GPU_LAYERS to enable or disable acceleration
-NUM_GPU_LAYERS = 0            # Default value only. Will be changed below or at runtime
-MUL_MAT_Q = True              # Default value only. Will be changed below
+NUM_GPU_LAYERS = 0            # Default value only. Will be changed at runtime or per BACKEND
+MUL_MAT_Q = True              # Default value only. Will be changed per BACKEND
+MMAP = True                   # Default value only. Will be changed per BACKEND
+MLOCK = False                 # Default value only. Will be changed per BACKEND
 MAX_LEN_TOKENS: int = None    # None -> Use model context length
 VERBOSE: bool = False         # Do not suppress llama.cpp console output
 SEED: int = -1                # -1 -> Random seed
-
 
 class _GGUFReader:
     """
@@ -202,7 +203,7 @@ def _verify_backend():
     (and maybe NUM_GPU_LAYERS) before loading any model.
     """
 
-    global BACKEND, NUM_GPU_LAYERS, MUL_MAT_Q
+    global BACKEND, NUM_GPU_LAYERS, MUL_MAT_Q, MMAP, MLOCK
 
     if BACKEND is None:
         _print_warning(
@@ -239,15 +240,23 @@ def _verify_backend():
     if BACKEND == 'Metal':
         NUM_GPU_LAYERS = 1
         MUL_MAT_Q = True
+        MMAP = False
+        MLOCK = True
     elif BACKEND == 'CUDA':
         # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = True
+        MMAP = False
+        MLOCK = False
     elif BACKEND == 'ROCm':
         # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = False
+        MMAP = False
+        MLOCK = False
     elif BACKEND == 'CPU':
         NUM_GPU_LAYERS = 0
         MUL_MAT_Q = True
+        MMAP = True
+        MLOCK = False
     
     if BACKEND in ['CUDA', 'ROCm'] and NUM_GPU_LAYERS == 0:
         _print_warning(
@@ -369,8 +378,8 @@ class Model(object):
                 n_ctx=self.context_length,
                 n_gpu_layers=NUM_GPU_LAYERS,
                 seed=SEED,
-                use_mmap=False,
-                use_mlock=False,
+                use_mmap=MMAP,
+                use_mlock=MLOCK,
                 logits_all=False,
                 n_batch=n_batch,
                 n_threads=n_threads,
@@ -386,6 +395,8 @@ class Model(object):
             print(f"easy_llama: BACKEND              == {BACKEND}")
             print(f"easy_llama: NUM_GPU_LAYERS       == {NUM_GPU_LAYERS}")
             print(f"easy_llama: MUL_MAT_Q            == {MUL_MAT_Q}")
+            print(f"easy_llama: MMAP                 == {MMAP}")
+            print(f"easy_llama: MLOCK                == {MLOCK}")
             print(f"easy_llama: MAX_LEN_TOKENS       == {MAX_LEN_TOKENS}")
             print(f"     param: n_batch              == {n_batch}")
             print(f"     param: n_threads            == {n_threads}")
