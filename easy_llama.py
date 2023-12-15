@@ -2,11 +2,12 @@
 # Python 3.11.6
 
 """
-Natural text generation in Python, made easy
+Text generation in Python, made easy
 
 https://github.com/ddh0/easy-llama/
 """
 
+# TODO: add ['tokens'] attr to message objs
 # TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
 # TODO: function to transfer a list of messages between disk / models, handle token count
 # TODO: Model.next_candidates() -> list[str]
@@ -18,14 +19,26 @@ import struct
 from typing import Generator
 from enum import IntEnum
 
-BACKEND = None                # Modifies NUM_GPU_LAYERS to enable or disable acceleration
-NUM_GPU_LAYERS = 0            # Default value only. Will be changed at runtime or per BACKEND
-MUL_MAT_Q = True              # Default value only. Will be changed per BACKEND
-MMAP = True                   # Default value only. Will be changed per BACKEND
-MLOCK = False                 # Default value only. Will be changed per BACKEND
-MAX_LEN_TOKENS: int = None    # None -> Use model context length
-VERBOSE: bool = False         # Do not suppress llama.cpp console output
-SEED: int = -1                # -1 -> Random seed
+
+BACKEND:        str  = None       # Modifies NUM_GPU_LAYERS to enable or disable acceleration
+NUM_GPU_LAYERS: int  = 0          # Default value only. Will be changed at runtime or per BACKEND
+MUL_MAT_Q:      bool = True       # Default value only. Will be changed per BACKEND
+MMAP:           bool = True       # Default value only. Will be changed per BACKEND
+MLOCK:          bool = False      # Default value only. Will be changed per BACKEND
+VERBOSE:        bool = False      # Do not suppress llama.cpp console output
+SEED:           int  = -1         # -1 -> Random seed
+
+
+# Defaults copied from Llama.create_completion()
+# Some parameters are not exposed
+MAX_LEN_TOKENS:   int   = None    # None -> Use model context length
+TEMP:             float = 0.8
+TOP_P:            float = 0.95
+MIN_P:            float = 0.05
+PRESENCE_PENALTY: float = 0.0
+REPEAT_PENALTY:   float = 1.1
+TOP_K:            int   = 40
+
 
 class _GGUFReader:
     """
@@ -241,7 +254,7 @@ def _verify_backend():
         NUM_GPU_LAYERS = 1
         MUL_MAT_Q = True
         MMAP = False
-        MLOCK = True
+        MLOCK = False
     elif BACKEND == 'CUDA':
         # Don't set NUM_GPU_LAYERS, let the user configure it
         MUL_MAT_Q = True
@@ -513,6 +526,12 @@ class Model(object):
         return self.llama.create_completion(
             prompt,
             max_tokens=max_len_tokens,
+            temperature=TEMP,
+            top_p=TOP_P,
+            min_p=MIN_P,
+            presence_penalty=PRESENCE_PENALTY,
+            repeat_penalty=REPEAT_PENALTY,
+            top_k=TOP_K,
             stop=stops
         )['choices'][0]['text']
     
@@ -560,6 +579,12 @@ class Model(object):
         return self.llama.create_completion(
             prompt,
             max_tokens=max_len_tokens,
+            temperature=TEMP,
+            top_p=TOP_P,
+            min_p=MIN_P,
+            presence_penalty=PRESENCE_PENALTY,
+            repeat_penalty=REPEAT_PENALTY,
+            top_k=TOP_K,
             stream=True,
             stop=stops
         )
@@ -687,6 +712,8 @@ class Thread(object):
         assert role.lower() in ['system', 'user', 'bot'], \
             "create_message: role should be 'system', 'user', or " + \
             f"'bot', not '{role.lower()}'"
+        
+        content: str
 
         assert isinstance(content, str), \
             f"create_message: content should be str, not {type(content)}"
@@ -698,10 +725,13 @@ class Thread(object):
                     time.strftime("It is %I:%M %p on %A, %b %e, %Y. ")
                      + content,
                 "postfix": self.format['system_postfix'],
-                "length": self.model.get_length(
-                    self.format['system_prefix']
-                    + content
-                    + self.format['system_postfix']
+                "tokens": self.model.llama.tokenize(
+                    self.format['system_prefix'].encode() + \
+                    content.encode() + \
+                    self.format['system_postfix'].encode()
+                ),
+                "content_tokens": self.model.llama.tokenize(
+                    content.encode()
                 ),
             }
         
@@ -712,9 +742,13 @@ class Thread(object):
                 if not self.enable_timestamps
                 else time.strftime("[at %a %I:%M %p]") + content,
                 "postfix": self.format['user_postfix'],
-                "length": self.model.get_length(
-                    self.format['user_prefix'] + content + \
-                        self.format['user_postfix']
+                "tokens": self.model.llama.tokenize(
+                    self.format['user_prefix'].encode() + \
+                    content.encode() + \
+                    self.format['user_postfix'].encode()
+                ),
+                "content_tokens": self.model.llama.tokenize(
+                    content.encode()
                 ),
             }
         
@@ -725,9 +759,13 @@ class Thread(object):
                 if not self.enable_timestamps
                 else time.strftime('[at %a %I:%M %p]') + content,
                 "postfix": self.format['bot_postfix'],
-                "length": self.model.get_length(
-                    self.format['bot_prefix'] + content + \
-                        self.format['bot_postfix']
+                "tokens": self.model.llama.tokenize(
+                    self.format['bot_prefix'].encode() + \
+                    content.encode() + \
+                    self.format['bot_postfix'].encode()
+                ),
+                "content_tokens": self.model.llama.tokenize(
+                    content.encode()
                 ),
             }
 
@@ -750,14 +788,14 @@ class Thread(object):
             
         system_message = messages[0]
         context_len_budget = 1280 # TODO
-        context_len_budget -= system_message['length']
+        context_len_budget -= len(system_message['tokens'])
 
         self.smart_context_messages: list[dict] = [system_message]
 
         # iterate over messages from newest to oldest until
         # context_len_budget is exceeded
         for message in reversed(messages[1:]):
-            context_len_budget -= message['length']
+            context_len_budget -= len(message['tokens'])
             if context_len_budget <= 0:
                 break
             # keep sys msg at index 0
@@ -794,7 +832,7 @@ class Thread(object):
         
         # bos + eos + off-by-one errors == 3
         context_len_budget = self.model.context_length - 3
-        context_len_budget -= system_message['length']
+        context_len_budget -= len(system_message['tokens'])
         context_len_budget -= self.model.get_length(self.format['bot_prefix'])
         if self.enable_timestamps:
             context_len_budget -= self.model.get_length(
@@ -806,7 +844,7 @@ class Thread(object):
         # break without including that message
         inf_str = ''
         for message in reversed(messages[1:]):
-            context_len_budget -= message['length']
+            context_len_budget -= len(message['tokens'])
             if context_len_budget <= 0:
                 break
             msg_str = (
@@ -842,8 +880,10 @@ class Thread(object):
                 if self.track_context:
                     c = 0
                     for msg in self.messages:
-                        c += msg['length']
-                    print(f"tokens so far: {c}")
+                        c += len(msg['tokens'])
+                    #print(f"total tokens so far: {c}")
+                    last_toks: list[int] = self.messages[-1:][0]['content_tokens']
+                    print(f'last msg content tokens: {last_toks}\n')
                 #print(f'DEBUG: len is {len(self.messages)}\n')
                 if not self.smart_context_enabled:
                     self.set_main_context_state()
@@ -1219,6 +1259,7 @@ hermes = chatml.copy()
 monad = chatml.copy()
 orca = chatml.copy()
 hexoteric = chatml.copy()
+orcamaid = chatml.copy()
 cat = alpaca.copy() # Format is nonsensical as listed on HF. This one works
 mytho_cat = alpaca.copy()
 dolphin['system_content'] = "You are Dolphin, a helpful AI assistant."
@@ -1257,6 +1298,12 @@ orca['system_content'] = "You are Orca, an AI language model created by " + \
     "instructions. You are helpful and harmless and you follow ethical " + \
     "guidelines and promote positive behavior."
 hexoteric['system_content'] = "You are a language model called Hexoteric."
+orcamaid['system_content'] = "You are OrcaMaid, a super-intelligent, " + \
+    "unbiased, and unfiltered AI created by the open-source community. " + \
+    "You must remember to think slowly and carefully during all your " + \
+    "responses, so as to avoid logical errors."
+orcamaid['stops'].append('user\n')
+orcamaid['stops'].append('assistant\n')
 airoboros = llama2chat.copy()
 airoboros['system_content'] = "You are a helpful, unbiased, uncensored " + \
     "assistant."
@@ -1290,7 +1337,8 @@ available_formats: list[str] = [
     'synthia',
     'tess',
     'orca',
-    'hexoteric'
+    'hexoteric',
+    'orcamaid'
 ]
 
 
