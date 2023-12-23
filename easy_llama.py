@@ -7,7 +7,6 @@ Text generation in Python, made easy
 https://github.com/ddh0/easy-llama/
 """
 
-# TODO: add ['tokens'] attr to message objs
 # TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
 # TODO: function to transfer a list of messages between disk / models, handle token count
 # TODO: Model.next_candidates() -> list[str]
@@ -29,8 +28,7 @@ VERBOSE:        bool = False      # Do not suppress llama.cpp console output
 SEED:           int  = -1         # -1 -> Random seed
 
 
-# Defaults copied from Llama.create_completion()
-# Some parameters are not exposed
+# Global defaults that can be overriden using SamplerSettings context manager
 MAX_LEN_TOKENS:   int   = None    # None -> Use model context length
 TEMP:             float = 0.8
 TOP_P:            float = 0.95
@@ -209,8 +207,8 @@ def _print_warning(text: str) -> str:
 
 def _verify_backend():
     """
-    Verify that BACKEND is valid,
-    and modify NUM_GPU_LAYERS and mul_mat_q if required
+    Verify that BACKEND is valid and modify NUM_GPU_LAYERS
+    and MUL_MAT_Q as necessary
 
     This is not done on import because user must be able to set backend
     (and maybe NUM_GPU_LAYERS) before loading any model.
@@ -224,14 +222,14 @@ def _verify_backend():
             "set easy_llama.BACKEND to 'metal', 'cuda', 'rocm', or 'cpu' " + \
             "to accelerate inference"
         )
-        BACKEND = 'cpu'
+        BACKEND = 'CPU'
     
     if not isinstance(BACKEND, str):
         _print_warning(
             "easy_llama: easy_llama.BACKEND must be a string, " + \
             f"not {type(BACKEND)}. defaulting to CPU"
         )
-        BACKEND = 'cpu'
+        BACKEND = 'CPU'
     
     if BACKEND.lower() == 'metal':
         BACKEND = 'Metal'
@@ -356,20 +354,20 @@ class Model(object):
         else:
             if context_length > n_ctx_train:
 
-                # automatically apply NTK scaling if
+                # automatically apply linear RoPE freq scaling if
                 # requested context length > n_ctx_train
 
                 ctx_ratio = context_length/n_ctx_train
 
-                rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_YARN
+                rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
                 rope_freq_base = ctx_ratio*rope_freq_base_train
                 
                 _print_warning(
                     'chosen context length is ' + \
                     'greater than native context length ' + \
                     f'({context_length} > {n_ctx_train}), ' + \
-                    'automatically applying NTK scaling at ' + \
-                    f'factor {ctx_ratio}'
+                    'automatically applying RoPE frequency' + \
+                    f'scaling at factor {ctx_ratio}'
                     )
             else:
                 # Default values as specified in Llama.__init__()
@@ -443,16 +441,16 @@ class Model(object):
     def trim(self, text: str, overwrite: str = None) -> str:
         """
         Trim the given text to the context length of this model,
-        leaving room for three extra tokens.
+        leaving room for two extra tokens.
 
         Optionally overwrite the oldest tokens with the text given in the
         'overwrite'parameter, which is useful for keeping the system prompt
         in context.
 
         Does nothing if the text is equal to or shorter than
-        (context_length - 3).
+        (context_length - 2).
         """
-        trim_length = self.context_length - 3
+        trim_length = self.context_length - 2
         tokens_list = self.llama.tokenize(
             text.encode("utf-8", errors="ignore")
         )
@@ -497,8 +495,8 @@ class Model(object):
         generation early
         """
 
-        assert isinstance(prompt, str), "prompt should be string, not " \
-            + f"{type(prompt)}"
+        assert isinstance(prompt, str), "prompt should be string, not " + \
+            f"{type(prompt)}"
         if isinstance(stops, list):
             for item in stops:
                 assert isinstance(
@@ -509,9 +507,10 @@ class Model(object):
                 stops is None
             ), f"stops should be list[str] or None, not {type(stops)}"
 
-        assert isinstance(MAX_LEN_TOKENS, (int, type(None))), \
-            "easy_llama.MAX_LEN_TOKENS should be int or None, not " + \
-            f"{type(MAX_LEN_TOKENS)}"
+        assert isinstance(
+            MAX_LEN_TOKENS, (int, type(None))
+            ), "easy_llama.MAX_LEN_TOKENS should be int or None, not " + \
+                f"{type(MAX_LEN_TOKENS)}"
 
         if MAX_LEN_TOKENS is not None:
             if MAX_LEN_TOKENS > self.context_length:
@@ -522,6 +521,17 @@ class Model(object):
             max_len_tokens = MAX_LEN_TOKENS
         else:
             max_len_tokens = self.context_length
+
+        if VERBOSE:
+            print(f'easy_llama: Model.generate will use the following parameters')
+            print(f'easy_llama.MAX_LEN_TOKENS   == {MAX_LEN_TOKENS}')
+            print(f'easy_llama.TEMP             == {TEMP}')
+            print(f'easy_llama.TOP_P            == {TOP_P}')
+            print(f'easy_llama.MIN_P            == {MIN_P}')
+            print(f'easy_llama.PRESENCE_PENALTY == {PRESENCE_PENALTY}')
+            print(f'easy_llama.REPEAT_PENALTY   == {REPEAT_PENALTY}')
+            print(f'easy_llama.TOP_K            == {TOP_K}')
+            print()
         
         return self.llama.create_completion(
             prompt,
@@ -536,7 +546,10 @@ class Model(object):
         )['choices'][0]['text']
     
 
-    def stream(self, prompt: str, stops: list[str] | None = None) -> Generator:
+    def stream(
+            self, prompt: str, stops: list[str] | None = None
+        ) -> Generator:
+
         """
         Given a prompt, return a generator that yields dicts containing tokens.
 
@@ -576,6 +589,17 @@ class Model(object):
         else:
             max_len_tokens = self.context_length
 
+        if VERBOSE:
+            print(f'easy_llama: Model.generate will use the following parameters')
+            print(f'easy_llama.MAX_LEN_TOKENS   == {MAX_LEN_TOKENS}')
+            print(f'easy_llama.TEMP             == {TEMP}')
+            print(f'easy_llama.TOP_P            == {TOP_P}')
+            print(f'easy_llama.MIN_P            == {MIN_P}')
+            print(f'easy_llama.PRESENCE_PENALTY == {PRESENCE_PENALTY}')
+            print(f'easy_llama.REPEAT_PENALTY   == {REPEAT_PENALTY}')
+            print(f'easy_llama.TOP_K            == {TOP_K}')
+            print()
+
         return self.llama.create_completion(
             prompt,
             max_tokens=max_len_tokens,
@@ -600,6 +624,103 @@ class Model(object):
         # LLama.logits_to_logprobs()[tok_id]
         # Llama.eval(tokens_list_ints)
         pass
+
+class SamplerSettings(object):
+    """
+    Optional context manager that manages sampler settings used for
+    generations
+    """
+
+    def __init__(
+            self,
+            max_len_tokens:   int   = None,
+            temp:             float = 0.8,
+            top_p:            float = 0.95,
+            min_p:            float = 0.05,
+            presence_penalty: float = 0.0,
+            repeat_penalty:   float = 1.1,
+            top_k:            int   = 40
+        ):
+
+        if max_len_tokens is None and MAX_LEN_TOKENS is not None:
+            self.max_len_tokens = MAX_LEN_TOKENS
+        else:
+            self.max_len_tokens = max_len_tokens
+        self.temp             = temp
+        self.top_p            = top_p
+        self.min_p            = min_p
+        self.presence_penalty = presence_penalty
+        self.repeat_penalty   = repeat_penalty
+        self.top_k            = top_k
+
+
+    def __enter__(self):
+        # Set the global generation parameters to the desired settings
+
+        global MAX_LEN_TOKENS, TEMP, TOP_P, MIN_P, PRESENCE_PENALTY, \
+               REPEAT_PENALTY, TOP_K
+        
+        self.orig_max_len_tokens   = MAX_LEN_TOKENS
+        self.orig_temp             = TEMP
+        self.orig_top_p            = TOP_P
+        self.orig_min_p            = MIN_P
+        self.orig_presence_penalty = PRESENCE_PENALTY
+        self.orig_repeat_penalty   = REPEAT_PENALTY
+        self.orig_top_k            = TOP_K
+        
+        MAX_LEN_TOKENS   = self.max_len_tokens
+        TEMP             = self.temp
+        TOP_P            = self.top_p
+        MIN_P            = self.min_p
+        PRESENCE_PENALTY = self.presence_penalty
+        REPEAT_PENALTY   = self.repeat_penalty
+        TOP_K            = self.top_k
+
+        return self
+    
+    def __exit__(self, *_):
+        # Set the global sampling parameters back to how they were
+
+        global MAX_LEN_TOKENS, TEMP, TOP_P, MIN_P, PRESENCE_PENALTY, \
+               REPEAT_PENALTY, TOP_K
+
+        MAX_LEN_TOKENS   = self.orig_max_len_tokens
+        TEMP             = self.orig_temp
+        TOP_P            = self.orig_top_p
+        MIN_P            = self.orig_min_p
+        PRESENCE_PENALTY = self.orig_presence_penalty
+        REPEAT_PENALTY   = self.orig_repeat_penalty
+        TOP_K            = self.orig_top_k
+
+GreedyDecoding = SamplerSettings(
+    temp=0.0,
+    repeat_penalty=1.0
+)
+
+DefaultSampling = SamplerSettings()
+
+MinPSampling = SamplerSettings(
+    top_p = 1.0,
+    min_p = 0.1,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
+ContrastiveSearch = SamplerSettings(
+    top_p = 1.0,
+    min_p = 0.0,
+    presence_penalty = 0.5,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
+RandomSampling = SamplerSettings(
+    temp = float(sys.maxsize),
+    top_p = 1.0,
+    min_p = 0.0,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
 
 
 class Thread(object):
@@ -722,7 +843,7 @@ class Thread(object):
             return {
                 "prefix": self.format['system_prefix'],
                 "content": content if not self.enable_timestamps else
-                    time.strftime("It is %I:%M %p on %A, %b %e, %Y. ")
+                    time.strftime("[system message at %a %I:%M %p]:")
                      + content,
                 "postfix": self.format['system_postfix'],
                 "tokens": self.model.llama.tokenize(
@@ -740,7 +861,7 @@ class Thread(object):
                 "prefix": self.format['user_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime("[at %a %I:%M %p]") + content,
+                else time.strftime("[new message sent at %a %I:%M %p]:") + content,
                 "postfix": self.format['user_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['user_prefix'].encode() + \
@@ -757,7 +878,7 @@ class Thread(object):
                 "prefix": self.format['bot_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime('[at %a %I:%M %p]') + content,
+                else time.strftime('[new message sent at %a %I:%M %p]:') + content,
                 "postfix": self.format['bot_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['bot_prefix'].encode() + \
@@ -836,7 +957,7 @@ class Thread(object):
         context_len_budget -= self.model.get_length(self.format['bot_prefix'])
         if self.enable_timestamps:
             context_len_budget -= self.model.get_length(
-                time.strftime("[at %a %I:%M %p]")
+                time.strftime("[new message sent at %a %I:%M %p]:")
             ) + 4
 
         # start at most recent message and work backwards up the history
@@ -856,7 +977,7 @@ class Thread(object):
         inf_str = sys_msg_str + inf_str
         inf_str += self.format['bot_prefix']
         if self.enable_timestamps:
-            inf_str += time.strftime("[at %a %I:%M %p]")
+            inf_str += time.strftime("[new message sent at %a %I:%M %p]:")
         return inf_str
 
 
@@ -1014,7 +1135,11 @@ class Thread(object):
         thread_len_tokens = self.model.get_length(
             self.inference_str_from_messages(self.messages)
         )
+        context_used_percentage = (
+            round((thread_len_tokens/self.model.context_length)*100)
+            )
         print(f"{thread_len_tokens} / {self.model.context_length} tokens")
+        print(f"{context_used_percentage}% of context used")
         print(f"{len(self.messages)} messages")
 
 
@@ -1042,7 +1167,7 @@ chatml = {
     "bot_prefix": "<|im_start|>assistant\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ['<|im_end|>', '<|im_start|>'],
+    "stops": ['<|im_start|>', '</s>'],
 }
 
 # https://huggingface.co/blog/llama2
@@ -1057,7 +1182,7 @@ llama2chat = {
     "bot_prefix": " ",
     "bot_content": "",
     "bot_postfix": " </s><s>[INST] ",
-    "stops": ['</s>', '[INST]', '[/INST]'],
+    "stops": ['[INST]', '[/INST]'],
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
@@ -1088,7 +1213,7 @@ vicuna_lmsys = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "</s> ",
-    "stops": ['</s>', 'USER:'],
+    "stops": ['USER:'],
 }
 
 # spotted here and elsewhere:
@@ -1105,7 +1230,7 @@ vicuna_common = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['</s>', 'USER:', 'ASSISTANT:'],
+    "stops": ['USER:', 'ASSISTANT:'],
 }
 
 # https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
@@ -1119,7 +1244,7 @@ mistral_instruct = {
     "bot_prefix": " ",
     "bot_content": "",
     "bot_postfix": "</s> ",
-    "stops": ['</s>', '[INST]'],
+    "stops": ['[INST]'],
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b
@@ -1132,7 +1257,7 @@ guanaco = {
     "user_prefix": "### Human: ",
     "user_content": "",
     "user_postfix": " ",
-    "bot_prefix": "### Assistant: ",
+    "bot_prefix": "### Assistant:",
     "bot_content": "",
     "bot_postfix": " ",
     "stops": ['###', 'Human:'],
@@ -1164,7 +1289,7 @@ zephyr = {
     "bot_prefix": "<|assistant|>\n",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['</s>', '<|user|>'],
+    "stops": ['<|user|>'],
 }
 
 # OpenChat: https://huggingface.co/openchat/openchat_3.5/discussions/5
@@ -1178,7 +1303,7 @@ openchat = {
     "bot_prefix": "\n\n", # not shown in format, but required anyway
     "bot_content": "",
     "bot_postfix": "<|end_of_turn|>",
-    "stops": ['<|end_of_turn|>', '</s>'],
+    "stops": ['<|end_of_turn|>'],
 }
 
 # SynthIA by Migel Tissera
@@ -1195,7 +1320,7 @@ synthia = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['</s>', 'USER:', 'ASSISTANT:', '\n\n\n'],
+    "stops": ['USER:', 'ASSISTANT:', '\n\n\n'],
 }
 
 # Intel's neural chat v3
@@ -1216,7 +1341,7 @@ neural_chat = {
     "bot_prefix": "### Assistant:\n",
     "bot_content": "",
     "bot_postfix": "</s>\n\n",
-    "stops": ['</s>', '###'],
+    "stops": ['###'],
 }
 
 # experimental: stanford's alpaca format adapted for chatml models
@@ -1231,7 +1356,7 @@ chatml_alpaca = {
     "bot_prefix": "<|im_start|>response\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ['<|im_end|>', '<|im_start|>', '</s>'],
+    "stops": ['<|im_end|>', '<|im_start|>'],
 }
 
 # experimental
@@ -1248,6 +1373,21 @@ autocorrect = {
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
     "stops": ['<|im_end|>', '<|im_start|>'],
+}
+
+# https://huggingface.co/jondurbin/bagel-dpo-7b-v0.1
+# Replace "assistant" with any other role
+bagel = {
+    "system_prefix": "system\n",
+    "system_content": "",
+    "system_postfix": "</s>\n",
+    "user_prefix": "user\n",
+    "user_content": "",
+    "user_postfix": "</s>\n",
+    "bot_prefix": "assistant\n",
+    "bot_content": "",
+    "bot_postfix": "</s>\n",
+    "stops": ['user\n', 'assistant\n', 'system\n'],
 }
 
 mistral_openorca = chatml.copy()
@@ -1309,6 +1449,18 @@ airoboros['system_content'] = "You are a helpful, unbiased, uncensored " + \
     "assistant."
 tess = synthia.copy()
 tess['system_content'] = '' # Tess model card shows a blank system prompt
+alpaca_strict = alpaca.copy() # Alpaca with more stopping strings
+alpaca_strict['stops'] = [
+    '###',
+    '### ',
+    '\n\n###',
+    '\n\n##',
+    '\n\nInstruction:',
+    '\n\nResponse:',
+    '\n\n\n',
+    '### Instruction:',
+    '### Response:'
+]
 
 available_formats: list[str] = [
     'blank',
@@ -1360,7 +1512,7 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
             format['system_content'] +
             format['system_postfix'] +
             format['user_prefix'] +
-            time.strftime("[at %a %I:%M %p]") +
+            time.strftime("[new message sent at %a %I:%M %p]:") +
             prompt +
             format['user_postfix'] +
             format['bot_prefix']
