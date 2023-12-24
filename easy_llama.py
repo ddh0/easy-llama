@@ -281,6 +281,66 @@ with _suppress_if_not_verbose():
     import llama_cpp
 
 
+class SamplerSettings(object):
+    """
+    Optional context manager that manages sampler settings used for
+    generations
+    """
+
+    def __init__(
+            self,
+            max_len_tokens:   int   = None,
+            temp:             float = 0.8,
+            top_p:            float = 0.95,
+            min_p:            float = 0.05,
+            presence_penalty: float = 0.0,
+            repeat_penalty:   float = 1.1,
+            top_k:            int   = 40
+        ):
+
+        if max_len_tokens is None and MAX_LEN_TOKENS is not None:
+            self.max_len_tokens = MAX_LEN_TOKENS
+        else:
+            self.max_len_tokens = max_len_tokens
+        self.temp             = temp
+        self.top_p            = top_p
+        self.min_p            = min_p
+        self.presence_penalty = presence_penalty
+        self.repeat_penalty   = repeat_penalty
+        self.top_k            = top_k
+
+
+GreedyDecoding = SamplerSettings(
+    temp=0.0,
+    repeat_penalty=1.0
+)
+
+DefaultSampling = SamplerSettings()
+
+MinPSampling = SamplerSettings(
+    top_p = 1.0,
+    min_p = 0.1,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
+ContrastiveSearch = SamplerSettings(
+    top_p = 1.0,
+    min_p = 0.0,
+    presence_penalty = 0.5,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
+RandomSampling = SamplerSettings(
+    temp = float(sys.maxsize),
+    top_p = 1.0,
+    min_p = 0.0,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
+
 class Model(object):
     """
     A high-level abstraction of a llama model
@@ -336,6 +396,8 @@ class Model(object):
             n_ctx_train = self.metadata['llama.context_length']
         elif 'stablelm.context_length' in self.metadata:
             n_ctx_train = self.metadata['stablelm.context_length']
+        elif 'phi2.context_length' in self.metadata:
+            n_ctx_train = self.metadata['phi2.context_length']
         else:
             raise KeyError("GGUF file does not specify a context length")
         
@@ -343,39 +405,45 @@ class Model(object):
             rope_freq_base_train = self.metadata['llama.rope.freq_base']
         elif 'stablelm.rope.freq_base' in self.metadata:
             rope_freq_base_train = self.metadata['stablelm.rope.freq_base']
+        elif 'phi2.rope.freq_base' in self.metadata:
+            rope_freq_base_train = self.metadata['phi2.rope.freq_base']
         else:
-            raise KeyError("GGUF file does not specify a rope frequency base'")
+            rope_freq_base_train = None
+        
+        if rope_freq_base_train is None and context_length is not None:
+            if context_length > n_ctx_train:
+                raise ValueError(
+                    'unable to load model with greater than native ' + \
+                    f'context length ({context_length} > {n_ctx_train}) ' + \
+                    'because model does not specify a RoPE frequency ' + \
+                    f'base. try again with `context_length={n_ctx_train}`'
+                )
+        
+        if rope_freq_base_train is None or context_length is None or \
+            context_length <= n_ctx_train:
+            # no need to do context scaling, load model normally
 
-        if context_length is None:
-            self.context_length = n_ctx_train
-            ctx_ratio = 1.0
+            if context_length is None:
+                self.context_length = n_ctx_train
+            else:
+                self.context_length = context_length
             rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
             rope_freq_base = 0
-        else:
-            if context_length > n_ctx_train:
 
-                # automatically apply linear RoPE freq scaling if
-                # requested context length > n_ctx_train
+        elif context_length > n_ctx_train:
+            # apply linear RoPE freq scaling because requested
+            # context length > n_ctx_train and rope freq base is known
 
-                ctx_ratio = context_length/n_ctx_train
-
-                rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
-                rope_freq_base = ctx_ratio*rope_freq_base_train
-                
-                _print_warning(
-                    'chosen context length is ' + \
-                    'greater than native context length ' + \
-                    f'({context_length} > {n_ctx_train}), ' + \
-                    'automatically applying RoPE frequency' + \
-                    f'scaling at factor {ctx_ratio}'
-                    )
-            else:
-                # Default values as specified in Llama.__init__()
-                rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
-                rope_freq_base = 0
-                ctx_ratio = 1.0
-
-            self.context_length = context_length
+            rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
+            rope_freq_base = (context_length/n_ctx_train)*rope_freq_base_train
+            
+            _print_warning(
+                'chosen context length is ' + \
+                'greater than native context length ' + \
+                f'({context_length} > {n_ctx_train}), ' + \
+                'automatically applying RoPE frequency' + \
+                f'scaling at factor {context_length/n_ctx_train}'
+                )
 
         n_batch = os.cpu_count() * 16
         n_threads = max(os.cpu_count()//2, 1)
@@ -416,7 +484,6 @@ class Model(object):
             print(f"     param: self.context_length  == {self.context_length}")
             print(f"     model: rope_freq_base_train == {rope_freq_base_train}")
             print(f"     param: rope_freq_base       == {rope_freq_base}")
-            print(f"      info: ctx_ratio            == {ctx_ratio}")
             print()
     
     def __enter__(self):
@@ -432,11 +499,16 @@ class Model(object):
         self = None
         del self
     
-    def __call__(self, prompt: str, stops: list[str] | None = None) -> str:
+    def __call__(
+            self,
+            prompt: str,
+            stops: list[str] | None = None,
+            sampler: SamplerSettings = DefaultSampling
+        ) -> str:
         """
         `Model('some text')` is a shortcut to `Model.generate('some text')`
         """
-        return self.generate(prompt, stops)
+        return self.generate(prompt, stops, sampler)
 
     def trim(self, text: str, overwrite: str = None) -> str:
         """
@@ -485,7 +557,12 @@ class Model(object):
         """
         return len(self.llama.tokenize(text.encode("utf-8", errors="ignore")))
 
-    def generate(self, prompt: str, stops: list[str] | None = None) -> str:
+    def generate(
+            self,
+            prompt: str,
+            stops: list[str] | None = None,
+            sampler: SamplerSettings = DefaultSampling
+            ) -> str:
         """
         Given a prompt, return a generated string.
 
@@ -523,31 +600,33 @@ class Model(object):
             max_len_tokens = self.context_length
 
         if VERBOSE:
-            print(f'easy_llama: Model.generate will use the following parameters')
-            print(f'easy_llama.MAX_LEN_TOKENS   == {MAX_LEN_TOKENS}')
-            print(f'easy_llama.TEMP             == {TEMP}')
-            print(f'easy_llama.TOP_P            == {TOP_P}')
-            print(f'easy_llama.MIN_P            == {MIN_P}')
-            print(f'easy_llama.PRESENCE_PENALTY == {PRESENCE_PENALTY}')
-            print(f'easy_llama.REPEAT_PENALTY   == {REPEAT_PENALTY}')
-            print(f'easy_llama.TOP_K            == {TOP_K}')
+            print(f'easy_llama: using the following sampler settings for generation')
+            print(f'easy_llama: sampler.max_len_tokens   == {sampler.max_len_tokens}')
+            print(f'easy_llama: sampler.temp             == {sampler.temp}')
+            print(f'easy_llama: sampler.top_p            == {sampler.top_p}')
+            print(f'easy_llama: sampler.min_p            == {sampler.min_p}')
+            print(f'easy_llama: sampler.presence_penalty == {sampler.presence_penalty}')
+            print(f'easy_llama: sampler.repeat_penalty   == {sampler.repeat_penalty}')
+            print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
             print()
         
         return self.llama.create_completion(
             prompt,
-            max_tokens=max_len_tokens,
-            temperature=TEMP,
-            top_p=TOP_P,
-            min_p=MIN_P,
-            presence_penalty=PRESENCE_PENALTY,
-            repeat_penalty=REPEAT_PENALTY,
-            top_k=TOP_K,
+            max_tokens=sampler.max_len_tokens,
+            temperature=sampler.temp,
+            top_p=sampler.top_p,
+            min_p=sampler.min_p,
+            presence_penalty=sampler.presence_penalty,
+            repeat_penalty=sampler.repeat_penalty,
+            top_k=sampler.top_k,
             stop=stops
         )['choices'][0]['text']
     
 
     def stream(
-            self, prompt: str, stops: list[str] | None = None
+            self,
+            prompt: str, stops: list[str] | None = None,
+            sampler: SamplerSettings = DefaultSampling
         ) -> Generator:
 
         """
@@ -590,25 +669,25 @@ class Model(object):
             max_len_tokens = self.context_length
 
         if VERBOSE:
-            print(f'easy_llama: Model.generate will use the following parameters')
-            print(f'easy_llama.MAX_LEN_TOKENS   == {MAX_LEN_TOKENS}')
-            print(f'easy_llama.TEMP             == {TEMP}')
-            print(f'easy_llama.TOP_P            == {TOP_P}')
-            print(f'easy_llama.MIN_P            == {MIN_P}')
-            print(f'easy_llama.PRESENCE_PENALTY == {PRESENCE_PENALTY}')
-            print(f'easy_llama.REPEAT_PENALTY   == {REPEAT_PENALTY}')
-            print(f'easy_llama.TOP_K            == {TOP_K}')
+            print(f'easy_llama: using the following sampler settings for generation')
+            print(f'easy_llama: sampler.max_len_tokens   == {sampler.max_len_tokens}')
+            print(f'easy_llama: sampler.temp             == {sampler.temp}')
+            print(f'easy_llama: sampler.top_p            == {sampler.top_p}')
+            print(f'easy_llama: sampler.min_p            == {sampler.min_p}')
+            print(f'easy_llama: sampler.presence_penalty == {sampler.presence_penalty}')
+            print(f'easy_llama: sampler.repeat_penalty   == {sampler.repeat_penalty}')
+            print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
             print()
 
         return self.llama.create_completion(
             prompt,
-            max_tokens=max_len_tokens,
-            temperature=TEMP,
-            top_p=TOP_P,
-            min_p=MIN_P,
-            presence_penalty=PRESENCE_PENALTY,
-            repeat_penalty=REPEAT_PENALTY,
-            top_k=TOP_K,
+            max_tokens=sampler.max_len_tokens,
+            temperature=sampler.temp,
+            top_p=sampler.top_p,
+            min_p=sampler.min_p,
+            presence_penalty=sampler.presence_penalty,
+            repeat_penalty=sampler.repeat_penalty,
+            top_k=sampler.top_k,
             stream=True,
             stop=stops
         )
@@ -625,103 +704,6 @@ class Model(object):
         # Llama.eval(tokens_list_ints)
         pass
 
-class SamplerSettings(object):
-    """
-    Optional context manager that manages sampler settings used for
-    generations
-    """
-
-    def __init__(
-            self,
-            max_len_tokens:   int   = None,
-            temp:             float = 0.8,
-            top_p:            float = 0.95,
-            min_p:            float = 0.05,
-            presence_penalty: float = 0.0,
-            repeat_penalty:   float = 1.1,
-            top_k:            int   = 40
-        ):
-
-        if max_len_tokens is None and MAX_LEN_TOKENS is not None:
-            self.max_len_tokens = MAX_LEN_TOKENS
-        else:
-            self.max_len_tokens = max_len_tokens
-        self.temp             = temp
-        self.top_p            = top_p
-        self.min_p            = min_p
-        self.presence_penalty = presence_penalty
-        self.repeat_penalty   = repeat_penalty
-        self.top_k            = top_k
-
-
-    def __enter__(self):
-        # Set the global generation parameters to the desired settings
-
-        global MAX_LEN_TOKENS, TEMP, TOP_P, MIN_P, PRESENCE_PENALTY, \
-               REPEAT_PENALTY, TOP_K
-        
-        self.orig_max_len_tokens   = MAX_LEN_TOKENS
-        self.orig_temp             = TEMP
-        self.orig_top_p            = TOP_P
-        self.orig_min_p            = MIN_P
-        self.orig_presence_penalty = PRESENCE_PENALTY
-        self.orig_repeat_penalty   = REPEAT_PENALTY
-        self.orig_top_k            = TOP_K
-        
-        MAX_LEN_TOKENS   = self.max_len_tokens
-        TEMP             = self.temp
-        TOP_P            = self.top_p
-        MIN_P            = self.min_p
-        PRESENCE_PENALTY = self.presence_penalty
-        REPEAT_PENALTY   = self.repeat_penalty
-        TOP_K            = self.top_k
-
-        return self
-    
-    def __exit__(self, *_):
-        # Set the global sampling parameters back to how they were
-
-        global MAX_LEN_TOKENS, TEMP, TOP_P, MIN_P, PRESENCE_PENALTY, \
-               REPEAT_PENALTY, TOP_K
-
-        MAX_LEN_TOKENS   = self.orig_max_len_tokens
-        TEMP             = self.orig_temp
-        TOP_P            = self.orig_top_p
-        MIN_P            = self.orig_min_p
-        PRESENCE_PENALTY = self.orig_presence_penalty
-        REPEAT_PENALTY   = self.orig_repeat_penalty
-        TOP_K            = self.orig_top_k
-
-GreedyDecoding = SamplerSettings(
-    temp=0.0,
-    repeat_penalty=1.0
-)
-
-DefaultSampling = SamplerSettings()
-
-MinPSampling = SamplerSettings(
-    top_p = 1.0,
-    min_p = 0.1,
-    repeat_penalty = 1.0,
-    top_k = -1
-)
-
-ContrastiveSearch = SamplerSettings(
-    top_p = 1.0,
-    min_p = 0.0,
-    presence_penalty = 0.5,
-    repeat_penalty = 1.0,
-    top_k = -1
-)
-
-RandomSampling = SamplerSettings(
-    temp = float(sys.maxsize),
-    top_p = 1.0,
-    min_p = 0.0,
-    repeat_penalty = 1.0,
-    top_k = -1
-)
-
 
 class Thread(object):
     def __init__(self,
@@ -730,7 +712,8 @@ class Thread(object):
                  timestamps: bool = False,
                  amnesiac: bool = False,
                  smart_context: bool = False,
-                 track_context: bool = False
+                 track_context: bool = False,
+                 sampler: SamplerSettings = DefaultSampling
                  ):
         
         assert isinstance(model, Model), \
@@ -797,6 +780,7 @@ class Thread(object):
         self.main_context_state: llama_cpp.LlamaState = None
         self.smart_context_active: bool = False
         self.track_context: bool = track_context
+        self.sampler: SamplerSettings = sampler
     
 
     def set_smart_context_state(self) -> None:
@@ -987,7 +971,9 @@ class Thread(object):
 
         self.messages.append(self.create_message("user", prompt))
         output = self.model.generate(
-            self.inference_str_from_messages(self.messages), stops=self.format["stops"]
+            self.inference_str_from_messages(self.messages),
+            stops=self.format["stops"],
+            sampler=self.sampler
         )
         self.messages.append(self.create_message("bot", output))
 
@@ -1069,6 +1055,7 @@ class Thread(object):
                                 self.smart_context_messages
                             ),
                             stops=self.format['stops'],
+                            sampler=self.sampler
                         )
 
                         output = ""
@@ -1093,6 +1080,7 @@ class Thread(object):
                                 self.smart_context_messages
                             ),
                             stops=self.format["stops"],
+                            sampler=self.sampler
                         )
 
                         output = ""
