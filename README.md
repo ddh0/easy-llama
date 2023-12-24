@@ -1,5 +1,7 @@
 # easy-llama
 
+# *README is badly out of date and will be updated soon*
+
 *This project is still under development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.*
 
 ## Natural text generation in Python, made easy
