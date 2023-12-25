@@ -1,6 +1,8 @@
 # supressor.py
 # Python 3.11.6
 
+"""Submodule containing OutputSupressor class to supress output"""
+
 import sys
 import os
 

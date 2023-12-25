@@ -1,6 +1,8 @@
 # model.py
 # Python 3.11.6
 
+"""Submodule containing the Model class to work with language models"""
+
 import llama_cpp
 import os
 
@@ -107,12 +109,13 @@ class Model(object):
 
             rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
             rope_freq_base = (context_length/n_ctx_train)*rope_freq_base_train
+            self.context_length = context_length
             
             print_warning(
                 'chosen context length is ' + \
                 'greater than native context length ' + \
                 f'({context_length} > {n_ctx_train}), ' + \
-                'automatically applying RoPE frequency' + \
+                'automatically applying RoPE frequency ' + \
                 f'scaling at factor {context_length/n_ctx_train}'
                 )
 
@@ -120,6 +123,7 @@ class Model(object):
         n_threads = max(os.cpu_count()//2, 1)
         n_threads_batch = os.cpu_count()
 
+        # Set global variables to valid values based on settings
         globals.BACKEND, globals.NUM_GPU_LAYERS, globals.MUL_MAT_Q, \
         globals.MMAP, globals.MLOCK = verify_backend(
             backend=globals.BACKEND,
@@ -127,24 +131,24 @@ class Model(object):
             mul_mat_q=globals.MUL_MAT_Q
         )
 
-        with OutputSupressor():
-            self.llama: llama_cpp.Llama = llama_cpp.Llama(
-                model_path=model_path,
-                n_ctx=self.context_length,
-                n_gpu_layers=globals.NUM_GPU_LAYERS,
-                seed=globals.SEED,
-                use_mmap=globals.MMAP,
-                use_mlock=globals.MLOCK,
-                logits_all=False,
-                n_batch=n_batch,
-                n_threads=n_threads,
-                n_threads_batch=n_threads_batch,
-                rope_scaling_type=rope_scaling_type,
-                rope_freq_base=rope_freq_base,
-                mul_mat_q=globals.MUL_MAT_Q,
-                verbose=globals.VERBOSE,
-            )
-
+        self.llama: llama_cpp.Llama = llama_cpp.Llama(
+            model_path=model_path,
+            n_ctx=self.context_length,
+            n_gpu_layers=globals.NUM_GPU_LAYERS,
+            seed=globals.SEED,
+            use_mmap=globals.MMAP,
+            use_mlock=globals.MLOCK,
+            logits_all=False,
+            n_batch=n_batch,
+            n_threads=n_threads,
+            n_threads_batch=n_threads_batch,
+            rope_scaling_type=rope_scaling_type,
+            rope_freq_base=rope_freq_base,
+            mul_mat_q=globals.MUL_MAT_Q,
+            verbose=globals.VERBOSE,
+        )
+        
+        if globals.VERBOSE:
             print("----------------------------------------------------------")
             print(f"{model_path}")
             print(f"easy_llama: BACKEND              == {globals.BACKEND}")

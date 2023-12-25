@@ -1,6 +1,8 @@
 # thread.py
 # Python 3.11.6
 
+"""Submodule containing the Thread class, used for interaction with a Model"""
+
 import llama_cpp
 import time
 from model import Model
@@ -302,6 +304,7 @@ class Thread(object):
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(self.messages),
                             stops=self.format['stops'],
+                            sampler=self.sampler
                         )
 
                         output = ""
@@ -323,6 +326,7 @@ class Thread(object):
                         token_generator = self.model.stream(
                             self.inference_str_from_messages(self.messages),
                             stops=self.format['stops'],
+                            sampler=self.sampler
                         )
 
                         output = ""

@@ -1,6 +1,8 @@
 # formats.py
 # Python 3.11.6
 
+"""Submodule containing various prompt formats used by models"""
+
 import time
 
 def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
@@ -119,16 +121,16 @@ vicuna_common = {
 
 # https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
 mistral_instruct = {
-    "system_prefix": "<s>",
+    "system_prefix": "",
     "system_content": "",
-    "system_postfix": "",
+    "system_postfix": " ",
     "user_prefix": "[INST] ",
     "user_content": "",
     "user_postfix": " [/INST]",
     "bot_prefix": " ",
     "bot_content": "",
-    "bot_postfix": "</s> ",
-    "stops": ['[INST]'],
+    "bot_postfix": "",
+    "stops": ['[INST]', '</s>'],
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b

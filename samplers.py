@@ -1,7 +1,11 @@
 # samplers.py
 # Python 3.11.6
 
+"""Submodule containing SamplerSettings class and some preset samplers"""
+
 import sys
+
+MAX_TEMP = float(sys.maxsize)
 
 class SamplerSettings(object):
 
@@ -33,24 +37,51 @@ GreedyDecoding = SamplerSettings(
 DefaultSampling = SamplerSettings()
 
 MinPSampling = SamplerSettings(
+    temp = MAX_TEMP,
     top_p = 1.0,
     min_p = 0.1,
     repeat_penalty = 1.0,
     top_k = -1
 )
 
+StrictMinPSampling = SamplerSettings(
+    temp = MAX_TEMP,
+    top_p = 1.0,
+    min_p = 0.4,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
 ContrastiveSearch = SamplerSettings(
+    temp=0.0,
     top_p = 1.0,
     min_p = 0.0,
-    presence_penalty = 0.5,
+    presence_penalty = 0.4,
+    repeat_penalty = 1.0,
+    top_k = -1
+)
+
+WarmContrastiveSearch = SamplerSettings(
+    temp=0.0,
+    top_p = 1.0,
+    min_p = 0.0,
+    presence_penalty = 0.7,
     repeat_penalty = 1.0,
     top_k = -1
 )
 
 RandomSampling = SamplerSettings(
-    temp = float(sys.maxsize),
+    temp = MAX_TEMP,
     top_p = 1.0,
     min_p = 0.0,
     repeat_penalty = 1.0,
     top_k = -1
+)
+
+LowTempSampling = SamplerSettings(
+    temp = 0.4
+)
+
+HighTempSampling = SamplerSettings(
+    temp = 1.4
 )

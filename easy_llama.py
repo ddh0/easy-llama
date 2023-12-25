@@ -8,6 +8,7 @@ https://github.com/ddh0/easy-llama/
 """
 
 # TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
+# TODO: Model.ingest() ?
 # TODO: function to transfer a list of messages between disk / models, handle token count
 # TODO: Model.next_candidates() -> list[str]
 

@@ -1,6 +1,8 @@
 # utils.py
 # Python 3.11.6
 
+"""Submodule containing convenience functions"""
+
 import sys
 
 def print_warning(text: str) -> str:

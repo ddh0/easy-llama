@@ -1,6 +1,8 @@
 # gguf_reader.py
 # Python 3.11.6
 
+"""Submodule containing GGUFReader class for reading GGUF files"""
+
 import struct
 from enum import IntEnum
 
