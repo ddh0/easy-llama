@@ -9,7 +9,6 @@ import os
 from gguf_reader import GGUFReader
 from typing import Generator
 from utils import print_warning, verify_backend
-from supressor import OutputSupressor
 from samplers import SamplerSettings, DefaultSampling
 
 import globals

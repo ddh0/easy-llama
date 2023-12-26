@@ -16,10 +16,8 @@ from model import Model
 from thread import Thread
 
 import globals
-
 import formats
 import samplers
-from samplers import SamplerSettings
 
 if __name__ == "__main__":
     raise RuntimeError(

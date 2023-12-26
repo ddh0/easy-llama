@@ -74,8 +74,8 @@ llama2chat = {
 # https://github.com/tatsu-lab/stanford_alpaca
 alpaca = {
     "system_prefix": "",
-    "system_content": "Below is an instruction that describes a task. " \
-    + "Write a response that appropriately completes the request.",
+    "system_content": "Below is an instruction that describes a task. " + \
+    "Write a response that appropriately completes the request.",
     "system_postfix": "\n\n",
     "user_prefix": "### Instruction:\n",
     "user_content": "",
@@ -106,9 +106,9 @@ vicuna_lmsys = {
 # https://huggingface.co/Norquinal/Mistral-7B-claude-chat
 vicuna_common = {
     "system_prefix": "",
-    "system_content": "A chat between a curious user and an artificial " \
-    + "intelligence assistant. The assistant gives helpful, detailed, " \
-    + "and polite answers to the user's questions.",
+    "system_content": "A chat between a curious user and an artificial " + \
+    "intelligence assistant. The assistant gives helpful, detailed, " + \
+    "and polite answers to the user's questions.",
     "system_postfix": "\n\n",
     "user_prefix": "USER: ",
     "user_content": "",
@@ -136,9 +136,9 @@ mistral_instruct = {
 # https://huggingface.co/timdettmers/guanaco-65b
 guanaco = {
     "system_prefix": "",
-    "system_content": "A chat between a curious human and an artificial " \
-    + "intelligence assistant. The assistant gives helpful, detailed, " \
-    + "and polite answers to the user's questions.",
+    "system_content": "A chat between a curious human and an artificial " + \
+    "intelligence assistant. The assistant gives helpful, detailed, " + \
+    "and polite answers to the user's questions.",
     "system_postfix": "\n",
     "user_prefix": "### Human: ",
     "user_content": "",
@@ -152,8 +152,8 @@ guanaco = {
 # https://huggingface.co/pankajmathur/orca_mini_v3_7b
 orca_mini = {
     "system_prefix": "### System:\n",
-    "system_content": "You are an AI assistant that follows instruction " \
-    + "extremely well. Help as much as you can.",
+    "system_content": "You are an AI assistant that follows instruction " + \
+    "extremely well. Help as much as you can.",
     "system_postfix": "\n\n",
     "user_prefix": "### User:\n",
     "user_content": "",
@@ -196,9 +196,9 @@ openchat = {
 # https://huggingface.co/migtissera/Tess-XS-v1.0
 synthia = {
     "system_prefix": "SYSTEM: ",
-    "system_content": "Elaborate on the topic using a Tree of Thoughts and "\
-    + "backtrack when necessary to construct a clear, cohesive Chain of "\
-    + "Thought reasoning. Always answer without hesitation.",
+    "system_content": "Elaborate on the topic using a Tree of Thoughts and " + \
+    "backtrack when necessary to construct a clear, cohesive Chain of " + \
+    "Thought reasoning. Always answer without hesitation.",
     "system_postfix": "\n",
     "user_prefix": "USER: ",
     "user_content": "",
@@ -206,7 +206,7 @@ synthia = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['USER:', 'ASSISTANT:', '\n\n\n'],
+    "stops": ['USER:', 'ASSISTANT:', 'SYSTEM:', '\n\n\n'],
 }
 
 # Intel's neural chat v3
@@ -214,11 +214,11 @@ synthia = {
 neural_chat = {
      "system_prefix": "### System:\n",
     "system_content": \
-        "- You are a helpful assistant chatbot trained by Intel.\n"+\
+        "- You are a helpful assistant chatbot trained by Intel.\n" + \
         "- You answer questions.\n"+\
-        "- You are excited to be able to help the user, but will refuse "+\
-        "to do anything that could be considered harmful to the user.\n"+\
-        "- You are more than just an information source, you are also "+\
+        "- You are excited to be able to help the user, but will refuse " + \
+        "to do anything that could be considered harmful to the user.\n" + \
+        "- You are more than just an information source, you are also " + \
         "able to write poetry, short stories, and make jokes.",
     "system_postfix": "</s>\n\n",
     "user_prefix": "### User:\n",
@@ -233,8 +233,8 @@ neural_chat = {
 # experimental: stanford's alpaca format adapted for chatml models
 chatml_alpaca = {
     "system_prefix": "<|im_start|>system\n",
-    "system_content": "Below is an instruction that describes a task. Write " \
-    + "a response that appropriately completes the request.",
+    "system_content": "Below is an instruction that describes a task. Write " + \
+    "a response that appropriately completes the request.",
     "system_postfix": "<|im_end|>\n",
     "user_prefix": "<|im_start|>instruction\n",
     "user_content": "",
@@ -248,9 +248,9 @@ chatml_alpaca = {
 # experimental
 autocorrect = {
     "system_prefix": "<|im_start|>instruction\n",
-    "system_content": "Below is a word or phrase that might be misspelled. " \
-                      + "Output the corrected word or phrase without " \
-                      + "changing the style or capitalization.",
+    "system_content": "Below is a word or phrase that might be misspelled. " + \
+                      "Output the corrected word or phrase without " + \
+                      "changing the style or capitalization.",
     "system_postfix": "<|im_end|>\n",
     "user_prefix": "<|im_start|>input\n",
     "user_content": "",
