@@ -7,17 +7,17 @@ Text generation in Python, made easy
 https://github.com/ddh0/easy-llama/
 """
 
-# TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
-# TODO: Model.ingest() ?
-# TODO: function to transfer a list of messages between disk / models, handle token count
-# TODO: Model.next_candidates() -> list[str]
+import globals
+import formats
+import samplers
 
 from model import Model
 from thread import Thread
 
-import globals
-import formats
-import samplers
+# TODO: Thread.add_message as shorthand for T.messages.append(T.create_message) ?
+# TODO: Model.ingest() ?
+# TODO: function to transfer a list of messages between disk / models, handle token count
+# TODO: Model.next_candidates() -> list[str]
 
 if __name__ == "__main__":
     raise RuntimeError(

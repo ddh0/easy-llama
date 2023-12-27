@@ -22,15 +22,15 @@ def verify_backend(backend, num_gpu_layers, mul_mat_q) -> tuple:
 
     if backend is None:
         print_warning(
-            "easy_llama.BACKEND is None, defaulting to CPU. " + \
-            "set easy_llama.BACKEND to 'metal', 'cuda', 'rocm', or 'cpu' " + \
+            "easy_llama.globals.BACKEND is None, defaulting to CPU. " + \
+            "set easy_llama.globals.BACKEND to 'metal', 'cuda', or 'rocm' " + \
             "to accelerate inference"
         )
         backend = 'CPU'
     
     if not isinstance(backend, str):
         print_warning(
-            "easy_llama: easy_llama.BACKEND must be a string, " + \
+            "easy_llama: easy_llama.globals.BACKEND must be a string, " + \
             f"not {type(backend)}. defaulting to CPU"
         )
         backend = 'CPU'
@@ -46,9 +46,9 @@ def verify_backend(backend, num_gpu_layers, mul_mat_q) -> tuple:
 
     if backend not in ['Metal', 'CUDA', 'ROCm', 'CPU']:
         print_warning(
-            f"easy_llama.BACKEND '{backend}' is invalid, defaulting to " + \
-            "CPU. set easy_llama.BACKEND to 'metal', 'cuda', 'rocm', or " + \
-            "'cpu' to accelerate inference"
+            f"easy_llama.globals.BACKEND '{backend}' is invalid, defaulting to " + \
+            "CPU. set easy_llama.globals.BACKEND to 'metal', 'cuda', or 'rocm' " + \
+            "to accelerate inference"
         )
         backend = 'CPU'
     
@@ -75,8 +75,8 @@ def verify_backend(backend, num_gpu_layers, mul_mat_q) -> tuple:
     
     if backend in ['CUDA', 'ROCm'] and num_gpu_layers == 0:
         print_warning(
-            "CUDA or ROCm is selected but easy_llama.NUM_GPU_LAYERS is 0. " + \
-            "set easy_llama.NUM_GPU_LAYERS to 1 or greater to " + \
+            "CUDA or ROCm is selected but easy_llama.globals.NUM_GPU_LAYERS is 0. " + \
+            "set easy_llama.globals.NUM_GPU_LAYERS to 1 or greater to " + \
             "accelerate inference"
         )
     

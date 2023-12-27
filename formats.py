@@ -276,6 +276,20 @@ bagel = {
     "stops": ['user\n', 'assistant\n', 'system\n'],
 }
 
+# https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0
+solar_instruct = {
+    "system_prefix": " ",
+    "system_content": "",
+    "system_postfix": "",
+    "user_prefix": "### User:\n",
+    "user_content": "",
+    "user_postfix": "\n\n",
+    "bot_prefix": "### Assistant:\n",
+    "bot_content": "",
+    "bot_postfix": "\n\n",
+    "stops": ['### User:', '###', '### Assistant:'],
+}
+
 mistral_openorca = chatml.copy()
 dolphin = chatml.copy()
 samantha = chatml.copy()
@@ -334,7 +348,7 @@ airoboros = llama2chat.copy()
 airoboros['system_content'] = "You are a helpful, unbiased, uncensored " + \
     "assistant."
 tess = synthia.copy()
-tess['system_content'] = '' # Tess model card shows a blank system prompt
+tess['system_content'] = '' # Tess can use any system prompt, or none
 alpaca_strict = alpaca.copy() # Alpaca with more stopping strings
 alpaca_strict['stops'] = [
     '###',

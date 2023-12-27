@@ -4,14 +4,13 @@
 """Submodule containing the Model class to work with language models"""
 
 import llama_cpp
+import globals
 import os
 
 from gguf_reader import GGUFReader
 from typing import Generator
 from utils import print_warning, verify_backend
 from samplers import SamplerSettings, DefaultSampling
-
-import globals
 
 class Model(object):
     """
@@ -148,13 +147,13 @@ class Model(object):
         )
         
         if globals.VERBOSE:
-            print("----------------------------------------------------------")
+            print("---------------------- easy_llama ------------------------")
             print(f"{model_path}")
-            print(f"easy_llama: BACKEND              == {globals.BACKEND}")
-            print(f"easy_llama: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
-            print(f"easy_llama: MUL_MAT_Q            == {globals.MUL_MAT_Q}")
-            print(f"easy_llama: MMAP                 == {globals.MMAP}")
-            print(f"easy_llama: MLOCK                == {globals.MLOCK}")
+            print(f"    global: BACKEND              == {globals.BACKEND}")
+            print(f"    global: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
+            print(f"    global: MUL_MAT_Q            == {globals.MUL_MAT_Q}")
+            print(f"    global: MMAP                 == {globals.MMAP}")
+            print(f"    global: MLOCK                == {globals.MLOCK}")
             print(f"     param: n_batch              == {n_batch}")
             print(f"     param: n_threads            == {n_threads}")
             print(f"     param: n_threads_batch      == {n_threads_batch}")

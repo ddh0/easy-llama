@@ -192,7 +192,10 @@ class Thread(object):
             Thread.next_context_messages = None
             Reset context length budget
         """
-        self.set_smart_context_state()
+        if self.smart_context_active:
+            smart_context_was_active = True
+        else:
+            self.set_smart_context_state()
             
         system_message = messages[0]
         context_len_budget = 1280 # TODO
@@ -210,7 +213,8 @@ class Thread(object):
             self.smart_context_messages.insert(1, message)
             # now the list is in chronological orger
         
-        self.set_main_context_state()
+        if not smart_context_was_active:
+            self.set_main_context_state()
 
     def inference_str_from_messages(self, messages: list[dict]) -> str:
 
