@@ -7,10 +7,10 @@ import llama_cpp
 import globals
 import os
 
+from samplers import SamplerSettings, DefaultSampling
+from utils import print_warning, verify_backend
 from gguf_reader import GGUFReader
 from typing import Generator
-from utils import print_warning, verify_backend
-from samplers import SamplerSettings, DefaultSampling
 
 class Model(object):
     """
@@ -147,20 +147,20 @@ class Model(object):
         )
         
         if globals.VERBOSE:
-            print("---------------------- easy_llama ------------------------")
+            print("-------------------- easy_llama.Model ----------------------")
             print(f"{model_path}")
-            print(f"    global: BACKEND              == {globals.BACKEND}")
-            print(f"    global: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
-            print(f"    global: MUL_MAT_Q            == {globals.MUL_MAT_Q}")
-            print(f"    global: MMAP                 == {globals.MMAP}")
-            print(f"    global: MLOCK                == {globals.MLOCK}")
-            print(f"     param: n_batch              == {n_batch}")
-            print(f"     param: n_threads            == {n_threads}")
-            print(f"     param: n_threads_batch      == {n_threads_batch}")
-            print(f"     model: n_ctx_train          == {n_ctx_train}")
-            print(f"     param: self.context_length  == {self.context_length}")
-            print(f"     model: rope_freq_base_train == {rope_freq_base_train}")
-            print(f"     param: rope_freq_base       == {rope_freq_base}")
+            print(f"global: BACKEND              == {globals.BACKEND}")
+            print(f"global: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
+            print(f"global: MUL_MAT_Q            == {globals.MUL_MAT_Q}")
+            print(f"global: MMAP                 == {globals.MMAP}")
+            print(f"global: MLOCK                == {globals.MLOCK}")
+            print(f" param: n_batch              == {n_batch}")
+            print(f" param: n_threads            == {n_threads}")
+            print(f" param: n_threads_batch      == {n_threads_batch}")
+            print(f"  gguf: n_ctx_train          == {n_ctx_train}")
+            print(f" param: self.context_length  == {self.context_length}")
+            print(f"  gguf: rope_freq_base_train == {rope_freq_base_train}")
+            print(f" param: rope_freq_base       == {rope_freq_base}")
             print()
     
     def __enter__(self):
@@ -169,12 +169,10 @@ class Model(object):
     def __exit__(self, *_):
         # this unloads the model from memory, which is the important part
         # (unless an unexpected reference is made to Model.llama)
-        # however, ez.Model object might still exist outside of a `with` block
+        # however, Model object might still exist outside of a `with` block
         # unsure if/how to fix that
         self.llama = None
-        del self.llama
         self = None
-        del self
     
     def __call__(
             self,

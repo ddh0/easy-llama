@@ -3,10 +3,10 @@
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
-import llama_cpp
 import time
 from model import Model
 from samplers import SamplerSettings, DefaultSampling
+import globals
 
 class Thread(object):
     def __init__(self,
@@ -14,7 +14,7 @@ class Thread(object):
                  format: dict,
                  timestamps: bool = False,
                  amnesiac: bool = False,
-                 smart_context: bool = False,
+                 max_context_length: int = -1,
                  track_context: bool = False,
                  sampler: SamplerSettings = DefaultSampling
                  ):
@@ -56,16 +56,13 @@ class Thread(object):
         
         assert isinstance(track_context, bool), \
             f"Thread: amnesiac should be True or False, not '{track_context}'"
+
+        assert isinstance(max_context_length, int), \
+            f"Thread: max_context_length should be int, not '{max_context_length}"
         
         if amnesiac and timestamps:
             raise RuntimeError(
                 "Thread: amnesiac threads are not compatible with timestamps"
-            )
-        
-        if amnesiac and smart_context:
-            raise RuntimeError(
-                "Thread: amnesiac threads are not compatible with " + \
-                "smart_context"
             )
         
         self.model: Model = model
@@ -75,53 +72,32 @@ class Thread(object):
         self.messages: list[dict] = [
             self.create_message("system", self.format['system_content'])
         ]
-        self.smart_context_enabled: bool = smart_context
-        self.smart_context_messages: list[dict] = [
-            self.create_message("system", self.format['system_content'])
-        ]
-        self.smart_context_state: llama_cpp.LlamaState = None
-        self.main_context_state: llama_cpp.LlamaState = None
-        self.smart_context_active: bool = False
+        self.max_context_length: int = (
+            max_context_length if max_context_length > 0 else self.model.context_length
+        )
         self.track_context: bool = track_context
         self.sampler: SamplerSettings = sampler
-    
 
-    def set_smart_context_state(self) -> None:
-        """Switch the model to use the smart context state"""
-        assert self.smart_context_enabled
-        assert not self.amnesiac
-        assert not self.enable_timestamps
-        if self.smart_context_active:
-            return
-        self.main_context_state = self.model.llama.save_state()
-        if self.smart_context_state is not None:
-            self.model.llama.load_state(self.smart_context_state)
-        else:
-            self.model.llama.reset()
-        self.smart_context_active = True
-    
-
-    def set_main_context_state(self) -> None:
-        """Switch the model to use the main context state"""
-        if not self.smart_context_active:
-            return
-        assert self.smart_context_enabled
-        assert not self.amnesiac
-        assert not self.enable_timestamps
-        self.smart_context_state = self.model.llama.save_state()
-        if self.main_context_state is not None:
-            self.model.llama.load_state(self.main_context_state)
-        else:
-            self.model.llama.reset()
-        self.smart_context_active = False
+        if globals.VERBOSE:
+            print("--------------------- easy_llama.Thread -----------------------")
+            print(f"self.model                    == {self.model}")
+            print(f"self.enable_timestamps        == {self.enable_timestamps}")
+            print(f"self.amnesiac                 == {self.amnesiac}")
+            print(f"self.max_context_length       == {self.max_context_length}")
+            print(f"self.track_context            == {self.track_context}")
+            print(f"self.sampler.max_len_tokens   == {self.sampler.max_len_tokens}")
+            print(f"self.sampler.temp             == {self.sampler.temp}")
+            print(f"self.sampler.top_p            == {self.sampler.top_p}")
+            print(f"self.sampler.min_p            == {self.sampler.min_p}")
+            print(f"self.sampler.presence_penalty == {self.sampler.presence_penalty}")
+            print(f"self.sampler.repeat_penalty   == {self.sampler.repeat_penalty}")
+            print(f"self.sampler.top_k            == {self.sampler.top_k}")
 
 
     def create_message(self, role: str, content: str) -> dict:
         assert role.lower() in ['system', 'user', 'bot'], \
             "create_message: role should be 'system', 'user', or " + \
             f"'bot', not '{role.lower()}'"
-        
-        content: str
 
         assert isinstance(content, str), \
             f"create_message: content should be str, not {type(content)}"
@@ -177,44 +153,14 @@ class Thread(object):
                 ),
             }
 
-
-    def update_smart_context(self, messages: list[dict]) -> None:
-        """
-        Set self.smart_context_state and self.smart_context_messages.
-
-        TODO:
-        Do nothing until context length is half full.
-        When context length is half full, for each update:
-            start building list starting at midpoint of current context
-            eval inf_str(next_context_messages)
-        At near full context, set
-            Thread.messages = Thread.next_content_messages
-            Thread.next_context_messages = None
-            Reset context length budget
-        """
-        if self.smart_context_active:
-            smart_context_was_active = True
-        else:
-            self.set_smart_context_state()
-            
-        system_message = messages[0]
-        context_len_budget = 1280 # TODO
-        context_len_budget -= len(system_message['tokens'])
-
-        self.smart_context_messages: list[dict] = [system_message]
-
-        # iterate over messages from newest to oldest until
-        # context_len_budget is exceeded
-        for message in reversed(messages[1:]):
-            context_len_budget -= len(message['tokens'])
-            if context_len_budget <= 0:
-                break
-            # keep sys msg at index 0
-            self.smart_context_messages.insert(1, message)
-            # now the list is in chronological orger
-        
-        if not smart_context_was_active:
-            self.set_main_context_state()
+    def add_message(self, role: str, content: str) -> None:
+        """Shorthand for Thread.messages.append(Thread.create_message(...))"""
+        self.messages.append(
+            self.create_message(
+                role=role,
+                content=content
+            )
+        )
 
     def inference_str_from_messages(self, messages: list[dict]) -> str:
 
@@ -242,8 +188,8 @@ class Thread(object):
                 )
             return inf_str
         
-        # bos + eos + off-by-one errors == 3
-        context_len_budget = self.model.context_length - 3
+        context_len_budget = self.max_context_length
+        context_len_budget -= 3 # little buffer just in case
         context_len_budget -= len(system_message['tokens'])
         context_len_budget -= self.model.get_length(self.format['bot_prefix'])
         if self.enable_timestamps:
@@ -252,7 +198,7 @@ class Thread(object):
             ) + 4
 
         # start at most recent message and work backwards up the history
-        # excluding system message. once we exceed the model's context length,
+        # excluding system message. once we exceed thread max_context_length,
         # break without including that message
         inf_str = ''
         for message in reversed(messages[1:]):
@@ -276,13 +222,13 @@ class Thread(object):
         assert isinstance(prompt, str), \
             f"Thread.send: prompt should be str, not {type(prompt)}"
 
-        self.messages.append(self.create_message("user", prompt))
+        self.add_message("user", prompt)
         output = self.model.generate(
             self.inference_str_from_messages(self.messages),
             stops=self.format["stops"],
             sampler=self.sampler
         )
-        self.messages.append(self.create_message("bot", output))
+        self.add_message("bot", output)
 
         return output
 
@@ -295,137 +241,58 @@ class Thread(object):
                     c = 0
                     for msg in self.messages:
                         c += len(msg['tokens'])
-                    #print(f"total tokens so far: {c}")
+                    print(f"total tokens so far: {c}")
                     last_toks: list[int] = self.messages[-1:][0]['content_tokens']
                     print(f'last msg content tokens: {last_toks}\n')
-                #print(f'DEBUG: len is {len(self.messages)}\n')
-                if not self.smart_context_enabled:
-                    self.set_main_context_state()
-                    prompt = input("  > ")
+                prompt = input("  > ")
+                print()
+                if prompt == "":
+                    token_generator = self.model.stream(
+                        self.inference_str_from_messages(self.messages),
+                        stops=self.format['stops'],
+                        sampler=self.sampler
+                    )
+
+                    output = ""
+                    for i in token_generator:
+                        token = i['choices'][0]['text']
+                        output += token
+                        print(token, end="", flush=True)
+
+                    self.add_message("bot", output)
+
+                else:
+                    self.add_message("user", prompt)
+
+                    token_generator = self.model.stream(
+                        self.inference_str_from_messages(self.messages),
+                        stops=self.format['stops'],
+                        sampler=self.sampler
+                    )
+
+                    output = ""
+                    for i in token_generator:
+                        token = i['choices'][0]['text']
+                        output += token
+                        print(token, end="", flush=True)
+
+                    self.add_message("bot", output)
+
+                if output.endswith("\n\n"):
+                    pass
+                elif output.endswith("\n"):
                     print()
-                    if prompt == "":
-                        # another assistant message
-                        token_generator = self.model.stream(
-                            self.inference_str_from_messages(self.messages),
-                            stops=self.format['stops'],
-                            sampler=self.sampler
-                        )
-
-                        output = ""
-                        for i in token_generator:
-                            token = i['choices'][0]['text']
-                            output += token
-                            print(token, end="", flush=True)
-
-                        self.messages.append(
-                            self.create_message("bot", output)
-                            )
-
-                    else:
-                        self.messages.append(
-                            self.create_message("user", prompt)
-                            )
-
-                        
-                        token_generator = self.model.stream(
-                            self.inference_str_from_messages(self.messages),
-                            stops=self.format['stops'],
-                            sampler=self.sampler
-                        )
-
-                        output = ""
-                        for i in token_generator:
-                            token = i['choices'][0]['text']
-                            output += token
-                            print(token, end="", flush=True)
-
-                        self.messages.append(
-                            self.create_message("bot", output)
-                        )
-
-                    if output.endswith("\n\n"):
-                        pass
-                    elif output.endswith("\n"):
-                        print()
-                    else:
-                        print("\n")
-            
-                elif self.smart_context_enabled:
-                    self.set_smart_context_state()
-                    prompt = input(" -> ")
-
-                    print()
-
-                    if prompt == "":
-                        # another assistant message
-                        self.update_smart_context(self.messages)
-                        token_generator = self.model.stream(
-                            self.inference_str_from_messages(
-                                self.smart_context_messages
-                            ),
-                            stops=self.format['stops'],
-                            sampler=self.sampler
-                        )
-
-                        output = ""
-                        for i in token_generator:
-                            token = i['choices'][0]['text']
-                            output += token
-                            print(token, end="", flush=True)
-
-                        self.messages.append(
-                            self.create_message("bot", output)
-                            )
-                    
-                    else:
-                        self.messages.append(
-                            self.create_message("user", prompt)
-                            )
-                        
-                        self.update_smart_context(self.messages)
-
-                        token_generator = self.model.stream(
-                            self.inference_str_from_messages(
-                                self.smart_context_messages
-                            ),
-                            stops=self.format["stops"],
-                            sampler=self.sampler
-                        )
-
-                        output = ""
-                        for i in token_generator:
-                            token = i['choices'][0]['text']
-                            output += token
-                            print(token, end="", flush=True)
-
-                        self.messages.append(
-                            self.create_message("bot", output)
-                        )
-                    
-                    if output.endswith("\n\n"):
-                        pass
-                    elif output.endswith("\n"):
-                        print()
-                    else:
-                        print("\n")
+                else:
+                    print("\n")
 
         except KeyboardInterrupt:
             print("\n")
-            if self.smart_context_active:
-                self.update_smart_context(self.messages)
-                self.set_main_context_state()
             return
 
     def reset(self) -> None:
         self.messages: list[dict] = [
             self.create_message("system", self.format['system_content'])
         ]
-        self.smart_context_messages: list[dict] = [
-            self.create_message("system", self.format['system_content'])
-        ]
-        self.main_context_state: llama_cpp.LlamaState = None
-        self.smart_context_state: llama_cpp.LlamaState = None
-        self.smart_context_active: bool = False
         self.model.llama.reset()
     
     def print_stats(self) -> None:
@@ -433,8 +300,8 @@ class Thread(object):
             self.inference_str_from_messages(self.messages)
         )
         context_used_percentage = (
-            round((thread_len_tokens/self.model.context_length)*100)
-            )
-        print(f"{thread_len_tokens} / {self.model.context_length} tokens")
+            round((thread_len_tokens/self.max_context_length)*100)
+        )
+        print(f"{thread_len_tokens} / {self.max_context_length} tokens")
         print(f"{context_used_percentage}% of context used")
         print(f"{len(self.messages)} messages")
