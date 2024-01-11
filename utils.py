@@ -4,6 +4,11 @@
 """Submodule containing convenience functions"""
 
 import sys
+import time
+
+def get_timestamp_prefix_str() -> str:
+    # helpful: https://strftime.net
+    return time.strftime("[%Y, %b %e, %a %l:%M %p] ")
 
 def print_warning(text: str) -> str:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)

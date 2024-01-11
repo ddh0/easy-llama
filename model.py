@@ -21,8 +21,7 @@ class Model(object):
     call help(Model), or see the relevant docstring.
 
     The following methods are available:
-    - .generate(): return a string generated with Contrastive Search,
-    which generates more human-like text
+    - .generate(): given a prompt, return a generated string
     - .stream(): like .generate() but returns a generator that yields
     dicts containing tokens. Subscript the dict with
     `['choices'][0]['text']` to get the token string
@@ -102,7 +101,7 @@ class Model(object):
             rope_freq_base = 0
 
         elif context_length > n_ctx_train:
-            # apply linear RoPE freq scaling because requested
+            # apply RoPE freq scaling because requested
             # context length > n_ctx_train and rope freq base is known
 
             rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
@@ -285,7 +284,8 @@ class Model(object):
 
     def stream(
             self,
-            prompt: str, stops: list[str] | None = None,
+            prompt: str,
+            stops: list[str] | None = None,
             sampler: SamplerSettings = DefaultSampling
         ) -> Generator:
 
@@ -336,6 +336,18 @@ class Model(object):
             top_k=sampler.top_k,
             stream=True,
             stop=stops
+        )
+    
+
+    def ingest(self, text: str) -> None:
+        """
+        Ingest the given text into the model's cache by calling a
+        single-token completion and discarding the result
+        """
+
+        self.llama.create_completion(
+            text,
+            max_tokens=1,
         )
     
 

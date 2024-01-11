@@ -3,10 +3,13 @@
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
-import time
-from model import Model
-from samplers import SamplerSettings, DefaultSampling
 import globals
+import utils
+import time
+
+from samplers import SamplerSettings, DefaultSampling
+from model import Model
+
 
 class Thread(object):
     def __init__(self,
@@ -40,7 +43,7 @@ class Thread(object):
         except KeyError as e:
             e.add_note(
                 "Thread: format is missing one or more required keys, see " \
-                + "easy_llama.blank for an example"
+                + "easy_llama.formats.blank for an example"
             )
             raise
 
@@ -78,6 +81,10 @@ class Thread(object):
         self.track_context: bool = track_context
         self.sampler: SamplerSettings = sampler
 
+        if self.enable_timestamps:
+            # stop generation on timestamps, e.g "[2024"
+            self.format['stops'].append(time.strftime('[%Y'))
+
         if globals.VERBOSE:
             print("--------------------- easy_llama.Thread -----------------------")
             print(f"self.model                    == {self.model}")
@@ -106,7 +113,7 @@ class Thread(object):
             return {
                 "prefix": self.format['system_prefix'],
                 "content": content if not self.enable_timestamps else
-                    time.strftime("[system message at %a %I:%M %p]:")
+                    utils.get_timestamp_prefix_str()
                      + content,
                 "postfix": self.format['system_postfix'],
                 "tokens": self.model.llama.tokenize(
@@ -124,7 +131,7 @@ class Thread(object):
                 "prefix": self.format['user_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime("[new message sent at %a %I:%M %p]:") + content,
+                else utils.get_timestamp_prefix_str() + content,
                 "postfix": self.format['user_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['user_prefix'].encode() + \
@@ -141,7 +148,7 @@ class Thread(object):
                 "prefix": self.format['bot_prefix'],
                 "content": content
                 if not self.enable_timestamps
-                else time.strftime('[new message sent at %a %I:%M %p]:') + content,
+                else utils.get_timestamp_prefix_str() + content,
                 "postfix": self.format['bot_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['bot_prefix'].encode() + \
@@ -154,7 +161,7 @@ class Thread(object):
             }
 
     def add_message(self, role: str, content: str) -> None:
-        """Shorthand for Thread.messages.append(Thread.create_message(...))"""
+        """Shorthand for `Thread.messages.append(Thread.create_message(...))`"""
         self.messages.append(
             self.create_message(
                 role=role,
@@ -166,9 +173,9 @@ class Thread(object):
 
         system_message = messages[0]
         sys_msg_str = (
-            system_message['prefix']
-            + system_message['content']
-            + system_message['postfix']
+            system_message['prefix'] +
+            system_message['content'] +
+            system_message['postfix']
         )
         
         # in amnesiac threads, the model only sees the system message
@@ -177,25 +184,24 @@ class Thread(object):
             inf_str = ''
             last_msg = messages[-1]
             last_msg_str = (
-                last_msg['prefix']
-                + last_msg['content']
-                + last_msg['postfix']
+                last_msg['prefix'] +
+                last_msg['content'] +
+                last_msg['postfix']
                 )
             inf_str = (
-                sys_msg_str
-                + last_msg_str
-                + self.format['bot_prefix']
+                sys_msg_str +
+                last_msg_str +
+                self.format['bot_prefix']
                 )
             return inf_str
         
         context_len_budget = self.max_context_length
-        context_len_budget -= 3 # little buffer just in case
         context_len_budget -= len(system_message['tokens'])
         context_len_budget -= self.model.get_length(self.format['bot_prefix'])
         if self.enable_timestamps:
             context_len_budget -= self.model.get_length(
-                time.strftime("[new message sent at %a %I:%M %p]:")
-            ) + 4
+                utils.get_timestamp_prefix_str()
+            )
 
         # start at most recent message and work backwards up the history
         # excluding system message. once we exceed thread max_context_length,
@@ -206,15 +212,15 @@ class Thread(object):
             if context_len_budget <= 0:
                 break
             msg_str = (
-                message['prefix']
-                + message['content']
-                + message['postfix']
+                message['prefix'] +
+                message['content'] +
+                message['postfix']
                 )
             inf_str = msg_str + inf_str
         inf_str = sys_msg_str + inf_str
         inf_str += self.format['bot_prefix']
         if self.enable_timestamps:
-            inf_str += time.strftime("[new message sent at %a %I:%M %p]:")
+            inf_str += utils.get_timestamp_prefix_str()
         return inf_str
 
 
@@ -225,10 +231,16 @@ class Thread(object):
         self.add_message("user", prompt)
         output = self.model.generate(
             self.inference_str_from_messages(self.messages),
-            stops=self.format["stops"],
+            stops=self.format['stops'],
             sampler=self.sampler
         )
         self.add_message("bot", output)
+
+        if self.track_context:
+            c = 0
+            for msg in self.messages:
+                c += len(msg['tokens'])
+            print(f"track_context: total tokens so far: {c}")
 
         return output
 
@@ -241,9 +253,7 @@ class Thread(object):
                     c = 0
                     for msg in self.messages:
                         c += len(msg['tokens'])
-                    print(f"total tokens so far: {c}")
-                    last_toks: list[int] = self.messages[-1:][0]['content_tokens']
-                    print(f'last msg content tokens: {last_toks}\n')
+                    print(f"track_context: total tokens so far: {c}")
                 prompt = input("  > ")
                 print()
                 if prompt == "":

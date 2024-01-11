@@ -3,7 +3,7 @@
 
 """Submodule containing various prompt formats used by models"""
 
-import time
+import utils
 
 def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
     if not timestamps:
@@ -19,11 +19,10 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
     else:
         return (
             format['system_prefix'] +
-            time.strftime("It is %A, %b %e, %Y. ") +
             format['system_content'] +
             format['system_postfix'] +
             format['user_prefix'] +
-            time.strftime("[new message sent at %a %I:%M %p]:") +
+            utils.get_timestamp_prefix_str() +
             prompt +
             format['user_postfix'] +
             format['bot_prefix']
@@ -278,7 +277,7 @@ bagel = {
 
 # https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0
 solar_instruct = {
-    "system_prefix": " ",
+    "system_prefix": "",
     "system_content": "",
     "system_postfix": "",
     "user_prefix": "### User:\n",
@@ -288,6 +287,21 @@ solar_instruct = {
     "bot_content": "",
     "bot_postfix": "\n\n",
     "stops": ['### User:', '###', '### Assistant:'],
+}
+
+# NeverSleep's Noromaid - alpaca with character names prefixed
+noromaid = {
+    "system_prefix": "",
+    "system_content": "Below is an instruction that describes a task. " + \
+    "Write a response that appropriately completes the request.",
+    "system_postfix": "\n\n",
+    "user_prefix": "### Instruction:\nBob: ",
+    "user_content": "",
+    "user_postfix": "\n\n",
+    "bot_prefix": "### Response:\nAlice: ",
+    "bot_content": "",
+    "bot_postfix": "\n\n",
+    "stops": ['###', 'Instruction:', '\n\n\n'],
 }
 
 mistral_openorca = chatml.copy()
