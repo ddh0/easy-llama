@@ -83,7 +83,9 @@ class Thread(object):
 
         if self.enable_timestamps:
             # stop generation on timestamps, e.g "[2024"
-            self.format['stops'].append(time.strftime('[%Y'))
+            self.format['stops'].append(
+                time.strftime('[%Y')
+            )
 
         if globals.VERBOSE:
             print("--------------------- easy_llama.Thread -----------------------")
@@ -111,10 +113,10 @@ class Thread(object):
 
         if role.lower() == 'system':
             return {
-                "prefix": self.format['system_prefix'],
-                "content": content if not self.enable_timestamps else
+                "prefix": self.format['system_prefix'] if not self.enable_timestamps else
                     utils.get_timestamp_prefix_str()
-                     + content,
+                    + self.format['system_prefix'],
+                "content": content,
                 "postfix": self.format['system_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['system_prefix'].encode() + \
@@ -128,10 +130,10 @@ class Thread(object):
         
         elif role.lower() == 'user':
             return {
-                "prefix": self.format['user_prefix'],
-                "content": content
-                if not self.enable_timestamps
-                else utils.get_timestamp_prefix_str() + content,
+                "prefix": self.format['user_prefix'] if not self.enable_timestamps else
+                    utils.get_timestamp_prefix_str()
+                    + self.format['user_prefix'],
+                "content": content,
                 "postfix": self.format['user_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['user_prefix'].encode() + \
@@ -145,10 +147,10 @@ class Thread(object):
         
         elif role.lower() == 'bot':
             return {
-                "prefix": self.format['bot_prefix'],
-                "content": content
-                if not self.enable_timestamps
-                else utils.get_timestamp_prefix_str() + content,
+                "prefix": self.format['bot_prefix'] if not self.enable_timestamps else
+                    utils.get_timestamp_prefix_str()
+                    + self.format['bot_prefix'],
+                "content": content,
                 "postfix": self.format['bot_postfix'],
                 "tokens": self.model.llama.tokenize(
                     self.format['bot_prefix'].encode() + \
@@ -172,56 +174,69 @@ class Thread(object):
     def inference_str_from_messages(self, messages: list[dict]) -> str:
 
         system_message = messages[0]
+        context_len_budget = self.max_context_length
+        context_len_budget -= len(system_message['tokens'])
+
         sys_msg_str = (
             system_message['prefix'] +
             system_message['content'] +
             system_message['postfix']
         )
         
-        # in amnesiac threads, the model only sees the system message
-        # and the previous message
         if self.amnesiac:
-            inf_str = ''
+            
+            # TODO
+            # Currently, max_context_length only applies for non-amnesiac
+            # threads....
+
+            assert self.enable_timestamps is False
+
             last_msg = messages[-1]
             last_msg_str = (
                 last_msg['prefix'] +
                 last_msg['content'] +
                 last_msg['postfix']
-                )
+            )
+            
             inf_str = (
                 sys_msg_str +
                 last_msg_str +
                 self.format['bot_prefix']
-                )
+            )
+            
+            if globals.VERBOSE:
+                print(f'easy_llama: inference str is \"\"\"{inf_str}\"\"\"')
             return inf_str
-        
-        context_len_budget = self.max_context_length
-        context_len_budget -= len(system_message['tokens'])
-        context_len_budget -= self.model.get_length(self.format['bot_prefix'])
-        if self.enable_timestamps:
-            context_len_budget -= self.model.get_length(
-                utils.get_timestamp_prefix_str()
+
+        else:
+
+            inf_str = ''
+
+            # Start at most recent message and work backwards up the history
+            # excluding system message. Once we exceed thread max_context_length,
+            # break without including that message
+            for message in reversed(messages[1:]):
+                context_len_budget -= len(message['tokens'])
+
+                if context_len_budget <= 0:
+                    break
+
+                msg_str = (
+                    message['prefix'] +
+                    message['content'] +
+                    message['postfix']
+                )
+                
+                inf_str = msg_str + inf_str
+
+            inf_str = sys_msg_str + inf_str
+            inf_str += self.format['bot_prefix'] if not self.enable_timestamps else (
+                utils.get_timestamp_prefix_str() + self.format['bot_prefix']
             )
 
-        # start at most recent message and work backwards up the history
-        # excluding system message. once we exceed thread max_context_length,
-        # break without including that message
-        inf_str = ''
-        for message in reversed(messages[1:]):
-            context_len_budget -= len(message['tokens'])
-            if context_len_budget <= 0:
-                break
-            msg_str = (
-                message['prefix'] +
-                message['content'] +
-                message['postfix']
-                )
-            inf_str = msg_str + inf_str
-        inf_str = sys_msg_str + inf_str
-        inf_str += self.format['bot_prefix']
-        if self.enable_timestamps:
-            inf_str += utils.get_timestamp_prefix_str()
-        return inf_str
+            if globals.VERBOSE:
+                print(f'easy_llama: inference str is \"\"\"{inf_str}\"\"\"')
+            return inf_str
 
 
     def send(self, prompt: str) -> str:
@@ -245,7 +260,7 @@ class Thread(object):
         return output
 
 
-    def interact(self) -> None:
+    def interact(self):
         print()
         try:
             while True:

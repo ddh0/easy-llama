@@ -32,7 +32,7 @@ class Model(object):
 
     The following attributes are available:
     - .metadata: the GGUF metadata read from the model file, dict
-    - .context_lenth: the context length of the model in tokens, int
+    - .context_length: the context length of the model in tokens, int
     - .llama: the raw llama_cpp.Llama instance
     """
 
@@ -112,8 +112,8 @@ class Model(object):
                 'chosen context length is ' + \
                 'greater than native context length ' + \
                 f'({context_length} > {n_ctx_train}), ' + \
-                'automatically applying RoPE frequency ' + \
-                f'scaling at factor {context_length/n_ctx_train}'
+                'freq_base has been changed from ' + \
+                f'{rope_freq_base_train} to {rope_freq_base}'
                 )
 
         n_batch = os.cpu_count() * 16

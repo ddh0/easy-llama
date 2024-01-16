@@ -21,8 +21,8 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
             format['system_prefix'] +
             format['system_content'] +
             format['system_postfix'] +
-            format['user_prefix'] +
             utils.get_timestamp_prefix_str() +
+            format['user_prefix'] +
             prompt +
             format['user_postfix'] +
             format['bot_prefix']
@@ -177,15 +177,15 @@ zephyr = {
     "stops": ['<|user|>'],
 }
 
-# OpenChat: https://huggingface.co/openchat/openchat_3.5/discussions/5
+# OpenChat: https://huggingface.co/openchat/openchat-3.5-0106
 openchat = {
     "system_prefix": "",
-    "system_content": "You are a helpful assistant.",
-    "system_postfix": "<|end_of_turn|>",
-    "user_prefix": "",
+    "system_content": "",
+    "system_postfix": "",
+    "user_prefix": "GPT4 Correct User: ",
     "user_content": "",
     "user_postfix": "<|end_of_turn|>",
-    "bot_prefix": "\n\n", # not shown in format, but required anyway
+    "bot_prefix": "GPT4 Correct Assistant:",
     "bot_content": "",
     "bot_postfix": "<|end_of_turn|>",
     "stops": ['<|end_of_turn|>'],

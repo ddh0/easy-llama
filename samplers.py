@@ -61,19 +61,13 @@ StrictMinPSampling = SamplerSettings(
 )
 
 ContrastiveSearch = SamplerSettings(
-    top_p = 1.0,
-    min_p = 0.0,
-    presence_penalty = 0.4,
-    repeat_penalty = 1.0,
-    top_k = 4
+    temp = 0.0,
+    presence_penalty = 0.5,
 )
 
 WarmContrastiveSearch = SamplerSettings(
-    top_p = 1.0,
-    min_p = 0.0,
+    temp = 0.0,
     presence_penalty = 0.7,
-    repeat_penalty = 1.0,
-    top_k = 7
 )
 
 RandomSampling = SamplerSettings(
@@ -89,5 +83,5 @@ LowTempSampling = SamplerSettings(
 )
 
 HighTempSampling = SamplerSettings(
-    temp = 1.4
+    temp = 1.2
 )
