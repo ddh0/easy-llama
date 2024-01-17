@@ -271,8 +271,8 @@ class Model(object):
         generation early
         """
 
-        assert isinstance(prompt, str), "prompt should be string, not " + \
-            f"{type(prompt)}"
+        assert isinstance(prompt, str), \
+            f"prompt should be string, not {type(prompt)}"
         if isinstance(stops, list):
             for stopping_string in stops:
                 assert isinstance(stopping_string, str), \
@@ -327,8 +327,8 @@ class Model(object):
         See also `Model.stream_print()`
         """
 
-        assert isinstance(prompt, str), "prompt should be string, not " \
-            + f"{type(prompt)}"
+        assert isinstance(prompt, str), \
+            f"prompt should be string, not {type(prompt)}"
         if isinstance(stops, list):
             for stopping_string in stops:
                 assert isinstance(stopping_string, str), \
@@ -377,8 +377,11 @@ class Model(object):
         s = Model.stream(prompt, stops=stops, sampler=sampler)
         for i in s:
             tok = i['choices'][0]['text']
-            print(tok, end=end, file=file, flush=flush)
+            print(tok, end='', file=file, flush=flush)
+        print(end, end='', file=file, flush=True)
         ```
+        Once finished, returns the complete generated string. The returned
+        string does not include the `end` parameter.
         """
         
         tok_gen = self.stream(
@@ -387,14 +390,16 @@ class Model(object):
             sampler=sampler
         )
 
+        res = ''
         for i in tok_gen:
             tok = i['choices'][0]['text']
-            print(
-                tok,
-                end=end,
-                file=file,
-                flush=flush
-            )
+            print(tok, end='', file=file, flush=flush)
+            res += tok
+
+        # always flush stream after a generation is done
+        print(end, end='', file=file, flush=True)
+        
+        return res
 
 
     def ingest(self, text: str) -> None:

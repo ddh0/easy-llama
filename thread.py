@@ -278,35 +278,22 @@ class Thread(object):
                 prompt = input("  > ")
                 print()
                 if prompt == "":
-                    token_generator = self.model.stream(
+                    output = self.model.stream_print(
                         self.inference_str_from_messages(self.messages),
                         stops=self.format['stops'],
-                        sampler=self.sampler
+                        sampler=self.sampler,
+                        end=''
                     )
-
-                    output = ""
-                    for i in token_generator:
-                        token = i['choices'][0]['text']
-                        output += token
-                        print(token, end="", flush=True)
-
                     self.add_message("bot", output)
 
                 else:
                     self.add_message("user", prompt)
-
-                    token_generator = self.model.stream(
+                    output = self.model.stream_print(
                         self.inference_str_from_messages(self.messages),
                         stops=self.format['stops'],
-                        sampler=self.sampler
+                        sampler=self.sampler,
+                        end=''
                     )
-
-                    output = ""
-                    for i in token_generator:
-                        token = i['choices'][0]['text']
-                        output += token
-                        print(token, end="", flush=True)
-
                     self.add_message("bot", output)
 
                 if output.endswith("\n\n"):
