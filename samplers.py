@@ -62,12 +62,12 @@ StrictMinPSampling = SamplerSettings(
 
 ContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.5,
+    presence_penalty = 0.4,
 )
 
 WarmContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.7,
+    presence_penalty = 0.8,
 )
 
 RandomSampling = SamplerSettings(

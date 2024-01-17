@@ -20,7 +20,7 @@ class Thread(object):
                  max_context_length: int = -1,
                  track_context: bool = False,
                  sampler: SamplerSettings = DefaultSampling
-                 ):
+            ):
         
         assert isinstance(model, Model), \
             "Thread: model should be an " + \
@@ -42,8 +42,8 @@ class Thread(object):
             format['stops']
         except KeyError as e:
             e.add_note(
-                "Thread: format is missing one or more required keys, see " \
-                + "easy_llama.formats.blank for an example"
+                "Thread: format is missing one or more required keys, see " + \
+                "easy_llama.formats.blank for an example"
             )
             raise
 
@@ -82,7 +82,7 @@ class Thread(object):
         self.sampler: SamplerSettings = sampler
 
         if self.enable_timestamps:
-            # stop generation on timestamps, e.g "[2024"
+            # stop generation on timestamps
             self.format['stops'].append(
                 time.strftime('[%Y')
             )
@@ -112,14 +112,16 @@ class Thread(object):
             f"create_message: content should be str, not {type(content)}"
 
         if role.lower() == 'system':
+            prefix_maybe_with_timestamp: str = self.format['system_prefix'] if not self.enable_timestamps else (
+                utils.get_timestamp_prefix_str() +
+                self.format['system_prefix']
+            )
             return {
-                "prefix": self.format['system_prefix'] if not self.enable_timestamps else
-                    utils.get_timestamp_prefix_str()
-                    + self.format['system_prefix'],
+                "prefix": prefix_maybe_with_timestamp,
                 "content": content,
                 "postfix": self.format['system_postfix'],
                 "tokens": self.model.llama.tokenize(
-                    self.format['system_prefix'].encode() + \
+                    prefix_maybe_with_timestamp.encode() + \
                     content.encode() + \
                     self.format['system_postfix'].encode()
                 ),
@@ -129,14 +131,16 @@ class Thread(object):
             }
         
         elif role.lower() == 'user':
+            prefix_maybe_with_timestamp: str = self.format['user_prefix'] if not self.enable_timestamps else (
+                utils.get_timestamp_prefix_str() +
+                self.format['user_prefix']
+            )
             return {
-                "prefix": self.format['user_prefix'] if not self.enable_timestamps else
-                    utils.get_timestamp_prefix_str()
-                    + self.format['user_prefix'],
+                "prefix": prefix_maybe_with_timestamp,
                 "content": content,
                 "postfix": self.format['user_postfix'],
                 "tokens": self.model.llama.tokenize(
-                    self.format['user_prefix'].encode() + \
+                    prefix_maybe_with_timestamp.encode() + \
                     content.encode() + \
                     self.format['user_postfix'].encode()
                 ),
@@ -146,14 +150,16 @@ class Thread(object):
             }
         
         elif role.lower() == 'bot':
+            prefix_maybe_with_timestamp: str = self.format['bot_prefix'] if not self.enable_timestamps else (
+                utils.get_timestamp_prefix_str() +
+                self.format['bot_prefix']
+            )
             return {
-                "prefix": self.format['bot_prefix'] if not self.enable_timestamps else
-                    utils.get_timestamp_prefix_str()
-                    + self.format['bot_prefix'],
+                "prefix": prefix_maybe_with_timestamp,
                 "content": content,
                 "postfix": self.format['bot_postfix'],
                 "tokens": self.model.llama.tokenize(
-                    self.format['bot_prefix'].encode() + \
+                    prefix_maybe_with_timestamp.encode() + \
                     content.encode() + \
                     self.format['bot_postfix'].encode()
                 ),

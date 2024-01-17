@@ -10,7 +10,7 @@ import os
 from samplers import SamplerSettings, DefaultSampling
 from utils import print_warning, verify_backend
 from gguf_reader import GGUFReader
-from typing import Generator
+from typing import Generator, Optional
 
 class Model(object):
     """
@@ -36,7 +36,12 @@ class Model(object):
     - .llama: the raw llama_cpp.Llama instance
     """
 
-    def __init__(self, model_path: str, context_length: int = None):
+    def __init__(
+            self,
+            model_path: str,
+            context_length:
+            Optional[int] = None
+        ):
         """
         Given the path to a GGUF file, create a Model instance
 
@@ -48,15 +53,12 @@ class Model(object):
         parameter.
         """
 
-        assert isinstance(
-            model_path, str
-        ), f"model_path should be a string, not {type(model_path)}"
-        assert not os.path.isdir(
-            model_path
-        ), f"the given model_path '{model_path}' is a directory, not a file"
-        assert os.path.exists(
-            model_path
-        ), f"the given model_path '{model_path}' does not exist"
+        assert isinstance(model_path, str), \
+            f"model_path should be a string, not {type(model_path)}"
+        assert not os.path.isdir(model_path), \
+            f"the given model_path '{model_path}' is a directory, not a file"
+        assert os.path.exists(model_path), \
+            f"the given model_path '{model_path}' does not exist"
         assert isinstance(context_length, (int, type(None))), \
             f"context_length should be int or None, not {type(context_length)}"
 
@@ -69,7 +71,9 @@ class Model(object):
         elif 'phi2.context_length' in self.metadata:
             n_ctx_train = self.metadata['phi2.context_length']
         else:
-            raise KeyError("GGUF file does not specify a context length")
+            raise KeyError(
+                "GGUF file does not specify a context length"
+            )
 
         if 'llama.rope.freq_base' in self.metadata:
             rope_freq_base_train = self.metadata['llama.rope.freq_base']
@@ -101,8 +105,8 @@ class Model(object):
             rope_freq_base = 0
 
         elif context_length > n_ctx_train:
-            # apply RoPE freq scaling because requested
-            # context length > n_ctx_train and rope freq base is known
+            # multiply rope_freq_base according to requested context length
+            # because context length > n_ctx_train and rope freq base is known
 
             rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
             rope_freq_base = (context_length/n_ctx_train)*rope_freq_base_train
@@ -114,12 +118,13 @@ class Model(object):
                 f'({context_length} > {n_ctx_train}), ' + \
                 'freq_base has been changed from ' + \
                 f'{rope_freq_base_train} to {rope_freq_base}'
-                )
+            )
 
         n_batch = os.cpu_count() * 16
         n_threads = max(os.cpu_count()//2, 1)
         n_threads_batch = os.cpu_count()
 
+        # TODO: This feels weird
         # Set global variables to valid values based on settings
         globals.BACKEND, globals.NUM_GPU_LAYERS, globals.MUL_MAT_Q, \
         globals.MMAP, globals.MLOCK = verify_backend(
@@ -172,19 +177,25 @@ class Model(object):
         # unsure if/how to fix that
         self.llama = None
         self = None
+        del self
+        return None
     
     def __call__(
             self,
             prompt: str,
-            stops: list[str] | None = None,
+            stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling
         ) -> str:
         """
-        `Model('some text')` is a shortcut to `Model.generate('some text')`
+        `Model('some text')` is a shorthand for `Model.generate('some text')`
         """
         return self.generate(prompt, stops, sampler)
 
-    def trim(self, text: str, overwrite: str = None) -> str:
+    def trim(self,
+             text: str,
+             overwrite: Optional[str] = None
+        ) -> str:
+
         """
         Trim the given text to the context length of this model,
         leaving room for two extra tokens.
@@ -209,19 +220,23 @@ class Model(object):
             # Cut to context length
             tokens_list = tokens_list[-trim_length:]
             return self.llama.detokenize(tokens_list).decode(
-                "utf-8", errors="ignore"
+                "utf-8",
+                errors="ignore"
             )
 
         if len(tokens_list) > self.context_length and overwrite is not None:
             # Cut to context length and overwrite the oldest tokens with
             # overwrite
             tokens_list = tokens_list[-trim_length:]
-            overwrite_tokens = self.llama.tokenize(
-                overwrite.encode("utf-8", errors="ignore")
+            overwrite_tokens = self.llama.tokenize(overwrite.encode(
+                "utf-8",
+                errors="ignore"
+                )
             )
             tokens_list[0 : len(overwrite_tokens)] = overwrite_tokens
             return self.llama.detokenize(tokens_list).decode(
-                "utf-8", errors="ignore"
+                "utf-8",
+                errors="ignore"
             )
 
     def get_length(self, text: str) -> int:
@@ -234,7 +249,7 @@ class Model(object):
     def generate(
             self,
             prompt: str,
-            stops: list[str] | None = None,
+            stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling
             ) -> str:
         """
@@ -249,14 +264,12 @@ class Model(object):
         assert isinstance(prompt, str), "prompt should be string, not " + \
             f"{type(prompt)}"
         if isinstance(stops, list):
-            for item in stops:
-                assert isinstance(
-                    item, str
-                ), f"item {item} in stops list is not a string"
+            for stopping_string in stops:
+                assert isinstance(stopping_string, str), \
+                    f"item {stopping_string} in stops list is not a string"
         else:
-            assert (
-                stops is None
-            ), f"stops should be list[str] or None, not {type(stops)}"
+            assert (stops is None), \
+                f"stops should be list[str] or None, not {type(stops)}"
 
         if globals.VERBOSE:
             print(f'easy_llama: using the following sampler settings for generation')
@@ -285,7 +298,7 @@ class Model(object):
     def stream(
             self,
             prompt: str,
-            stops: list[str] | None = None,
+            stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling
         ) -> Generator:
 
@@ -300,19 +313,19 @@ class Model(object):
 
         stops: list[str] | None: a list of strings at which to end the
         generation early
+
+        See also `Model.stream_print()`
         """
 
         assert isinstance(prompt, str), "prompt should be string, not " \
             + f"{type(prompt)}"
         if isinstance(stops, list):
-            for item in stops:
-                assert isinstance(
-                    item, str
-                ), f"item {item} in stops list is not a string"
+            for stopping_string in stops:
+                assert isinstance(stopping_string, str), \
+                    f"item {stopping_string} in stops list is not a string"
         else:
-            assert (
-                stops is None
-            ), f"stops should be list[str] or None, not {type(stops)}"
+            assert stops is None, \
+                f"stops should be list[str] or None, not {type(stops)}"
 
         if globals.VERBOSE:
             print(f'easy_llama: using the following sampler settings for generation')
@@ -337,7 +350,34 @@ class Model(object):
             stream=True,
             stop=stops
         )
-    
+
+
+    def stream_print(
+            self,
+            prompt: str,
+            stops: Optional[list[str]] = None,
+            sampler: SamplerSettings = DefaultSampling
+    ) -> None:
+        """
+        `Model.stream_print(...)` is a shorthand for:
+        ```
+        s = Model.stream(...)
+        for i in s:
+            tok = i['choices'][0]['text']
+            print(tok, end="", flush=True)
+        ```
+        """
+        
+        tok_gen = self.stream(
+            prompt=prompt,
+            stops=stops,
+            sampler=sampler
+        )
+
+        for i in tok_gen:
+            tok = i['choices'][0]['text']
+            print(tok, end="", flush=True)
+
 
     def ingest(self, text: str) -> None:
         """
@@ -351,13 +391,17 @@ class Model(object):
         )
     
 
-    def next_candidates(self, prompt: str, k: int) -> list[str]:
+    def next_candidates(
+            self,
+            prompt: str,
+            k: int
+        ) -> list[str]:
         """
         Given prompt (str) and k (int), return a sorted list of the
         top k candidates for most likely next token
         """
 
         # TODO
-        # LLama.logits_to_logprobs()[tok_id]
+        # Llama.logits_to_logprobs()[tok_id]
         # Llama.eval(tokens_list_ints)
         pass

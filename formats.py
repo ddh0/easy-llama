@@ -58,7 +58,7 @@ chatml = {
 # https://huggingface.co/blog/llama2
 # system message relaxed to avoid undue refusals
 llama2chat = {
-    "system_prefix": "<s>[INST] <<SYS>>\n",
+    "system_prefix": "[INST] <<SYS>>\n",
     "system_content": "You are a helpful AI assistant.",
     "system_postfix": "\n<</SYS>>\n\n",
     "user_prefix": "",
@@ -89,7 +89,7 @@ alpaca = {
 # most commonly by adding line breaks
 # https://github.com/flu0r1ne/FastChat/blob/main/docs/vicuna_weights_version.md
 vicuna_lmsys = {
-    "system_prefix": "<s>",
+    "system_prefix": "",
     "system_content": "",
     "system_postfix": " ",
     "user_prefix": "USER: ",

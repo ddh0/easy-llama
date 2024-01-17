@@ -35,7 +35,7 @@ def verify_backend(backend, num_gpu_layers, mul_mat_q) -> tuple:
     
     if not isinstance(backend, str):
         print_warning(
-            "easy_llama: easy_llama.globals.BACKEND must be a string, " + \
+            "easy_llama.globals.BACKEND must be a string, " + \
             f"not {type(backend)}. defaulting to CPU"
         )
         backend = 'CPU'
