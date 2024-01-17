@@ -5,12 +5,17 @@
 
 import llama_cpp
 import globals
+import sys
 import os
 
 from samplers import SamplerSettings, DefaultSampling
 from utils import print_warning, verify_backend
 from gguf_reader import GGUFReader
-from typing import Generator, Optional
+from typing import Generator, Optional, TextIO
+
+# for typing of Model.stream_print() parameter `file`
+class _SupportsWriteAndFlush(TextIO):
+    pass
 
 class Model(object):
     """
@@ -244,7 +249,12 @@ class Model(object):
         Return the length of the given text in tokens,
         according to this model.
         """
-        return len(self.llama.tokenize(text.encode("utf-8", errors="ignore")))
+        return len(self.llama.tokenize(
+            text.encode(
+                "utf-8",
+                errors="ignore"
+                )
+            ))
 
     def generate(
             self,
@@ -356,15 +366,18 @@ class Model(object):
             self,
             prompt: str,
             stops: Optional[list[str]] = None,
-            sampler: SamplerSettings = DefaultSampling
+            sampler: SamplerSettings = DefaultSampling,
+            end: Optional[str] = "\n",
+            file: Optional[_SupportsWriteAndFlush] = sys.stdout,
+            flush: bool = True
     ) -> None:
         """
         `Model.stream_print(...)` is a shorthand for:
         ```
-        s = Model.stream(...)
+        s = Model.stream(prompt, stops=stops, sampler=sampler)
         for i in s:
             tok = i['choices'][0]['text']
-            print(tok, end="", flush=True)
+            print(tok, end=end, file=file, flush=flush)
         ```
         """
         
@@ -376,7 +389,12 @@ class Model(object):
 
         for i in tok_gen:
             tok = i['choices'][0]['text']
-            print(tok, end="", flush=True)
+            print(
+                tok,
+                end=end,
+                file=file,
+                flush=flush
+            )
 
 
     def ingest(self, text: str) -> None:
