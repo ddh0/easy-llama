@@ -10,8 +10,8 @@ import os
 
 from samplers import SamplerSettings, DefaultSampling
 from utils import print_warning, verify_backend
-from gguf_reader import GGUFReader
 from typing import Generator, Optional, TextIO
+from gguf_reader import GGUFReader
 
 # for typing of Model.stream_print() parameter `file`
 class _SupportsWriteAndFlush(TextIO):
@@ -44,11 +44,10 @@ class Model(object):
     def __init__(
             self,
             model_path: str,
-            context_length:
-            Optional[int] = None
+            context_length: Optional[int] = None
         ):
         """
-        Given the path to a GGUF file, create a Model instance
+        Given the path to a GGUF file, construct a Model instance
 
         The model must be in GGUF format.
 
@@ -129,29 +128,26 @@ class Model(object):
         n_threads = max(os.cpu_count()//2, 1)
         n_threads_batch = os.cpu_count()
 
-        # TODO: This feels weird
-        # Set global variables to valid values based on settings
-        globals.BACKEND, globals.NUM_GPU_LAYERS, globals.MUL_MAT_Q, \
-        globals.MMAP, globals.MLOCK = verify_backend(
+        # Set parameters to valid values based on backend
+        globals.BACKEND, globals.NUM_GPU_LAYERS, mul_mat_q, \
+        mmap, mlock = verify_backend(
             backend=globals.BACKEND,
-            num_gpu_layers=globals.NUM_GPU_LAYERS,
-            mul_mat_q=globals.MUL_MAT_Q
+            num_gpu_layers=globals.NUM_GPU_LAYERS
         )
 
         self.llama: llama_cpp.Llama = llama_cpp.Llama(
             model_path=model_path,
             n_ctx=self.context_length,
             n_gpu_layers=globals.NUM_GPU_LAYERS,
-            seed=globals.SEED,
-            use_mmap=globals.MMAP,
-            use_mlock=globals.MLOCK,
+            use_mmap=mmap,
+            use_mlock=mlock,
             logits_all=False,
             n_batch=n_batch,
             n_threads=n_threads,
             n_threads_batch=n_threads_batch,
             rope_scaling_type=rope_scaling_type,
             rope_freq_base=rope_freq_base,
-            mul_mat_q=globals.MUL_MAT_Q,
+            mul_mat_q=mul_mat_q,
             verbose=globals.VERBOSE,
         )
         
@@ -160,9 +156,9 @@ class Model(object):
             print(f"{model_path}")
             print(f"global: BACKEND              == {globals.BACKEND}")
             print(f"global: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
-            print(f"global: MUL_MAT_Q            == {globals.MUL_MAT_Q}")
-            print(f"global: MMAP                 == {globals.MMAP}")
-            print(f"global: MLOCK                == {globals.MLOCK}")
+            print(f" param: MUL_MAT_Q            == {mul_mat_q}")
+            print(f" param: MMAP                 == {mmap}")
+            print(f" param: MLOCK                == {mlock}")
             print(f" param: n_batch              == {n_batch}")
             print(f" param: n_threads            == {n_threads}")
             print(f" param: n_threads_batch      == {n_threads_batch}")
@@ -170,7 +166,6 @@ class Model(object):
             print(f" param: self.context_length  == {self.context_length}")
             print(f"  gguf: rope_freq_base_train == {rope_freq_base_train}")
             print(f" param: rope_freq_base       == {rope_freq_base}")
-            print()
     
     def __enter__(self):
         return self
@@ -367,8 +362,8 @@ class Model(object):
             prompt: str,
             stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling,
-            end: Optional[str] = "\n",
-            file: Optional[_SupportsWriteAndFlush] = sys.stdout,
+            end: str = "\n",
+            file: _SupportsWriteAndFlush = sys.stdout,
             flush: bool = True
     ) -> None:
         """
@@ -396,9 +391,9 @@ class Model(object):
             print(tok, end='', file=file, flush=flush)
             res += tok
 
-        # always flush stream after a generation is done
+        # always flush stream after generation is done
         print(end, end='', file=file, flush=True)
-        
+
         return res
 
 

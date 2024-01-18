@@ -3,8 +3,8 @@
 
 """Submodule containing convenience functions"""
 
-import sys
 import time
+import sys
 
 def get_timestamp_prefix_str() -> str:
     # helpful: https://strftime.net
@@ -13,16 +13,13 @@ def get_timestamp_prefix_str() -> str:
 def print_warning(text: str) -> str:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)
 
-def verify_backend(backend, num_gpu_layers, mul_mat_q) -> tuple:
+def verify_backend(backend, num_gpu_layers) -> tuple:
     """
-    Verify that BACKEND is valid and modify NUM_GPU_LAYERS
-    and MUL_MAT_Q as necessary
+    Verify that BACKEND is valid and return a tuple of valid values for
+    (backend, num_gpu_layers, mul_mat_q, mmap, mlock)
 
     This is not done on import because user must be able to set backend
     (and maybe NUM_GPU_LAYERS) before loading any model.
-
-    Returns tuple of valid values for
-    (backend, num_gpu_layers, mul_mat_q, mmap, mlock)
     """
 
     if backend is None:
@@ -63,12 +60,12 @@ def verify_backend(backend, num_gpu_layers, mul_mat_q) -> tuple:
         mmap = False
         mlock = False
     elif backend == 'CUDA':
-        # Don't set NUM_GPU_LAYERS, let the user configure it
+        # Don't change NUM_GPU_LAYERS, use global value
         mul_mat_q = True
         mmap = False
         mlock = False
     elif backend == 'ROCm':
-        # Don't set NUM_GPU_LAYERS, let the user configure it
+        # Don't change NUM_GPU_LAYERS, use global value
         mul_mat_q = False
         mmap = False
         mlock = False
