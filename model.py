@@ -11,7 +11,7 @@ import os
 from samplers import SamplerSettings, DefaultSampling
 from utils import print_warning, verify_backend
 from typing import Generator, Optional, TextIO
-from gguf_reader import GGUFReader
+from utils import GGUFReader
 
 # for typing of Model.stream_print() parameter `file`
 class _SupportsWriteAndFlush(TextIO):
@@ -156,9 +156,9 @@ class Model(object):
             print(f"{model_path}")
             print(f"global: BACKEND              == {globals.BACKEND}")
             print(f"global: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
-            print(f" param: MUL_MAT_Q            == {mul_mat_q}")
-            print(f" param: MMAP                 == {mmap}")
-            print(f" param: MLOCK                == {mlock}")
+            print(f" param: mul_mat_q            == {mul_mat_q}")
+            print(f" param: mmap                 == {mmap}")
+            print(f" param: mlock                == {mlock}")
             print(f" param: n_batch              == {n_batch}")
             print(f" param: n_threads            == {n_threads}")
             print(f" param: n_threads_batch      == {n_threads_batch}")

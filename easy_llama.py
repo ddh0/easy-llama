@@ -11,6 +11,9 @@ import globals
 import formats
 import samplers
 
+# not typically accessed externally, but may be helpful in certain cases
+import utils as _utils
+
 from model import Model
 from thread import Thread
 
