@@ -6,11 +6,11 @@ Submodule containing convenience functions, GGUFReader, and OutputSupressor
 """
 
 import globals
-import struct
 import time
 import sys
 import os
 
+from struct import unpack
 from enum import IntEnum
 
 class GGUFReader:
@@ -69,13 +69,13 @@ class GGUFReader:
 
     def get_single(self, value_type, file):
         if value_type == GGUFReader.GGUFValueType.STRING:
-            value_length = struct.unpack("<Q", file.read(8))[0]
+            value_length = unpack("<Q", file.read(8))[0]
             value = file.read(value_length)
             value = value.decode("utf-8")
         else:
             type_str = GGUFReader._simple_value_packing.get(value_type)
             bytes_length = GGUFReader.value_type_info.get(value_type)
-            value = struct.unpack(type_str, file.read(bytes_length))[0]
+            value = unpack(type_str, file.read(bytes_length))[0]
 
         return value
 
@@ -83,10 +83,10 @@ class GGUFReader:
         metadata = {}
         with open(fname, "rb") as file:
             GGUF_MAGIC = file.read(4)
-            GGUF_VERSION = struct.unpack("<I", file.read(4))[0]
+            GGUF_VERSION = unpack("<I", file.read(4))[0]
             # ti_data_count = struct.unpack("<Q", file.read(8))[0]
             file.read(8)
-            kv_data_count = struct.unpack("<Q", file.read(8))[0]
+            kv_data_count = unpack("<Q", file.read(8))[0]
 
             if GGUF_MAGIC != b"GGUF":
                 raise ValueError(
@@ -103,17 +103,17 @@ class GGUFReader:
                 )
 
             for _ in range(kv_data_count):
-                key_length = struct.unpack("<Q", file.read(8))[0]
+                key_length = unpack("<Q", file.read(8))[0]
                 key = file.read(key_length)
 
                 value_type = GGUFReader.GGUFValueType(
-                    struct.unpack("<I", file.read(4))[0]
+                    unpack("<I", file.read(4))[0]
                 )
                 if value_type == GGUFReader.GGUFValueType.ARRAY:
                     ltype = GGUFReader.GGUFValueType(
-                        struct.unpack("<I", file.read(4))[0]
+                        unpack("<I", file.read(4))[0]
                     )
-                    length = struct.unpack("<Q", file.read(8))[0]
+                    length = unpack("<Q", file.read(8))[0]
                     for _ in range(length):
                         _ = GGUFReader.get_single(self, ltype, file)
                 else:
@@ -179,6 +179,20 @@ def get_timestamp_prefix_str() -> str:
 def print_warning(text: str) -> str:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)
 
+def multiline_input(prompt: str) -> str:
+    """
+    Recieve multi-line input from the user and return the entered string.
+    Lines must end with a backslash \ in order to recieve another line
+    """
+    res = ''
+    while True:
+        s = input(prompt)
+        if s.endswith('\\'):
+            res += s[:-1] + '\n'
+        else:
+            res += s
+            return res
+
 def verify_backend(backend, num_gpu_layers) -> tuple:
     """
     Verify that BACKEND is valid and return a tuple of valid values for
@@ -203,6 +217,7 @@ def verify_backend(backend, num_gpu_layers) -> tuple:
         )
         backend = 'CPU'
     
+    # for pretty printing in verbose mode
     if backend.lower() == 'metal':
         backend = 'Metal'
     elif backend.lower() == 'cuda':

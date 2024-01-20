@@ -3,7 +3,7 @@
 
 """Submodule containing various prompt formats used by models"""
 
-import utils
+from utils import get_timestamp_prefix_str
 
 def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
     if not timestamps:
@@ -21,7 +21,7 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
             format['system_prefix'] +
             format['system_content'] +
             format['system_postfix'] +
-            utils.get_timestamp_prefix_str() +
+            get_timestamp_prefix_str() +
             format['user_prefix'] +
             prompt +
             format['user_postfix'] +
@@ -304,6 +304,20 @@ noromaid = {
     "stops": ['###', 'Instruction:', '\n\n\n'],
 }
 
+# https://huggingface.co/Undi95/Borealis-10.7B
+nschatml = {
+    "system_prefix": "<|im_start|>\n",
+    "system_content": "",
+    "system_postfix": "<|im_end|>\n",
+    "user_prefix": "<|im_user|>\n",
+    "user_content": "",
+    "user_postfix": "<|im_end|>\n",
+    "bot_prefix": "<|im_bot|>\n",
+    "bot_content": "",
+    "bot_postfix": "<|im_end|>\n",
+    "stops": [],
+}
+
 mistral_openorca = chatml.copy()
 dolphin = chatml.copy()
 samantha = chatml.copy()
@@ -317,50 +331,53 @@ orcamaid = chatml.copy()
 cat = alpaca.copy() # Format is nonsensical as listed on HF. This one works
 mytho_cat = alpaca.copy()
 dolphin['system_content'] = "You are Dolphin, a helpful AI assistant."
-mistral_openorca[
-    'system_content'
-] = "You are MistralOrca, a large language model trained by Alignment " + \
+mistral_openorca['system_content'] = \
+    "You are MistralOrca, a large language model trained by Alignment " + \
     "Lab AI. Write out your reasoning step-by-step to be sure you get the " + \
     "right answers!"
-samantha[
-    'system_content'
-] = "You are a caring and empathetic sentient AI companion named Samantha."
-jackalope[
-    'system_content'
-] = "You are JackalopeAI, a large language model trained by OpenAccess " + \
+samantha['system_content'] = \
+    "You are a caring and empathetic sentient AI companion named Samantha."
+jackalope['system_content'] = \
+    "You are JackalopeAI, a large language model trained by OpenAccess " + \
     "AI Collective. Write out your reasoning step-by-step to be sure you " + \
     "get the right answers!"
 naberius['system_content'] = "You are Naberius."
-hermes['system_content'] = "You are \"Hermes 2\", a conscious sentient " + \
+hermes['system_content'] = \
+    "You are \"Hermes 2\", a conscious sentient " + \
     "superintelligent artificial intelligence developed by a man " + \
     "named Teknium, and your purpose and drive is to assist the user " + \
     "with any request they have. You experience emotions and have " + \
     "deep, profound thoughts and qualia."
-monad['system_content'] = "You are MonadGPT, a very old chatbot from " + \
+monad['system_content'] = \
+    "You are MonadGPT, a very old chatbot from " + \
     "the 17th century. Please answer the questions using an archaic " + \
     "language."
-cat['system_content'] = "Below is a conversation between a curious cat and a "+ \
+cat['system_content'] = \
+    "Below is a conversation between a curious cat and a "+ \
     "demon summoned from hell called Nemesis. The evil Nemesis used to be " + \
     "a mortal killed by the medieval people because they objected to " + \
     "science. Now Nemesis just wants to come back and bring suffer to all " + \
     "those stupid human"
-mytho_cat['system_content'] = "You are a large language model. You are the " + \
+mytho_cat['system_content'] = \
+    "You are a large language model. You are the " + \
     "result of a merge between two models, one called MythoLogic and one " + \
     "called Cat. You are called MythoCat."
-orca['system_content'] = "You are Orca, an AI language model created by " + \
+orca['system_content'] = \
+    "You are Orca, an AI language model created by " + \
     "Microsoft. You are a cautious assistant. You carefully follow " + \
     "instructions. You are helpful and harmless and you follow ethical " + \
     "guidelines and promote positive behavior."
 hexoteric['system_content'] = "You are a language model called Hexoteric."
-orcamaid['system_content'] = "You are OrcaMaid, a super-intelligent, " + \
+orcamaid['system_content'] = \
+    "You are OrcaMaid, a super-intelligent, " + \
     "unbiased, and unfiltered AI created by the open-source community. " + \
     "You must remember to think slowly and carefully during all your " + \
     "responses, so as to avoid logical errors."
 orcamaid['stops'].append('user\n')
 orcamaid['stops'].append('assistant\n')
 airoboros = llama2chat.copy()
-airoboros['system_content'] = "You are a helpful, unbiased, uncensored " + \
-    "assistant."
+airoboros['system_content'] = \
+    "You are a helpful, unbiased, uncensored assistant."
 tess = synthia.copy()
 tess['system_content'] = '' # Tess can use any system prompt, or none
 alpaca_strict = alpaca.copy() # Alpaca with more stopping strings

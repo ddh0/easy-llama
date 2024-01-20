@@ -3,9 +3,9 @@
 
 """Submodule containing SamplerSettings class and some preset samplers"""
 
-import sys
+from sys import maxsize
 
-MAX_TEMP = float(sys.maxsize)
+MAX_TEMP = float(maxsize)
 
 class SamplerSettings(object):
 

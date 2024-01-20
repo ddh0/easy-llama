@@ -7,7 +7,7 @@ import globals
 import time
 
 from samplers import SamplerSettings, DefaultSampling
-from utils import get_timestamp_prefix_str
+from utils import get_timestamp_prefix_str, multiline_input
 from model import Model
 
 
@@ -346,7 +346,7 @@ class Thread(object):
                 print(f"track_context: total tokens so far: {c}")
             
             try:
-                prompt = input("  > ")
+                prompt = multiline_input("  > ")
             except KeyboardInterrupt:
                 print("\n")
                 return
