@@ -298,7 +298,7 @@ noromaid = {
     "user_prefix": "### Instruction:\nBob: ",
     "user_content": "",
     "user_postfix": "\n\n",
-    "bot_prefix": "### Response:\nAlice: ",
+    "bot_prefix": "### Response:\nAlice:",
     "bot_content": "",
     "bot_postfix": "\n\n",
     "stops": ['###', 'Instruction:', '\n\n\n'],

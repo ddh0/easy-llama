@@ -127,8 +127,6 @@ class VerboseOutputSupressor(object):
     Suppress stdout and stderr if easy_llama.globals.VERBOSE is False.
     Otherwise, do nothing.
 
-    This prevents llama.cpp's console output from being displayed
-
     Changing VERBOSE inside the WITH block may result in stdout and stderr
     being stuck to /dev/null, or other undefined behaviour
 

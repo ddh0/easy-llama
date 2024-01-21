@@ -11,7 +11,7 @@ import os
 from samplers import SamplerSettings, DefaultSampling
 from utils import print_warning, verify_backend
 from typing import Generator, Optional, TextIO
-from utils import GGUFReader
+from utils import GGUFReader, VerboseOutputSupressor
 
 # for typing of Model.stream_print() parameter `file`
 class _SupportsWriteAndFlush(TextIO):
@@ -68,33 +68,30 @@ class Model(object):
 
         self.metadata = GGUFReader.load_metadata(self, model_path)
 
-        if 'llama.context_length' in self.metadata:
-            n_ctx_train = self.metadata['llama.context_length']
-        elif 'stablelm.context_length' in self.metadata:
-            n_ctx_train = self.metadata['stablelm.context_length']
-        elif 'phi2.context_length' in self.metadata:
-            n_ctx_train = self.metadata['phi2.context_length']
-        else:
+        n_ctx_train = None
+        for key in self.metadata.keys():
+            if key.endswith('.context_length'):
+                n_ctx_train = self.metadata[key]
+                break
+
+        if n_ctx_train is None:
             raise KeyError(
                 "GGUF file does not specify a context length"
             )
-
-        if 'llama.rope.freq_base' in self.metadata:
-            rope_freq_base_train = self.metadata['llama.rope.freq_base']
-        elif 'stablelm.rope.freq_base' in self.metadata:
-            rope_freq_base_train = self.metadata['stablelm.rope.freq_base']
-        elif 'phi2.rope.freq_base' in self.metadata:
-            rope_freq_base_train = self.metadata['phi2.rope.freq_base']
-        else:
-            rope_freq_base_train = None
+        
+        rope_freq_base_train = None
+        for key in self.metadata.keys():
+            if key.endswith('.rope.freq_base'):
+                rope_freq_base_train = self.metadata[key]
+                break
 
         if rope_freq_base_train is None and context_length is not None:
             if context_length > n_ctx_train:
                 raise ValueError(
                     'unable to load model with greater than native ' + \
                     f'context length ({context_length} > {n_ctx_train}) ' + \
-                    'because model does not specify a RoPE frequency ' + \
-                    f'base. try again with `context_length={n_ctx_train}`'
+                    'because model does not specify freq_base. ' + \
+                    f'try again with `context_length={n_ctx_train}`'
                 )
 
         if rope_freq_base_train is None or context_length is None or \
@@ -105,14 +102,12 @@ class Model(object):
                 self.context_length = n_ctx_train
             else:
                 self.context_length = context_length
-            rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_UNSPECIFIED
             rope_freq_base = 0
 
         elif context_length > n_ctx_train:
             # multiply rope_freq_base according to requested context length
             # because context length > n_ctx_train and rope freq base is known
 
-            rope_scaling_type = llama_cpp.LLAMA_ROPE_SCALING_LINEAR
             rope_freq_base = (context_length/n_ctx_train)*rope_freq_base_train
             self.context_length = context_length
             
@@ -135,23 +130,22 @@ class Model(object):
             num_gpu_layers=globals.NUM_GPU_LAYERS
         )
 
-        self.llama: llama_cpp.Llama = llama_cpp.Llama(
-            model_path=model_path,
-            n_ctx=self.context_length,
-            n_gpu_layers=globals.NUM_GPU_LAYERS,
-            use_mmap=mmap,
-            use_mlock=mlock,
-            logits_all=False,
-            n_batch=n_batch,
-            n_threads=n_threads,
-            n_threads_batch=n_threads_batch,
-            rope_scaling_type=rope_scaling_type,
-            rope_freq_base=rope_freq_base,
-            mul_mat_q=mul_mat_q,
-            verbose=globals.VERBOSE,
-        )
+        with VerboseOutputSupressor():
+            self.llama: llama_cpp.Llama = llama_cpp.Llama(
+                model_path=model_path,
+                n_ctx=self.context_length,
+                n_gpu_layers=globals.NUM_GPU_LAYERS,
+                use_mmap=mmap,
+                use_mlock=mlock,
+                logits_all=False,
+                n_batch=n_batch,
+                n_threads=n_threads,
+                n_threads_batch=n_threads_batch,
+                rope_freq_base=rope_freq_base,
+                mul_mat_q=mul_mat_q,
+                verbose=True,
+            )
         
-        if globals.VERBOSE:
             print("-------------------- easy_llama.Model ----------------------")
             print(f"{model_path}")
             print(f"global: BACKEND              == {globals.BACKEND}")
@@ -287,17 +281,18 @@ class Model(object):
             print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
             print()
         
-        return self.llama.create_completion(
-            prompt,
-            max_tokens=sampler.max_len_tokens,
-            temperature=sampler.temp,
-            top_p=sampler.top_p,
-            min_p=sampler.min_p,
-            presence_penalty=sampler.presence_penalty,
-            repeat_penalty=sampler.repeat_penalty,
-            top_k=sampler.top_k,
-            stop=stops
-        )['choices'][0]['text']
+        with VerboseOutputSupressor():
+            return self.llama.create_completion(
+                prompt,
+                max_tokens=sampler.max_len_tokens,
+                temperature=sampler.temp,
+                top_p=sampler.top_p,
+                min_p=sampler.min_p,
+                presence_penalty=sampler.presence_penalty,
+                repeat_penalty=sampler.repeat_penalty,
+                top_k=sampler.top_k,
+                stop=stops
+            )['choices'][0]['text']
     
 
     def stream(
@@ -343,18 +338,19 @@ class Model(object):
             print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
             print()
 
-        return self.llama.create_completion(
-            prompt,
-            max_tokens=sampler.max_len_tokens,
-            temperature=sampler.temp,
-            top_p=sampler.top_p,
-            min_p=sampler.min_p,
-            presence_penalty=sampler.presence_penalty,
-            repeat_penalty=sampler.repeat_penalty,
-            top_k=sampler.top_k,
-            stream=True,
-            stop=stops
-        )
+        with VerboseOutputSupressor():
+            return self.llama.create_completion(
+                prompt,
+                max_tokens=sampler.max_len_tokens,
+                temperature=sampler.temp,
+                top_p=sampler.top_p,
+                min_p=sampler.min_p,
+                presence_penalty=sampler.presence_penalty,
+                repeat_penalty=sampler.repeat_penalty,
+                top_k=sampler.top_k,
+                stream=True,
+                stop=stops
+            )
 
 
     def stream_print(
@@ -365,7 +361,7 @@ class Model(object):
             end: str = "\n",
             file: _SupportsWriteAndFlush = sys.stdout,
             flush: bool = True
-    ) -> None:
+    ) -> str:
         """
         `Model.stream_print(...)` is a shorthand for:
         ```
@@ -378,6 +374,9 @@ class Model(object):
         Once finished, returns the complete generated string. The returned
         string does not include the `end` parameter.
         """
+
+        # TODO
+        # does this require supressor?
         
         tok_gen = self.stream(
             prompt=prompt,
@@ -403,10 +402,11 @@ class Model(object):
         single-token completion and discarding the result
         """
 
-        self.llama.create_completion(
-            text,
-            max_tokens=1,
-        )
+        with VerboseOutputSupressor():
+            self.llama.create_completion(
+                text,
+                max_tokens=1,
+            )
     
 
     def next_candidates(

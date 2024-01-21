@@ -67,7 +67,7 @@ class Thread(object):
         assert isinstance(format, dict), \
             f"Thread: format should be dict, not {type(format)}"
 
-        try:
+        try: # TODO: check the keys the proper way
             format['system_prefix']
             format['system_content']
             format['system_postfix']
