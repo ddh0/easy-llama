@@ -6,8 +6,8 @@
 import globals
 import time
 
-from samplers import SamplerSettings, DefaultSampling
 from utils import get_timestamp_prefix_str, multiline_input
+from samplers import SamplerSettings, DefaultSampling
 from model import Model
 
 
@@ -352,32 +352,19 @@ class Thread(object):
                 return
             
             print()
-            if prompt == "":
-                try:
-                    output = self.model.stream_print(
-                        self.inference_str_from_messages(self.messages),
-                        stops=self.format['stops'],
-                        sampler=self.sampler,
-                        end=''
-                    )
-                except KeyboardInterrupt:
-                    print(' [message not added to history; press ENTER to re-roll]\n')
-                    continue
-                self.add_message("bot", output)
-
-            else:
+            if prompt != "":
                 self.add_message("user", prompt)
-                try:
-                    output = self.model.stream_print(
-                        self.inference_str_from_messages(self.messages),
-                        stops=self.format['stops'],
-                        sampler=self.sampler,
-                        end=''
-                    )
-                except KeyboardInterrupt:
-                    print(' [message not added to history; press ENTER to re-roll]\n')
-                    continue
-                self.add_message("bot", output)
+            try:
+                output = self.model.stream_print(
+                    self.inference_str_from_messages(self.messages),
+                    stops=self.format['stops'],
+                    sampler=self.sampler,
+                    end=''
+                )
+            except KeyboardInterrupt:
+                print(' [message not added to history; press ENTER to re-roll]\n')
+                continue
+            self.add_message("bot", output)
 
             if output.endswith("\n\n"):
                 pass

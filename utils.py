@@ -182,7 +182,7 @@ def print_warning(text: str) -> str:
 def multiline_input(prompt: str) -> str:
     """
     Recieve multi-line input from the user and return the entered string.
-    Lines must end with a backslash \ in order to recieve another line
+    Lines must end with a backslash `\` in order to recieve another line
     """
     res = ''
     while True:
