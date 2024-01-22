@@ -2,13 +2,13 @@
 # Python 3.11.6
 
 """
-Submodule containing convenience functions, GGUFReader, and OutputSupressor
+Submodule containing convenience functions, GGUFReader, and
+VerboseOutputSupressor
 """
 
 import globals
 import time
 import sys
-import os
 
 from struct import unpack
 from enum import IntEnum
@@ -122,53 +122,9 @@ class GGUFReader:
 
         return metadata
 
-class VerboseOutputSupressor(object):
-    """
-    Suppress stdout and stderr if easy_llama.globals.VERBOSE is False.
-    Otherwise, do nothing.
-
-    Changing VERBOSE inside the WITH block may result in stdout and stderr
-    being stuck to /dev/null, or other undefined behaviour
-
-    See https://github.com/abetlen/llama-cpp-python/issues/478
-    """
-    
-    def __enter__(self):
-        if globals.VERBOSE:
-            return self
-        self.outnull_file = open(os.devnull, "w")
-        self.errnull_file = open(os.devnull, "w")
-
-        self.old_stdout_fileno_undup = sys.stdout.fileno()
-        self.old_stderr_fileno_undup = sys.stderr.fileno()
-
-        self.old_stdout_fileno = os.dup(sys.stdout.fileno())
-        self.old_stderr_fileno = os.dup(sys.stderr.fileno())
-
-        self.old_stdout = sys.stdout
-        self.old_stderr = sys.stderr
-
-        os.dup2(self.outnull_file.fileno(), self.old_stdout_fileno_undup)
-        os.dup2(self.errnull_file.fileno(), self.old_stderr_fileno_undup)
-
-        sys.stdout = self.outnull_file
-        sys.stderr = self.errnull_file
-        return self
-
-    def __exit__(self, *_):
-        if globals.VERBOSE:
-            return
-        sys.stdout = self.old_stdout
-        sys.stderr = self.old_stderr
-
-        os.dup2(self.old_stdout_fileno, self.old_stdout_fileno_undup)
-        os.dup2(self.old_stderr_fileno, self.old_stderr_fileno_undup)
-
-        os.close(self.old_stdout_fileno)
-        os.close(self.old_stderr_fileno)
-
-        self.outnull_file.close()
-        self.errnull_file.close()
+def sync_llama_verbose_global(llama):
+    """Ensure llama.verbose is synced with globals.VERBOSE"""
+    llama.verbose = globals.VERBOSE
 
 def get_timestamp_prefix_str() -> str:
     # helpful: https://strftime.net
@@ -179,8 +135,11 @@ def print_warning(text: str) -> str:
 
 def multiline_input(prompt: str) -> str:
     """
-    Recieve multi-line input from the user and return the entered string.
-    Lines must end with a backslash `\` in order to recieve another line
+    Recieve (optionally) multi-line input from the user and return the
+    entered string. Lines must end with a backslash `\` in order to recieve
+    another line
+
+    Works just like normal `input()` if the input does not end with a backslash
     """
     res = ''
     while True:
@@ -191,14 +150,20 @@ def multiline_input(prompt: str) -> str:
             res += s
             return res
 
-def verify_backend(backend, num_gpu_layers) -> tuple:
+def verify_backend() -> tuple:
     """
     Verify that BACKEND is valid and return a tuple of valid values for
-    (backend, num_gpu_layers, mul_mat_q, mmap, mlock)
+    (mul_mat_q, mmap, mlock).
+    
+    Potentially modify values of
+    globals.BACKEND and globals.NUM_GPU_LAYERS
 
     This is not done on import because user must be able to set backend
     (and maybe NUM_GPU_LAYERS) before loading any model.
     """
+
+    backend = globals.BACKEND
+    num_gpu_layers = globals.NUM_GPU_LAYERS
 
     if backend is None:
         print_warning(
@@ -260,5 +225,8 @@ def verify_backend(backend, num_gpu_layers) -> tuple:
             "set easy_llama.globals.NUM_GPU_LAYERS to 1 or greater to " + \
             "accelerate inference"
         )
-    
-    return (backend, num_gpu_layers, mul_mat_q, mmap, mlock)
+
+    globals.BACKEND = backend
+    globals.NUM_GPU_LAYERS = num_gpu_layers
+
+    return (mul_mat_q, mmap, mlock)

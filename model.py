@@ -9,9 +9,14 @@ import sys
 import os
 
 from samplers import SamplerSettings, DefaultSampling
-from utils import print_warning, verify_backend
 from typing import Generator, Optional, TextIO
-from utils import GGUFReader, VerboseOutputSupressor
+
+from utils import (
+    GGUFReader,
+    print_warning,
+    verify_backend,
+    sync_llama_verbose_global
+)
 
 # for typing of Model.stream_print() parameter `file`
 class _SupportsWriteAndFlush(TextIO):
@@ -124,28 +129,24 @@ class Model(object):
         n_threads_batch = os.cpu_count()
 
         # Set parameters to valid values based on backend
-        globals.BACKEND, globals.NUM_GPU_LAYERS, mul_mat_q, \
-        mmap, mlock = verify_backend(
-            backend=globals.BACKEND,
-            num_gpu_layers=globals.NUM_GPU_LAYERS
-        )
+        mul_mat_q, mmap, mlock = verify_backend()
 
-        with VerboseOutputSupressor():
-            self.llama: llama_cpp.Llama = llama_cpp.Llama(
-                model_path=model_path,
-                n_ctx=self.context_length,
-                n_gpu_layers=globals.NUM_GPU_LAYERS,
-                use_mmap=mmap,
-                use_mlock=mlock,
-                logits_all=False,
-                n_batch=n_batch,
-                n_threads=n_threads,
-                n_threads_batch=n_threads_batch,
-                rope_freq_base=rope_freq_base,
-                mul_mat_q=mul_mat_q,
-                verbose=True,
-            )
+        self.llama: llama_cpp.Llama = llama_cpp.Llama(
+            model_path=model_path,
+            n_ctx=self.context_length,
+            n_gpu_layers=globals.NUM_GPU_LAYERS,
+            use_mmap=mmap,
+            use_mlock=mlock,
+            logits_all=False,
+            n_batch=n_batch,
+            n_threads=n_threads,
+            n_threads_batch=n_threads_batch,
+            rope_freq_base=rope_freq_base,
+            mul_mat_q=mul_mat_q,
+            verbose=globals.VERBOSE,
+        )
         
+        if globals.VERBOSE:
             print("-------------------- easy_llama.Model ----------------------")
             print(f"{model_path}")
             print(f"global: BACKEND              == {globals.BACKEND}")
@@ -271,7 +272,7 @@ class Model(object):
                 f"stops should be list[str] or None, not {type(stops)}"
 
         if globals.VERBOSE:
-            print(f'easy_llama: using the following sampler settings for generation')
+            print(f'easy_llama: using the following sampler settings for Model.generate')
             print(f'easy_llama: sampler.max_len_tokens   == {sampler.max_len_tokens}')
             print(f'easy_llama: sampler.temp             == {sampler.temp}')
             print(f'easy_llama: sampler.top_p            == {sampler.top_p}')
@@ -281,18 +282,19 @@ class Model(object):
             print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
             print()
         
-        with VerboseOutputSupressor():
-            return self.llama.create_completion(
-                prompt,
-                max_tokens=sampler.max_len_tokens,
-                temperature=sampler.temp,
-                top_p=sampler.top_p,
-                min_p=sampler.min_p,
-                presence_penalty=sampler.presence_penalty,
-                repeat_penalty=sampler.repeat_penalty,
-                top_k=sampler.top_k,
-                stop=stops
-            )['choices'][0]['text']
+        sync_llama_verbose_global(self.llama)
+
+        return self.llama.create_completion(
+            prompt,
+            max_tokens=sampler.max_len_tokens,
+            temperature=sampler.temp,
+            top_p=sampler.top_p,
+            min_p=sampler.min_p,
+            presence_penalty=sampler.presence_penalty,
+            repeat_penalty=sampler.repeat_penalty,
+            top_k=sampler.top_k,
+            stop=stops
+        )['choices'][0]['text']
     
 
     def stream(
@@ -328,7 +330,7 @@ class Model(object):
                 f"stops should be list[str] or None, not {type(stops)}"
 
         if globals.VERBOSE:
-            print(f'easy_llama: using the following sampler settings for generation')
+            print(f'easy_llama: will use the following sampler settings for Model.stream')
             print(f'easy_llama: sampler.max_len_tokens   == {sampler.max_len_tokens}')
             print(f'easy_llama: sampler.temp             == {sampler.temp}')
             print(f'easy_llama: sampler.top_p            == {sampler.top_p}')
@@ -338,19 +340,20 @@ class Model(object):
             print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
             print()
 
-        with VerboseOutputSupressor():
-            return self.llama.create_completion(
-                prompt,
-                max_tokens=sampler.max_len_tokens,
-                temperature=sampler.temp,
-                top_p=sampler.top_p,
-                min_p=sampler.min_p,
-                presence_penalty=sampler.presence_penalty,
-                repeat_penalty=sampler.repeat_penalty,
-                top_k=sampler.top_k,
-                stream=True,
-                stop=stops
-            )
+        sync_llama_verbose_global(self.llama)
+
+        return self.llama.create_completion(
+            prompt,
+            max_tokens=sampler.max_len_tokens,
+            temperature=sampler.temp,
+            top_p=sampler.top_p,
+            min_p=sampler.min_p,
+            presence_penalty=sampler.presence_penalty,
+            repeat_penalty=sampler.repeat_penalty,
+            top_k=sampler.top_k,
+            stream=True,
+            stop=stops
+        )
 
 
     def stream_print(
@@ -374,9 +377,6 @@ class Model(object):
         Once finished, returns the complete generated string. The returned
         string does not include the `end` parameter.
         """
-
-        # TODO
-        # does this require supressor?
         
         tok_gen = self.stream(
             prompt=prompt,
@@ -384,6 +384,8 @@ class Model(object):
             sampler=sampler
         )
 
+        sync_llama_verbose_global(self.llama)
+        
         res = ''
         for i in tok_gen:
             tok = i['choices'][0]['text']
@@ -402,11 +404,12 @@ class Model(object):
         single-token completion and discarding the result
         """
 
-        with VerboseOutputSupressor():
-            self.llama.create_completion(
-                text,
-                max_tokens=1,
-            )
+        sync_llama_verbose_global(self.llama)
+
+        self.llama.create_completion(
+            text,
+            max_tokens=1,
+        )
     
 
     def next_candidates(

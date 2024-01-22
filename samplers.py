@@ -20,6 +20,16 @@ class SamplerSettings(object):
             top_k:            int   = 40
         ):
 
+        if not all((all(isinstance(p, int) for p in (max_len_tokens, top_k)),
+                   all(isinstance(p, float) for p in (
+                       temp, top_p, min_p, presence_penalty, repeat_penalty
+                       )
+                    )
+                )):
+            raise TypeError(
+                'wrong type for some parameter of SamplerSettings()'
+                )
+
         self.max_len_tokens   = max_len_tokens
         self.temp             = temp
         self.top_p            = top_p

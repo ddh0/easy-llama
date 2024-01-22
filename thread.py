@@ -8,6 +8,7 @@ import time
 
 from utils import get_timestamp_prefix_str, multiline_input
 from samplers import SamplerSettings, DefaultSampling
+from formats import blank as blank_format
 from model import Model
 
 
@@ -66,24 +67,12 @@ class Thread(object):
 
         assert isinstance(format, dict), \
             f"Thread: format should be dict, not {type(format)}"
-
-        try: # TODO: check the keys the proper way
-            format['system_prefix']
-            format['system_content']
-            format['system_postfix']
-            format['user_prefix']
-            format['user_content']
-            format['user_postfix']
-            format['bot_prefix']
-            format['bot_content']
-            format['bot_postfix']
-            format['stops']
-        except KeyError as e:
-            e.add_note(
+        
+        if any(k not in format.keys() for k in blank_format.keys()):
+            raise KeyError(
                 "Thread: format is missing one or more required keys, see " + \
                 "easy_llama.formats.blank for an example"
             )
-            raise
 
         assert isinstance(format["stops"], (list, type(None))), \
             "Thread: format['stops'] should be list[str] or None, " + \
@@ -326,7 +315,7 @@ class Thread(object):
         return output
 
 
-    def interact(self) -> None:
+    def interact(self, prompt: str = "  > ") -> None:
         """
         Start an interactive chat session using this Thread.
 
@@ -346,14 +335,14 @@ class Thread(object):
                 print(f"track_context: total tokens so far: {c}")
             
             try:
-                prompt = multiline_input("  > ")
+                user_prompt = multiline_input(prompt)
             except KeyboardInterrupt:
                 print("\n")
                 return
             
             print()
-            if prompt != "":
-                self.add_message("user", prompt)
+            if user_prompt != "":
+                self.add_message("user", user_prompt)
             try:
                 output = self.model.stream_print(
                     self.inference_str_from_messages(self.messages),
@@ -379,7 +368,6 @@ class Thread(object):
         self.messages: list[dict] = [
             self.create_message("system", self.format['system_content'])
         ]
-        self.model.llama.reset()
     
     def print_stats(self) -> None:
         """Print stats about the context usage in this Thread"""
