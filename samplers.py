@@ -1,5 +1,5 @@
 # samplers.py
-# Python 3.11.6
+# Python 3.11.7
 
 """Submodule containing SamplerSettings class and some preset samplers"""
 
@@ -20,12 +20,15 @@ class SamplerSettings(object):
             top_k:            int   = 40
         ):
 
-        if not all((all(isinstance(p, int) for p in (max_len_tokens, top_k)),
-                   all(isinstance(p, float) for p in (
-                       temp, top_p, min_p, presence_penalty, repeat_penalty
-                       )
+        if not all((all(isinstance(p, int) for p in (
+                max_len_tokens, top_k
                     )
-                )):
+                ), all(isinstance(p, float) for p in (
+                temp, top_p, min_p, presence_penalty, repeat_penalty
+                    )
+                )
+            )
+        ):
             raise TypeError(
                 'wrong type for some parameter of SamplerSettings()'
                 )
@@ -40,11 +43,18 @@ class SamplerSettings(object):
 
 
 GreedyDecoding = SamplerSettings(
-    temp=0.0,
-    repeat_penalty=1.0
+    temp = 0.0,
+    repeat_penalty = 1.0
 )
 
 DefaultSampling = SamplerSettings()
+
+AlternativeSampling = SamplerSettings(
+    top_p = 1.0,
+    min_p = 0.2,
+    repeat_penalty = 1.18,
+    top_k = -1
+)
 
 LowMinPSampling = SamplerSettings(
     temp = MAX_TEMP,
@@ -73,11 +83,13 @@ StrictMinPSampling = SamplerSettings(
 ContrastiveSearch = SamplerSettings(
     temp = 0.0,
     presence_penalty = 0.4,
+    repeat_penalty = 1.0
 )
 
 WarmContrastiveSearch = SamplerSettings(
     temp = 0.0,
     presence_penalty = 0.8,
+    repeat_penalty = 1.0
 )
 
 RandomSampling = SamplerSettings(

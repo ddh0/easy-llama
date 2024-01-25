@@ -1,5 +1,5 @@
 # globals.py
-# Python 3.11.6
+# Python 3.11.7
 
 """Submodule containing global constants used by easy_llama"""
 

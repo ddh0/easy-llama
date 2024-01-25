@@ -1,5 +1,5 @@
 # easy_llama.py
-# Python 3.11.6
+# Python 3.11.7
 
 """
 Text generation in Python, made easy
@@ -10,8 +10,6 @@ https://github.com/ddh0/easy-llama/
 import globals
 import formats
 import samplers
-
-# not typically accessed externally, but may be helpful in certain cases
 import utils as _utils
 
 from model import Model

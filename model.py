@@ -1,5 +1,5 @@
 # model.py
-# Python 3.11.6
+# Python 3.11.7
 
 """Submodule containing the Model class to work with language models"""
 
@@ -385,7 +385,7 @@ class Model(object):
         )
 
         sync_llama_verbose_global(self.llama)
-        
+
         res = ''
         for i in tok_gen:
             tok = i['choices'][0]['text']

@@ -1,5 +1,5 @@
 # thread.py
-# Python 3.11.6
+# Python 3.11.7
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
@@ -326,8 +326,8 @@ class Thread(object):
         At the prompt, press ^C to end the chat session.
         """
         print()
+        
         while True:
-
             if self.track_context:
                 c = 0
                 for msg in self.messages:

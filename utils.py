@@ -1,9 +1,8 @@
 # utils.py
-# Python 3.11.6
+# Python 3.11.7
 
 """
-Submodule containing convenience functions, GGUFReader, and
-VerboseOutputSupressor
+Submodule containing convenience functions and GGUFReader
 """
 
 import globals
@@ -137,7 +136,7 @@ def multiline_input(prompt: str) -> str:
     """
     Recieve (optionally) multi-line input from the user and return the
     entered string. Lines must end with a backslash `\` in order to recieve
-    another line
+    another line. Lines are separated by `\\n`
 
     Works just like normal `input()` if the input does not end with a backslash
     """
