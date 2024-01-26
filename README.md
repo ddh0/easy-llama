@@ -97,4 +97,4 @@ Thank you to [Andrei Belten](https://github.com/abetlen) for [llama-cpp-python](
 All language models tend to produce writing that is factually inaccurate, stereotypically biased, and fundamentally disconnected from reality.
 
 ###### LICENSE
-This project under the terms of the [Unlicense](LICENSE).
+> [The Unlicense](LICENSE)
