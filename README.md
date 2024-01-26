@@ -1,35 +1,34 @@
 # easy-llama
 
-# *README is badly out of date and will be updated soon*
-
 *This project is still under development, and some functionality may be missing, incomplete, or broken. The documentation and examples on this page may be out of date.*
 
-## Natural text generation in Python, made easy
+## Text generation in Python, made easy
 
 ```python
 >>> import easy_llama as ez
->>> Carl = ez.Model('llama-2-13b.Q6_K.gguf')
->>> Carl.generate('The sky is')
-' blue and the sun is shining.\nI have no idea why I feel so happy today, but I do. It\'s a good feeling.\nThe weather has been beautiful for weeks now. I love springtime in Florida, it\'s just perfect.\nMy husband and I went to see "R'
+>>> Mistral = ez.Model('Mistral-7B-v0.1-q8_0.gguf')
+>>> Mistral.generate('The sky is')
+' aflame with colour and the earth has been shaken, as the Lich King’s icy grip on Deathwing weakens. With his reign of terror nearing its end, it falls upon your shoulders to see that justice is served.\n\nFrom now until June 19th, Deathwing will appear in the skies above Azeroth and the Isles of Conquest will be transformed into a battlefield for the mightiest heroes of both factions.\n\nThe Burning Legion’s champion, Illidan Stormrage, will also join the battle against the Lich King in the Isles of Conquest as part of this event, bringing with him his powerful spell, Metamorphosis!\n\nFor more information about the upcoming Deathwing-themed content and other World of Warcraft events, please visit the official website.'
 >>> 
 ```
 
 easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
 
-All generations utilize **contrastive search**, which has been shown to produce more human-like text (see references below). The following hyperparameters are chosen:
-```math
-a=0.5, k=4
-```
-where $a$ is the degeneration penalty—which limits the similarity of new tokens to the tokens in the context, leading to more varied and less repetitive outputs—and $k$ is the number of candidate tokens that are considered from the language model's probability distribution.
-
 The following design choices are made:
 - `Model.generate()` and `Model.stream()` require only one parameter, `prompt`
-  - `prompt` is the text to be evaluated by the model
-  - `stops` is a list of strings at which to end the generation early. defaults to `None`
-- Context length is set automatically thanks to GGUF
-- `n_batch`, `n_threads`, `n_threads_batch`, and `MUL_MAT_Q` are determined automatically
-- On Apple Silicon and CPU, `NUM_GPU_LAYERS` is set automatically
-- `MUL_MAT_Q` is set automatically based on backend
+  - Other parameters `stops` and `sampler` are optional
+- All model metadata is read from the GGUF file and exposed as a dictionary at `Model.metadata`
+- Automatic context length extension using RoPE frequency scaling
+- The following parameters are determined automatically:
+  - `context_length`: read from GGUF metadata, may be set lower or higher
+  - `num_gpu_layers`: set automatically where possible (CPU and Apple Silicon), otherwise can be set by user
+  - `mmap`: sensible value based on BLAS backend
+  - `mlock`: sensible value based on BLAS backend
+  - `n_batch`: sensible value based on `os.cpu_count()`
+  - `n_threads`: sensible value based on `os.cpu_count()`
+  - `n_threads_batch`: `os.cpu_count()`, which is known to be optimal
+  - `rope_freq_base`: native value from GGUF metadata, or multiplied according to requested context length
+  - `mul_mat_q`: sensible value based on BLAS backend
 - Extensive type hinting and helpful, informative error messages
 
 
@@ -37,13 +36,13 @@ The following design choices are made:
 - ✅ Hardware acceleration on Apple Silicon (Metal), NVIDIA (CUDA), AMD (ROCm), and OpenBLAS
 - ✅ Terminal-based interactive chat with text streaming
 - ✅ Programmatic multi-turn interaction
-- ✅ (Optional) time-aware interactions via timestamps in Threads
+- ✅ Optional time-aware interactions via timestamps in Threads
 - ✅ Several common prompt formats built-in
-  - `blank`, `chatml`, `llama2chat`, `alpaca`, `vicuna_lmsys`, `vicuna_common`, `mistral_openorca`, `dolphin`, `samantha`, `guanaco`, `orca_mini`, `airoboros`, `jackalope`, `mistral_instruct`, `zephyr`, `naberius`, `autocorrect`, `hermes`, `chatml_alpaca`, `monad`
+  - `blank`, `chatml`, `llama2chat`, `alpaca`, `vicuna_lmsys`, `vicuna_common`, `mistral_openorca`, `dolphin`, `samantha`, `guanaco`, `orca_mini`, `airoboros`, `jackalope`, `mistral_instruct`, `zephyr`, `naberius`, `autocorrect`, `hermes`, `chatml_alpaca`, `monad`,  `orca`, `hexoteric`, `orcamaid`, `cat`, `mytho_cat`, `alpaca_strict`, `noromaid`, `solar_instruct`, `bagel`, `nschatml`
   - Easily extend, duplicate and modify built-in formats
-  - `easy_llama.wrap()` - Wrap a given string in any prompt format for single-turn completion
+  - `easy_llama.formats.wrap()` - Wrap a given string in any prompt format for single-turn completion
 - ✅ Message-based context length handling
-- ⚠️ Retrieve sorted list of candidates for the most likely next token (i.e. logits)
+- ☑️ Retrieve sorted list of candidates for the most likely next token (i.e. logits)
 - ✅ Support all models supported by llama.cpp. [See here](https://github.com/ggerganov/llama.cpp#description)
 
 > ✅ implemented ⚠️ needs work ☑️ todo
@@ -54,8 +53,8 @@ The following design choices are made:
 #### Programmatic chat
 ```python
 >>> import easy_llama as ez
->>> Mistral = ez.Model('mistral-7B-instruct-v0.1-f16.gguf')
->>> Thread = ez.Thread(Mistral, format=ez.mistral_instruct)
+>>> Mistral = ez.Model('Mistral-7B-Instruct-v0.2-q8_0.gguf')
+>>> Thread = ez.Thread(Mistral, ez.formats.mistral_instruct)
 >>> Thread.send('Tell me a fun fact about Lions.')
 '1. Male lions are called "mantles" because their manes resemble a cloak or mantle worn around their necks.\n2. Lions roar at an average volume of 50 decibels, which is about as loud as a car alarm.\n3. A group of lions is known as a "pride," and they often hunt together in coordinated teams.\n4. Lions are the only cats that live in groups with their cubs and non-related adults.\n5. Lions are excellent swimmers and can reach speeds of up to 36 miles per hour in water.'
 >>> Thread.send('Now tell me a joke about them.')
@@ -67,7 +66,7 @@ The following design choices are made:
 ```python
 >>> import easy_llama as ez
 >>> Dolphin = ez.Model('dolphin-2.1-mistral-7b-f16.gguf')
->>> Thread = ez.Thread(Dolphin, format=ez.dolphin)
+>>> Thread = ez.Thread(Dolphin, ez.formats.dolphin)
 >>> Thread.interact()
 ```
 ```
@@ -94,12 +93,8 @@ You're welcome! If you have any other questions or need help, feel free to ask. 
 ### Acknowledgments
 Thank you to [Andrei Belten](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), and to [Georgi Gerganov](https://github.com/ggerganov) for [llama.cpp](https://github.com/ggerganov/llama.cpp) and [GGML](https://github.com/ggerganov/ggml).
 
-### References
-- [arXiv:2210.14140](https://arxiv.org/abs/2210.14140) - Contrastive Search Is What You Need For Neural Text Generation (25 Oct 2022, Yixuan Su, Nigel Collier)
-- [HuggingFace](https://huggingface.co/blog/introducing-csearch) - Generating Human-level Text with Contrastive Search in Transformers 🤗 (8 Nov 2022)
-
 ###### DISCLAIMER
 All language models tend to produce writing that is factually inaccurate, stereotypically biased, and fundamentally disconnected from reality.
 
 ###### LICENSE
-This project is licensed under the terms of the [MIT license](LICENSE).
+This project under the terms of the [Unlicense](LICENSE).
