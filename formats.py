@@ -25,6 +25,7 @@ def wrap(prompt: str, format: dict, timestamps: bool = False) -> str:
             format['user_prefix'] +
             prompt +
             format['user_postfix'] +
+            get_timestamp_prefix_str() +
             format['bot_prefix']
         )
 
@@ -126,10 +127,10 @@ mistral_instruct = {
     "user_prefix": "[INST] ",
     "user_content": "",
     "user_postfix": " [/INST]",
-    "bot_prefix": " ",
+    "bot_prefix": "",
     "bot_content": "",
-    "bot_postfix": "",
-    "stops": ['[INST]', '</s>'],
+    "bot_postfix": " ",
+    "stops": [],
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b
@@ -316,6 +317,20 @@ nschatml = {
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
     "stops": [],
+}
+
+# natural format for many models
+natural = {
+    "system_prefix": "<<SYSTEM>> ",
+    "system_content": "",
+    "system_postfix": "\n\n",
+    "user_prefix": "<<USER>> ",
+    "user_content": "",
+    "user_postfix": "\n\n",
+    "bot_prefix": "<<ASSISTANT>>",
+    "bot_content": "",
+    "bot_postfix": "\n\n",
+    "stops": ['\n\nNote:', '<<SYSTEM>>', '<<USER>>', '<<ASSISTANT>>', '\n\n<<']
 }
 
 mistral_openorca = chatml.copy()

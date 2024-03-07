@@ -8,9 +8,12 @@ Submodule containing convenience functions and GGUFReader
 import globals
 import time
 import sys
+import os
 
 from struct import unpack
 from enum import IntEnum
+
+_backend_verified = False
 
 class GGUFReader:
     """
@@ -139,6 +142,8 @@ def multiline_input(prompt: str) -> str:
     another line. Lines are separated by `\\n`
 
     Works just like normal `input()` if the input does not end with a backslash
+
+    Used in Thread.interact()
     """
     res = ''
     while True:
@@ -160,6 +165,8 @@ def verify_backend() -> tuple:
     This is not done on import because user must be able to set backend
     (and maybe NUM_GPU_LAYERS) before loading any model.
     """
+
+    global _backend_verified
 
     backend = globals.BACKEND
     num_gpu_layers = globals.NUM_GPU_LAYERS
@@ -198,7 +205,7 @@ def verify_backend() -> tuple:
         backend = 'CPU'
     
     if backend == 'Metal':
-        num_gpu_layers = 1
+        # Don't change NUM_GPU_LAYERS, use global value
         mul_mat_q = True
         mmap = False
         mlock = False
@@ -228,4 +235,18 @@ def verify_backend() -> tuple:
     globals.BACKEND = backend
     globals.NUM_GPU_LAYERS = num_gpu_layers
 
+    _backend_verified = True
+
     return (mul_mat_q, mmap, mlock)
+
+def get_optimal_n_batch(cpu_count: int) -> int:
+
+    if not _backend_verified:
+        raise RuntimeError(
+            "attempt to run get_optimal_n_batch() before verify_backend()"
+        )
+
+    if globals.BACKEND in ["Metal", "CPU"]:
+        return cpu_count * 16
+    else:
+        return max(cpu_count * 48, 512)

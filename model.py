@@ -15,7 +15,8 @@ from utils import (
     GGUFReader,
     print_warning,
     verify_backend,
-    sync_llama_verbose_global
+    sync_llama_verbose_global,
+    get_optimal_n_batch
 )
 
 # for typing of Model.stream_print() parameter `file`
@@ -64,10 +65,10 @@ class Model(object):
 
         assert isinstance(model_path, str), \
             f"model_path should be a string, not {type(model_path)}"
-        assert not os.path.isdir(model_path), \
-            f"the given model_path '{model_path}' is a directory, not a file"
         assert os.path.exists(model_path), \
             f"the given model_path '{model_path}' does not exist"
+        assert not os.path.isdir(model_path), \
+            f"the given model_path '{model_path}' is a directory, not a file"
         assert isinstance(context_length, (int, type(None))), \
             f"context_length should be int or None, not {type(context_length)}"
 
@@ -124,12 +125,16 @@ class Model(object):
                 f'{rope_freq_base_train} to {rope_freq_base}'
             )
 
-        n_batch = os.cpu_count() * 16
-        n_threads = max(os.cpu_count()//2, 1)
-        n_threads_batch = os.cpu_count()
-
         # Set parameters to valid values based on backend
         mul_mat_q, mmap, mlock = verify_backend()
+
+        cpu_count = os.cpu_count()
+
+        # these values for n_threads and n_threads_batch are
+        # known to be optimal
+        n_batch = get_optimal_n_batch(cpu_count)
+        n_threads = max(cpu_count//2, 1)
+        n_threads_batch = cpu_count
 
         self.llama: llama_cpp.Llama = llama_cpp.Llama(
             model_path=model_path,
@@ -185,7 +190,7 @@ class Model(object):
         `Model('some text')` is a shorthand for `Model.generate('some text')`
         """
         return self.generate(prompt, stops, sampler)
-
+    
     def trim(self,
              text: str,
              overwrite: Optional[str] = None
@@ -283,7 +288,7 @@ class Model(object):
             print()
         
         sync_llama_verbose_global(self.llama)
-
+ 
         return self.llama.create_completion(
             prompt,
             max_tokens=sampler.max_len_tokens,

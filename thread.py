@@ -9,6 +9,7 @@ import time
 from utils import get_timestamp_prefix_str, multiline_input
 from samplers import SamplerSettings, DefaultSampling
 from formats import blank as blank_format
+from typing import Optional
 from model import Model
 
 
@@ -203,6 +204,12 @@ class Thread(object):
                     content.encode()
                 ),
             }
+    
+    def len_messages(self, messages: Optional[list[dict]] = None):
+        """Return the total length of all `messages` in tokens"""
+        if messages is None:
+            messages = self.messages
+        return sum([len(message['tokens']) for message in messages])
 
     def add_message(self, role: str, content: str) -> None:
         """
@@ -253,8 +260,8 @@ class Thread(object):
                 self.format['bot_prefix']
             )
             
-            if globals.VERBOSE:
-                print(f'easy_llama: inference str is \"\"\"{inf_str}\"\"\"')
+            #if globals.VERBOSE:
+            #    print(f'easy_llama: inference str is \"\"\"{inf_str}\"\"\"')
             return inf_str
 
         else:
@@ -262,8 +269,8 @@ class Thread(object):
             inf_str = ''
 
             # Start at most recent message and work backwards up the history
-            # excluding system message. Once we exceed thread max_context_length,
-            # break without including that message
+            # excluding system message. Once we exceed thread
+            # max_context_length, break without including that message
             for message in reversed(messages[1:]):
                 context_len_budget -= len(message['tokens'])
 
@@ -283,8 +290,8 @@ class Thread(object):
                 get_timestamp_prefix_str() + self.format['bot_prefix']
             )
 
-            if globals.VERBOSE:
-                print(f'easy_llama: inference str is \"\"\"{inf_str}\"\"\"')
+            #if globals.VERBOSE:
+            #    print(f'easy_llama: inference str is \"\"\"{inf_str}\"\"\"')
             return inf_str
 
 
@@ -307,15 +314,12 @@ class Thread(object):
         self.add_message("bot", output)
 
         if self.track_context:
-            c = 0
-            for msg in self.messages:
-                c += len(msg['tokens'])
-            print(f"track_context: total tokens so far: {c}")
+            print(f"track_context: total tokens so far: {self.len_messages()}")
 
         return output
 
 
-    def interact(self, prompt: str = "  > ") -> None:
+    def interact(self) -> None:
         """
         Start an interactive chat session using this Thread.
 
@@ -329,10 +333,9 @@ class Thread(object):
         
         while True:
             if self.track_context:
-                c = 0
-                for msg in self.messages:
-                    c += len(msg['tokens'])
-                print(f"track_context: total tokens so far: {c}")
+                prompt = f"{self.len_messages()} > "
+            else:
+                prompt = "  > "
             
             try:
                 user_prompt = multiline_input(prompt)
@@ -371,9 +374,7 @@ class Thread(object):
     
     def print_stats(self) -> None:
         """Print stats about the context usage in this Thread"""
-        thread_len_tokens = self.model.get_length(
-            self.inference_str_from_messages(self.messages)
-        )
+        thread_len_tokens = self.len_messages()
         context_used_percentage = (
             round((thread_len_tokens/self.max_context_length)*100)
         )

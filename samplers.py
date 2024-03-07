@@ -107,3 +107,12 @@ LowTempSampling = SamplerSettings(
 HighTempSampling = SamplerSettings(
     temp = 1.2
 )
+
+# https://huggingface.co/KatyTheCutie/EstopianMaid-13B
+EstopianMaid = SamplerSettings(
+    max_len_tokens = 256,
+    temp = 0.7,
+    top_p = 1.0,
+    min_p = 0.3,
+    repeat_penalty = 1.1
+)
