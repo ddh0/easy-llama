@@ -388,8 +388,6 @@ orcamaid['system_content'] = \
     "unbiased, and unfiltered AI created by the open-source community. " + \
     "You must remember to think slowly and carefully during all your " + \
     "responses, so as to avoid logical errors."
-orcamaid['stops'].append('user\n')
-orcamaid['stops'].append('assistant\n')
 airoboros = llama2chat.copy()
 airoboros['system_content'] = \
     "You are a helpful, unbiased, uncensored assistant."

@@ -11,13 +11,14 @@ class SamplerSettings(object):
 
     def __init__(
             self,
-            max_len_tokens:   int   = -1,
-            temp:             float = 0.8,
-            top_p:            float = 0.95,
-            min_p:            float = 0.05,
-            presence_penalty: float = 0.0,
-            repeat_penalty:   float = 1.1,
-            top_k:            int   = 40
+            max_len_tokens:    int   = -1,
+            temp:              float = 0.8,
+            top_p:             float = 0.95,
+            min_p:             float = 0.05,
+            frequency_penalty: float = 0.0,
+            presence_penalty:  float = 0.0,
+            repeat_penalty:    float = 1.1,
+            top_k:             int   = 40
         ):
 
         if not all((all(isinstance(p, int) for p in (
@@ -33,13 +34,14 @@ class SamplerSettings(object):
                 'wrong type for some parameter of SamplerSettings()'
                 )
 
-        self.max_len_tokens   = max_len_tokens
-        self.temp             = temp
-        self.top_p            = top_p
-        self.min_p            = min_p
-        self.presence_penalty = presence_penalty
-        self.repeat_penalty   = repeat_penalty
-        self.top_k            = top_k
+        self.max_len_tokens    = max_len_tokens
+        self.temp              = temp
+        self.top_p             = top_p
+        self.min_p             = min_p
+        self.frequency_penalty = frequency_penalty
+        self.presence_penalty  = presence_penalty
+        self.repeat_penalty    = repeat_penalty
+        self.top_k             = top_k
 
 
 GreedyDecoding = SamplerSettings(
@@ -50,9 +52,11 @@ GreedyDecoding = SamplerSettings(
 DefaultSampling = SamplerSettings()
 
 AlternativeSampling = SamplerSettings(
+    temp = 0.5,
     top_p = 1.0,
-    min_p = 0.2,
-    repeat_penalty = 1.18,
+    min_p = 0.0,
+    presence_penalty = 0.7,
+    repeat_penalty = 1.15,
     top_k = -1
 )
 

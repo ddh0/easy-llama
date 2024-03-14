@@ -124,6 +124,10 @@ class GGUFReader:
 
         return metadata
 
+def cls() -> None:
+    """Clear the terminal"""
+    print("\033c\033[3J", end='', flush=True)
+
 def sync_llama_verbose_global(llama):
     """Ensure llama.verbose is synced with globals.VERBOSE"""
     llama.verbose = globals.VERBOSE
@@ -135,29 +139,10 @@ def get_timestamp_prefix_str() -> str:
 def print_warning(text: str) -> str:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)
 
-def multiline_input(prompt: str) -> str:
-    """
-    Recieve (optionally) multi-line input from the user and return the
-    entered string. Lines must end with a backslash `\` in order to recieve
-    another line. Lines are separated by `\\n`
-
-    Works just like normal `input()` if the input does not end with a backslash
-
-    Used in Thread.interact()
-    """
-    res = ''
-    while True:
-        s = input(prompt)
-        if s.endswith('\\'):
-            res += s[:-1] + '\n'
-        else:
-            res += s
-            return res
-
 def verify_backend() -> tuple:
     """
     Verify that BACKEND is valid and return a tuple of valid values for
-    (mul_mat_q, mmap, mlock).
+    (mul_mat_q, mmap, mlock, offload_kqv).
     
     Potentially modify values of
     globals.BACKEND and globals.NUM_GPU_LAYERS
@@ -204,26 +189,7 @@ def verify_backend() -> tuple:
         )
         backend = 'CPU'
     
-    if backend == 'Metal':
-        # Don't change NUM_GPU_LAYERS, use global value
-        mul_mat_q = True
-        mmap = False
-        mlock = False
-    elif backend == 'CUDA':
-        # Don't change NUM_GPU_LAYERS, use global value
-        mul_mat_q = True
-        mmap = False
-        mlock = False
-    elif backend == 'ROCm':
-        # Don't change NUM_GPU_LAYERS, use global value
-        mul_mat_q = False
-        mmap = False
-        mlock = False
-    elif backend == 'CPU':
-        num_gpu_layers = 0
-        mul_mat_q = True
-        mmap = True
-        mlock = False
+    globals.BACKEND = backend
     
     if backend in ['CUDA', 'ROCm'] and num_gpu_layers == 0:
         print_warning(
@@ -231,13 +197,35 @@ def verify_backend() -> tuple:
             "set easy_llama.globals.NUM_GPU_LAYERS to 1 or greater to " + \
             "accelerate inference"
         )
-
-    globals.BACKEND = backend
-    globals.NUM_GPU_LAYERS = num_gpu_layers
+    
+    if backend == 'Metal':
+        # Don't change NUM_GPU_LAYERS, use global value
+        mul_mat_q = True
+        mmap = False
+        mlock = False
+        offload_kqv = True
+    elif backend == 'CUDA':
+        # Don't change NUM_GPU_LAYERS, use global value
+        mul_mat_q = True
+        mmap = False
+        mlock = False
+        offload_kqv = True
+    elif backend == 'ROCm':
+        # Don't change NUM_GPU_LAYERS, use global value
+        mul_mat_q = False
+        mmap = False
+        mlock = False
+        offload_kqv = True
+    elif backend == 'CPU':
+        globals.NUM_GPU_LAYERS = 0
+        mul_mat_q = True
+        mmap = True
+        mlock = False
+        offload_kqv = False
 
     _backend_verified = True
 
-    return (mul_mat_q, mmap, mlock)
+    return (mul_mat_q, mmap, mlock, offload_kqv)
 
 def get_optimal_n_batch(cpu_count: int) -> int:
 

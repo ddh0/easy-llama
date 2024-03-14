@@ -9,7 +9,7 @@ import sys
 import os
 
 from samplers import SamplerSettings, DefaultSampling
-from typing import Generator, Optional, TextIO
+from typing import Generator, Optional, TextIO, Union
 
 from utils import (
     GGUFReader,
@@ -63,6 +63,9 @@ class Model(object):
         parameter.
         """
 
+        self._model_path = model_path
+        self._context_length = context_length
+
         assert isinstance(model_path, str), \
             f"model_path should be a string, not {type(model_path)}"
         assert os.path.exists(model_path), \
@@ -108,7 +111,7 @@ class Model(object):
                 self.context_length = n_ctx_train
             else:
                 self.context_length = context_length
-            rope_freq_base = 0
+            rope_freq_base = rope_freq_base_train
 
         elif context_length > n_ctx_train:
             # multiply rope_freq_base according to requested context length
@@ -125,8 +128,8 @@ class Model(object):
                 f'{rope_freq_base_train} to {rope_freq_base}'
             )
 
-        # Set parameters to valid values based on backend
-        mul_mat_q, mmap, mlock = verify_backend()
+        # set parameters to valid values based on backend
+        mul_mat_q, mmap, mlock, offload_kqv = verify_backend()
 
         cpu_count = os.cpu_count()
 
@@ -148,7 +151,8 @@ class Model(object):
             n_threads_batch=n_threads_batch,
             rope_freq_base=rope_freq_base,
             mul_mat_q=mul_mat_q,
-            verbose=globals.VERBOSE,
+            offload_kqv=offload_kqv,
+            verbose=globals.VERBOSE
         )
         
         if globals.VERBOSE:
@@ -162,10 +166,14 @@ class Model(object):
             print(f" param: n_batch              == {n_batch}")
             print(f" param: n_threads            == {n_threads}")
             print(f" param: n_threads_batch      == {n_threads_batch}")
+            print(f" param: offload_kqv          == {offload_kqv}")
             print(f"  gguf: n_ctx_train          == {n_ctx_train}")
             print(f" param: self.context_length  == {self.context_length}")
             print(f"  gguf: rope_freq_base_train == {rope_freq_base_train}")
             print(f" param: rope_freq_base       == {rope_freq_base}")
+    
+    def __repr__(self) -> str:
+        return f"Model({self._model_path}, {self._context_length})"
     
     def __enter__(self):
         return self
@@ -225,7 +233,7 @@ class Model(object):
             )
 
         if len(tokens_list) > self.context_length and overwrite is not None:
-            # Cut to context length and overwrite the oldest tokens with
+            # cut to context length and overwrite the oldest tokens with
             # overwrite
             tokens_list = tokens_list[-trim_length:]
             overwrite_tokens = self.llama.tokenize(overwrite.encode(
@@ -253,7 +261,7 @@ class Model(object):
 
     def generate(
             self,
-            prompt: str,
+            prompt: Union[str, list[int]],
             stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling
             ) -> str:
@@ -266,25 +274,28 @@ class Model(object):
         generation early
         """
 
-        assert isinstance(prompt, str), \
-            f"prompt should be string, not {type(prompt)}"
+        assert isinstance(prompt, (str, list)), \
+            f"prompt should be string or list[int], not {type(prompt)}"
+        if isinstance(prompt, list):
+            assert all(isinstance(tok, int) for tok in prompt), \
+                "some token in prompt is not an integer"
         if isinstance(stops, list):
-            for stopping_string in stops:
-                assert isinstance(stopping_string, str), \
-                    f"item {stopping_string} in stops list is not a string"
+            assert all(isinstance(stopping_string, str) for stopping_string in stops), \
+                f"some item in parameter `stops` is not a string"
         else:
             assert (stops is None), \
                 f"stops should be list[str] or None, not {type(stops)}"
 
         if globals.VERBOSE:
             print(f'easy_llama: using the following sampler settings for Model.generate')
-            print(f'easy_llama: sampler.max_len_tokens   == {sampler.max_len_tokens}')
-            print(f'easy_llama: sampler.temp             == {sampler.temp}')
-            print(f'easy_llama: sampler.top_p            == {sampler.top_p}')
-            print(f'easy_llama: sampler.min_p            == {sampler.min_p}')
-            print(f'easy_llama: sampler.presence_penalty == {sampler.presence_penalty}')
-            print(f'easy_llama: sampler.repeat_penalty   == {sampler.repeat_penalty}')
-            print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
+            print(f'easy_llama: max_len_tokens    == {sampler.max_len_tokens}')
+            print(f'easy_llama: temp              == {sampler.temp}')
+            print(f'easy_llama: top_p             == {sampler.top_p}')
+            print(f'easy_llama: min_p             == {sampler.min_p}')
+            print(f'easy_llama: frequency_penalty == {sampler.frequency_penalty}')
+            print(f'easy_llama: presence_penalty  == {sampler.presence_penalty}')
+            print(f'easy_llama: repeat_penalty    == {sampler.repeat_penalty}')
+            print(f'easy_llama: top_k             == {sampler.top_k}')
             print()
         
         sync_llama_verbose_global(self.llama)
@@ -295,6 +306,7 @@ class Model(object):
             temperature=sampler.temp,
             top_p=sampler.top_p,
             min_p=sampler.min_p,
+            frequency_penalty=sampler.frequency_penalty,
             presence_penalty=sampler.presence_penalty,
             repeat_penalty=sampler.repeat_penalty,
             top_k=sampler.top_k,
@@ -304,7 +316,7 @@ class Model(object):
 
     def stream(
             self,
-            prompt: str,
+            prompt: Union[str, list[int]],
             stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling
         ) -> Generator:
@@ -324,25 +336,28 @@ class Model(object):
         See also `Model.stream_print()`
         """
 
-        assert isinstance(prompt, str), \
-            f"prompt should be string, not {type(prompt)}"
+        assert isinstance(prompt, (str, list)), \
+            f"prompt should be string or list[int], not {type(prompt)}"
+        if isinstance(prompt, list):
+            assert all(isinstance(tok, int) for tok in prompt), \
+                "some token in prompt is not an integer"
         if isinstance(stops, list):
-            for stopping_string in stops:
-                assert isinstance(stopping_string, str), \
-                    f"item {stopping_string} in stops list is not a string"
+            assert all(isinstance(stopping_string, str) for stopping_string in stops), \
+                f"some item in parameter `stops` is not a string"
         else:
-            assert stops is None, \
+            assert (stops is None), \
                 f"stops should be list[str] or None, not {type(stops)}"
 
         if globals.VERBOSE:
             print(f'easy_llama: will use the following sampler settings for Model.stream')
-            print(f'easy_llama: sampler.max_len_tokens   == {sampler.max_len_tokens}')
-            print(f'easy_llama: sampler.temp             == {sampler.temp}')
-            print(f'easy_llama: sampler.top_p            == {sampler.top_p}')
-            print(f'easy_llama: sampler.min_p            == {sampler.min_p}')
-            print(f'easy_llama: sampler.presence_penalty == {sampler.presence_penalty}')
-            print(f'easy_llama: sampler.repeat_penalty   == {sampler.repeat_penalty}')
-            print(f'easy_llama: sampler.top_k            == {sampler.top_k}')
+            print(f'easy_llama: max_len_tokens    == {sampler.max_len_tokens}')
+            print(f'easy_llama: temp              == {sampler.temp}')
+            print(f'easy_llama: top_p             == {sampler.top_p}')
+            print(f'easy_llama: min_p             == {sampler.min_p}')
+            print(f'easy_llama: frequency_penalty == {sampler.frequency_penalty}')
+            print(f'easy_llama: presence_penalty  == {sampler.presence_penalty}')
+            print(f'easy_llama: repeat_penalty    == {sampler.repeat_penalty}')
+            print(f'easy_llama: top_k             == {sampler.top_k}')
             print()
 
         sync_llama_verbose_global(self.llama)
@@ -353,6 +368,7 @@ class Model(object):
             temperature=sampler.temp,
             top_p=sampler.top_p,
             min_p=sampler.min_p,
+            frequency_penalty=sampler.frequency_penalty,
             presence_penalty=sampler.presence_penalty,
             repeat_penalty=sampler.repeat_penalty,
             top_k=sampler.top_k,
@@ -363,11 +379,11 @@ class Model(object):
 
     def stream_print(
             self,
-            prompt: str,
+            prompt: Union[str, list[int]],
             stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling,
             end: str = "\n",
-            file: _SupportsWriteAndFlush = sys.stdout,
+            file: Optional[_SupportsWriteAndFlush] = sys.stdout,
             flush: bool = True
     ) -> str:
         """
