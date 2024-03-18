@@ -1,5 +1,6 @@
 # samplers.py
 # Python 3.11.7
+# https://github.com/ddh0/easy-llama/
 
 """Submodule containing SamplerSettings class and some preset samplers"""
 
@@ -25,7 +26,8 @@ class SamplerSettings(object):
                 max_len_tokens, top_k
                     )
                 ), all(isinstance(p, float) for p in (
-                temp, top_p, min_p, presence_penalty, repeat_penalty
+                temp, top_p, min_p, frequency_penalty,
+                presence_penalty, repeat_penalty
                     )
                 )
             )
@@ -42,7 +44,18 @@ class SamplerSettings(object):
         self.presence_penalty  = presence_penalty
         self.repeat_penalty    = repeat_penalty
         self.top_k             = top_k
-
+    
+    def __repr__(self) -> str:
+        repr_str = 'SamplerSettings('
+        repr_str += f'max_len_tokens={self.max_len_tokens}, '
+        repr_str += f'temp={self.temp}, '
+        repr_str += f'top_p={self.top_p}, '
+        repr_str += f'min_p={self.min_p}, '
+        repr_str += f'frequency_penalty={self.frequency_penalty}, '
+        repr_str += f'presence_penalty={self.presence_penalty}, '
+        repr_str += f'repeat_penalty={self.repeat_penalty}, '
+        repr_str += f'top_k={self.top_k})'
+        return repr_str
 
 GreedyDecoding = SamplerSettings(
     temp = 0.0,
@@ -52,11 +65,9 @@ GreedyDecoding = SamplerSettings(
 DefaultSampling = SamplerSettings()
 
 AlternativeSampling = SamplerSettings(
-    temp = 0.5,
+    temp = 1.0,
     top_p = 1.0,
-    min_p = 0.0,
-    presence_penalty = 0.7,
-    repeat_penalty = 1.15,
+    min_p = 0.1,
     top_k = -1
 )
 
@@ -110,13 +121,4 @@ LowTempSampling = SamplerSettings(
 
 HighTempSampling = SamplerSettings(
     temp = 1.2
-)
-
-# https://huggingface.co/KatyTheCutie/EstopianMaid-13B
-EstopianMaid = SamplerSettings(
-    max_len_tokens = 256,
-    temp = 0.7,
-    top_p = 1.0,
-    min_p = 0.3,
-    repeat_penalty = 1.1
 )

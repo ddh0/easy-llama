@@ -1,19 +1,22 @@
 # utils.py
 # Python 3.11.7
+# https://github.com/ddh0/easy-llama/
 
-"""
-Submodule containing convenience functions and GGUFReader
-"""
+"""Submodule containing convenience functions and GGUFReader"""
 
 import globals
 import time
 import sys
-import os
 
+from colorama import Fore, Back, Style
 from struct import unpack
 from enum import IntEnum
 
 _backend_verified = False
+
+RESET_ALL = Fore.RESET + Back.RESET + Style.RESET_ALL
+USER_STYLE = RESET_ALL + Fore.GREEN
+BOT_STYLE = RESET_ALL + Fore.CYAN
 
 class GGUFReader:
     """

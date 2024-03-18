@@ -1,23 +1,25 @@
 # thread.py
 # Python 3.11.7
+# https://github.com/ddh0/easy-llama/
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
 import globals
 import time
 
+from utils import get_timestamp_prefix_str, RESET_ALL, cls
 from samplers import SamplerSettings, DefaultSampling
-from utils import get_timestamp_prefix_str, cls
-from colorama import Fore, Back, Style, Cursor
 from formats import blank as blank_format
 from typing import Optional
 from model import Model
 
-RESET_ALL = Fore.RESET + Back.RESET + Style.RESET_ALL
-
 class Thread(object):
     """
     Provide functionality to facilitate easy interactions with a Model
+
+    This is just a brief overview of easy_llama.Thread.
+    To see a full description of each method and its parameters,
+    call help(Thread), or see the relevant docstring.
 
     The following parameters are provided to the constructor:
     - model: the instance of easy_llama.Model to use in this Thread
@@ -111,6 +113,7 @@ class Thread(object):
         self.track_context: bool = track_context
         self.sampler: SamplerSettings = sampler
         self._interact_color: bool = False
+        self._reroll_flag: bool = False
 
         if self.enable_timestamps:
             # stop generation on timestamps
@@ -139,15 +142,8 @@ class Thread(object):
         repr_str = ''
         repr_str += f"Thread({repr(self.model)}, {repr(self.format)}, "
         repr_str += f"timestamps={self.enable_timestamps}, amnesiac={self.amnesiac}, "
-        repr_str += f"max_context_length={self.max_context_length}, track_context={self.track_context})"
-        repr_str += f"\nThread.sampler.max_len_tokens = {self.sampler.max_len_tokens}"
-        repr_str += f"\nThread.sampler.temp = {self.sampler.temp}"
-        repr_str += f"\nThread.sampler.top_p = {self.sampler.top_p}"
-        repr_str += f"\nThread.sampler.min_p = {self.sampler.min_p}"
-        repr_str += f"\nThread.sampler.frequency_penalty = {self.sampler.frequency_penalty}"
-        repr_str += f"\nThread.sampler.presence_penalty = {self.sampler.presence_penalty}"
-        repr_str += f"\nThread.sampler.repeat_penalty = {self.sampler.repeat_penalty}"
-        repr_str += f"\nThread.sampler.top_k = {self.sampler.top_k}"
+        repr_str += f"max_context_length={self.max_context_length}, track_context={self.track_context}, "
+        repr_str += f"sampler={repr(self.sampler)})"
         if len(self.messages) <= 1:
             return repr_str
         else:
@@ -305,14 +301,16 @@ class Thread(object):
             messages = self.messages
 
         context_len_budget = self.max_context_length
-        system_message = messages[0]
-        context_len_budget -= len(system_message['tokens'])
-
-        sys_msg_str = (
-            system_message['prefix'] +
-            system_message['content'] +
-            system_message['postfix']
-        )
+        if len(messages) > 0:
+            system_message = messages[0]
+            sys_msg_str = (
+                system_message['prefix'] +
+                system_message['content'] +
+                system_message['postfix']
+            )
+        else:
+            context_len_budget -= len(system_message['tokens'])
+            sys_msg_str = ''
         
         if self.amnesiac:
             
@@ -480,6 +478,7 @@ class Thread(object):
         Works just like normal `input()` if the input does not end with a backslash
         """
         res = ''
+        
         while True:
             s = input(prompt)
             
@@ -525,9 +524,9 @@ class Thread(object):
                     elif c.lower() in ['color', 'colors']:
                         self._interact_color = not self._interact_color
                         if self._interact_color:
-                            print(f"\n{Fore.YELLOW}colors are ON{RESET_ALL}\n")
+                            print(f"\ncolors are ON\n")
                         else:
-                            print(f"\n{RESET_ALL}colors are OFF\n")
+                            print(f"\ncolors are OFF\n")
                     
                     elif c.lower() in ['undo', 'del', 'remove', 'back']:
                         print()
@@ -539,16 +538,29 @@ class Thread(object):
                     elif c.lower() in ['last', 'repeat']:
                         print('\neasy_llama: re-printing last message in history\n')
                         print(self.messages[-1]['content'] + '\n')
+                    
+                    elif c.lower() in ['inf', 'inference', 'inf_str']:
+                        print(f'\n"""{self.inference_str_from_messages()}"""\n')
+                    
+                    elif c.lower() in ['reroll', 're-roll']:
+                        assert self._reroll_flag is False
+                        old_len = len(self.messages)
+                        del self.messages[-1]
+                        assert len(self.messages) == (old_len - 1)
+                        return ''
+                    
+                    elif c.lower() in ['prefix', 'pre']:
+                        print('\neasy_llama: not yet implemented\n')
 
                     else:
-                        print(f'\n{RESET_ALL}easy_llama: unknown command\n')
+                        print(f'\neasy_llama: unknown command\n')
             
             else:
                 res += s
                 return res
 
 
-    def interact(self, color: Optional[bool] = None) -> None:
+    def interact(self, color: bool = True, smart_temp: bool = True) -> None:
         """
         Start an interactive chat session using this Thread.
 
@@ -560,14 +572,11 @@ class Thread(object):
         """
         print()
 
-        if color is not None:
-            assert color in [True, False]
-            self._interact_color = color
+        # fresh import of color codes in case `color` param has changed
+        from utils import USER_STYLE, BOT_STYLE
 
-        if self._interact_color:
-            USER_STYLE = RESET_ALL + Fore.GREEN
-            BOT_STYLE = RESET_ALL + Fore.CYAN
-        else:
+        # disable color codes if explicitly disabled by `color` param
+        if not color:
             USER_STYLE = ''
             BOT_STYLE = ''
         
@@ -583,13 +592,6 @@ class Thread(object):
             except KeyboardInterrupt:
                 print(f"{RESET_ALL}\n")
                 return
-            
-            if self._interact_color:
-                USER_STYLE = RESET_ALL + Fore.GREEN
-                BOT_STYLE = RESET_ALL + Fore.CYAN
-            else:
-                USER_STYLE = ''
-                BOT_STYLE = ''
             
             print(BOT_STYLE)
             if user_prompt != "":
@@ -613,6 +615,12 @@ class Thread(object):
                 print(f"{RESET_ALL}")
             else:
                 print(f"{RESET_ALL}\n")
+            
+            # EXPERIMENTAL
+            # raise temperature as conversation goes on to avoid getting
+            # stuck in loops
+            if smart_temp:
+                self.sampler.temp += 0.0125
 
 
     def reset(self) -> None:

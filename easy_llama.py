@@ -1,11 +1,8 @@
 # easy_llama.py
 # Python 3.11.7
+# https://github.com/ddh0/easy-llama/
 
-"""
-Text generation in Python, made easy
-
-https://github.com/ddh0/easy-llama/
-"""
+"""Text generation in Python, made easy"""
 
 import globals
 import formats
@@ -15,7 +12,6 @@ import utils as _utils
 from model import Model
 from thread import Thread
 
-# TODO: function to transfer a list of messages between disk / models, handle token count
 # TODO: Model.next_candidates() -> list[str]
 
 if __name__ == "__main__":

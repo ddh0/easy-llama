@@ -1,5 +1,6 @@
 # model.py
 # Python 3.11.7
+# https://github.com/ddh0/easy-llama/
 
 """Submodule containing the Model class to work with language models"""
 
@@ -12,11 +13,11 @@ from samplers import SamplerSettings, DefaultSampling
 from typing import Generator, Optional, TextIO, Union
 
 from utils import (
-    GGUFReader,
-    print_warning,
-    verify_backend,
     sync_llama_verbose_global,
-    get_optimal_n_batch
+    get_optimal_n_batch,
+    verify_backend,
+    print_warning,
+    GGUFReader,
 )
 
 # for typing of Model.stream_print() parameter `file`
@@ -157,7 +158,7 @@ class Model(object):
         
         if globals.VERBOSE:
             print("-------------------- easy_llama.Model ----------------------")
-            print(f"{model_path}")
+            print(f" model: {model_path}")
             print(f"global: BACKEND              == {globals.BACKEND}")
             print(f"global: NUM_GPU_LAYERS       == {globals.NUM_GPU_LAYERS}")
             print(f" param: mul_mat_q            == {mul_mat_q}")
@@ -190,7 +191,7 @@ class Model(object):
     
     def __call__(
             self,
-            prompt: str,
+            prompt: Union[str, list[int]],
             stops: Optional[list[str]] = None,
             sampler: SamplerSettings = DefaultSampling
         ) -> str:
