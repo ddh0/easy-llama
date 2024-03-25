@@ -18,7 +18,7 @@ class SamplerSettings(object):
             min_p:             float = 0.05,
             frequency_penalty: float = 0.0,
             presence_penalty:  float = 0.0,
-            repeat_penalty:    float = 1.1,
+            repeat_penalty:    float = 1.0,
             top_k:             int   = 40
         ):
 
@@ -64,10 +64,18 @@ GreedyDecoding = SamplerSettings(
 
 DefaultSampling = SamplerSettings()
 
-AlternativeSampling = SamplerSettings(
+EasyLlamaSampling = SamplerSettings(
+    min_p = 0.2
+)
+
+OldDefaultSampling = SamplerSettings(
+    repeat_penalty = 1.1
+)
+
+SimpleSampling = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
-    min_p = 0.1,
+    min_p = 0.0,
     top_k = -1
 )
 
@@ -75,7 +83,6 @@ LowMinPSampling = SamplerSettings(
     temp = MAX_TEMP,
     top_p = 1.0,
     min_p = 0.1,
-    repeat_penalty = 1.0,
     top_k = -1
 )
 
@@ -83,35 +90,30 @@ MinPSampling = SamplerSettings(
     temp = MAX_TEMP,
     top_p = 1.0,
     min_p = 0.2,
-    repeat_penalty = 1.0,
     top_k = -1
 )
 
 StrictMinPSampling = SamplerSettings(
     temp = MAX_TEMP,
     top_p = 1.0,
-    min_p = 0.3,
-    repeat_penalty = 1.0,
+    min_p = 0.5,
     top_k = -1
 )
 
 ContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.4,
-    repeat_penalty = 1.0
+    presence_penalty = 0.4
 )
 
 WarmContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.8,
-    repeat_penalty = 1.0
+    presence_penalty = 0.8
 )
 
 RandomSampling = SamplerSettings(
     temp = MAX_TEMP,
     top_p = 1.0,
     min_p = 0.0,
-    repeat_penalty = 1.0,
     top_k = -1
 )
 

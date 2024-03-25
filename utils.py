@@ -17,6 +17,7 @@ _backend_verified = False
 RESET_ALL = Fore.RESET + Back.RESET + Style.RESET_ALL
 USER_STYLE = RESET_ALL + Fore.GREEN
 BOT_STYLE = RESET_ALL + Fore.CYAN
+DIM_STYLE = RESET_ALL + Fore.LIGHTBLACK_EX
 
 class GGUFReader:
     """

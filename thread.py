@@ -113,7 +113,6 @@ class Thread(object):
         self.track_context: bool = track_context
         self.sampler: SamplerSettings = sampler
         self._interact_color: bool = False
-        self._reroll_flag: bool = False
 
         if self.enable_timestamps:
             # stop generation on timestamps
@@ -469,7 +468,12 @@ class Thread(object):
         print()
                 
 
-    def interactive_input(self, prompt: str) -> str:
+    def interactive_input(self,
+                          prompt: str,
+                          _user_style: str,
+                          _bot_style: str,
+                          _dim_style: str
+                          ) -> str:
         """
         Recieve (optionally) multi-line input from the user and return the
         entered string. Lines must end with a backslash `\` in order to recieve
@@ -489,7 +493,7 @@ class Thread(object):
 
                 print()
                 try:
-                    c = input(f'{RESET_ALL}  ! ')
+                    c = input(f'{RESET_ALL}  ! {_dim_style}')
 
                 except KeyboardInterrupt:
                     print('\n')
@@ -542,25 +546,54 @@ class Thread(object):
                     elif c.lower() in ['inf', 'inference', 'inf_str']:
                         print(f'\n"""{self.inference_str_from_messages()}"""\n')
                     
-                    elif c.lower() in ['reroll', 're-roll']:
-                        assert self._reroll_flag is False
+                    elif c.lower() in ['reroll', 're-roll', 're']:
                         old_len = len(self.messages)
                         del self.messages[-1]
                         assert len(self.messages) == (old_len - 1)
-                        return ''
-                    
-                    elif c.lower() in ['prefix', 'pre']:
-                        print('\neasy_llama: not yet implemented\n')
+                        return '', None
 
                     else:
                         print(f'\neasy_llama: unknown command\n')
             
+            elif s == '<': # the next bot message will start with...
+
+                print()
+                try:
+                    next_message_start = input(f'{_dim_style}  < ')
+
+                except KeyboardInterrupt:
+                    print(f'{RESET_ALL}\n')
+                    continue
+
+                else:
+                    print()
+                    return '', next_message_start
+            
+            elif s.endswith('<'):
+
+                print()
+
+                msg = s.removesuffix('<')
+                self.add_message("user", msg)
+                
+                try:
+                    next_message_start = input(f'{_dim_style}  < ')
+
+                except KeyboardInterrupt:
+                    print(f'{RESET_ALL}\n')
+                    continue
+
+                else:
+                    print()
+                    return '', next_message_start
+                    
+
             else:
                 res += s
-                return res
+                return res, None
 
 
-    def interact(self, color: bool = True, smart_temp: bool = True) -> None:
+    def interact(self, color: bool = True) -> None:
         """
         Start an interactive chat session using this Thread.
 
@@ -573,12 +606,13 @@ class Thread(object):
         print()
 
         # fresh import of color codes in case `color` param has changed
-        from utils import USER_STYLE, BOT_STYLE
+        from utils import USER_STYLE, BOT_STYLE, DIM_STYLE
 
         # disable color codes if explicitly disabled by `color` param
         if not color:
             USER_STYLE = ''
             BOT_STYLE = ''
+            DIM_STYLE = ''
         
         while True:
 
@@ -588,30 +622,50 @@ class Thread(object):
                 prompt = f"{RESET_ALL}  > {USER_STYLE}"
             
             try:
-                user_prompt = self.interactive_input(prompt)
+                user_prompt, next_message_start = self.interactive_input(
+                    prompt,
+                    USER_STYLE, 
+                    BOT_STYLE,
+                    DIM_STYLE
+                )
             except KeyboardInterrupt:
                 print(f"{RESET_ALL}\n")
                 return
             
-            print(BOT_STYLE)
-            if user_prompt != "":
-                self.add_message("user", user_prompt)
-            try:
-                output = self.model.stream_print(
-                    self.inference_str_from_messages(self.messages),
-                    stops=self.format['stops'],
-                    sampler=self.sampler,
-                    end=''
-                )
-            except KeyboardInterrupt:
-                print(f"{RESET_ALL} [message not added to history; press ENTER to re-roll]\n")
-                continue
+            if next_message_start is not None:
+                print(f"{BOT_STYLE}{next_message_start}", end='', flush=True)
+                try:
+                    output = next_message_start + self.model.stream_print(
+                        self.inference_str_from_messages(self.messages) + next_message_start,
+                        stops=self.format['stops'],
+                        sampler=self.sampler,
+                        end=''
+                    )
+                except KeyboardInterrupt:
+                    print(f"{DIM_STYLE} [message not added to history; press ENTER to re-roll]\n")
+                    continue
+                else:
+                    self.add_message("bot", output)
             else:
-                self.add_message("bot", output)
+                print(BOT_STYLE)
+                if user_prompt != "":
+                    self.add_message("user", user_prompt)
+                try:
+                    output = self.model.stream_print(
+                        self.inference_str_from_messages(self.messages),
+                        stops=self.format['stops'],
+                        sampler=self.sampler,
+                        end=''
+                    )
+                except KeyboardInterrupt:
+                    print(f"{DIM_STYLE} [message not added to history; press ENTER to re-roll]\n")
+                    continue
+                else:
+                    self.add_message("bot", output)
 
-            if output.endswith(f"{RESET_ALL}\n\n"):
-                pass
-            elif output.endswith(f"{RESET_ALL}\n"):
+            if output.endswith("\n\n"):
+                print(f"{RESET_ALL}", end = '', flush=True)
+            elif output.endswith("\n"):
                 print(f"{RESET_ALL}")
             else:
                 print(f"{RESET_ALL}\n")
@@ -619,8 +673,6 @@ class Thread(object):
             # EXPERIMENTAL
             # raise temperature as conversation goes on to avoid getting
             # stuck in loops
-            if smart_temp:
-                self.sampler.temp += 0.0125
 
 
     def reset(self) -> None:
@@ -646,6 +698,6 @@ class Thread(object):
         context_used_percentage = (
             round((thread_len_tokens/self.max_context_length)*100)
         )
-        print(f"{RESET_ALL}{thread_len_tokens} / {self.max_context_length} tokens")
+        print(f"{thread_len_tokens} / {self.max_context_length} tokens")
         print(f"{context_used_percentage}% of context used")
         print(f"{len(self.messages)} messages")
