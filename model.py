@@ -76,6 +76,9 @@ class Model(object):
         assert isinstance(context_length, (int, type(None))), \
             f"context_length should be int or None, not {type(context_length)}"
 
+        # this does not use Llama.metadata because we want to use GGUF
+        # metadata to determine some parameters of the Llama instance
+        # before it is created
         self.metadata = GGUFReader.load_metadata(self, model_path)
 
         n_ctx_train = None
@@ -155,6 +158,11 @@ class Model(object):
             offload_kqv=offload_kqv,
             verbose=globals.VERBOSE
         )
+
+        # once model is loaded, replace metadata (as read using internal class)
+        # with metadata (as read using the more robust llama-cpp-python code) 
+        self._metadata = self.metadata # just in case it could be useful
+        self.metadata = self.llama.metadata
         
         if globals.VERBOSE:
             print("-------------------- easy_llama.Model ----------------------")

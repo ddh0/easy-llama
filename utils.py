@@ -89,10 +89,6 @@ class GGUFReader:
         metadata = {}
         with open(fname, "rb") as file:
             GGUF_MAGIC = file.read(4)
-            GGUF_VERSION = unpack("<I", file.read(4))[0]
-            # ti_data_count = struct.unpack("<Q", file.read(8))[0]
-            file.read(8)
-            kv_data_count = unpack("<Q", file.read(8))[0]
 
             if GGUF_MAGIC != b"GGUF":
                 raise ValueError(
@@ -101,12 +97,18 @@ class GGUFReader:
                     "expected b'GGUF')"
                 )
 
+            GGUF_VERSION = unpack("<I", file.read(4))[0]
+
             if GGUF_VERSION == 1:
                 raise ValueError(
                     "easy_llama: your model file reports GGUF version 1, " + \
                     "but only versions 2 and above are supported. " + \
                     "re-convert your model or download a newer version"
                 )
+
+            # ti_data_count = struct.unpack("<Q", file.read(8))[0]
+            file.read(8)
+            kv_data_count = unpack("<Q", file.read(8))[0]
 
             for _ in range(kv_data_count):
                 key_length = unpack("<Q", file.read(8))[0]
@@ -120,8 +122,10 @@ class GGUFReader:
                         unpack("<I", file.read(4))[0]
                     )
                     length = unpack("<Q", file.read(8))[0]
-                    for _ in range(length):
-                        _ = GGUFReader.get_single(self, ltype, file)
+                    #for _ in range(length):
+                    #    _ = GGUFReader.get_single(self, ltype, file)
+                    arr = [GGUFReader.get_single(self, ltype, file) for _ in range(length)]
+                    metadata[key.decode()] = arr
                 else:
                     value = GGUFReader.get_single(self, value_type, file)
                     metadata[key.decode()] = value
