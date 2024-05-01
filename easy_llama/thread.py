@@ -344,10 +344,14 @@ class Thread:
             if user_input.endswith('\\'):
                 full_user_input += user_input[:-1] + '\n'
             
-            elif user_input.startswith('!'):
+            elif user_input == '!':
 
                 print()
-                command = user_input.removeprefix('!')
+                try:
+                    command = input(f'{RESET_ALL}  ! {_dim_style}')
+                except KeyboardInterrupt:
+                    print('\n')
+                    continue
 
                 if command == '':
                     print(f'\n[no command]\n')
