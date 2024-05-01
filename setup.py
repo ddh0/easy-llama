@@ -12,7 +12,7 @@ setup(
     packages=['easy_llama'],
     install_requires=[
         'llama_cpp_python',
-        'colorama',                     
+        'colorama',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -23,7 +23,7 @@ setup(
         'Operating System :: POSIX :: Linux',
         'Natural Language :: English',
         'Programming Language :: Python :: Implementation :: CPython',
-        'Programming Language :: Python :: 3 :: Only',        
+        'Programming Language :: Python :: 3 :: Only',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
