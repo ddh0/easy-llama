@@ -142,7 +142,7 @@ Select your backend from the list below to see your installation instructions. I
 <summary>CPU only</summary>
 
 ```
-pip install easy-llama 
+pip install easy-llama
 ```
 
 </details>
