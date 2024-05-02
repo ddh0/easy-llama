@@ -10,7 +10,7 @@
 >>> 
 ```
 
-easy-llama is designed to be as simple as possible to use, at the expense of some functionality. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) library.
+easy-llama's purpose is to make use of **on-device large language models (LLMs) as easily as possible**. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) project.
 
 ## Features
 - [x] Automatic arbitrary context length extension
@@ -35,7 +35,7 @@ easy-llama is designed to be as simple as possible to use, at the expense of som
   - Easily extend, duplicate and modify built-in formats
   - `easy_llama.formats.wrap(prompt)` - Wrap a given prompt in any prompt format for single-turn completion
 - [X] Message-based context length handling
-- [ ] WIP: Retrieve sorted list of candidates for the most likely next token (i.e. logits)
+- [ ] Retrieve sorted list of candidates for the most likely next token (i.e. logits)
 - [X] Support all models supported by llama-cpp-python
 
 ## Examples
@@ -59,6 +59,11 @@ easy-llama is designed to be as simple as possible to use, at the expense of som
 >>> Thread = ez.Thread(Llama3, ez.formats.llama3, ez.samplers.TikTokenSampling)
 >>> Thread.interact()
 ```
+
+<details>
+<summary>Click to expand interactive chat example</summary>
+
+In practice, the prompt and the response are differentiated by color for improved readability.
 
 ```
   > What is HTML?
@@ -132,6 +137,8 @@ Have a great day and happy coding (or web-browsing)!
   > 
 ```
 
+</details>
+
 ## Installing with pip
 
 In most cases, the best way to install easy-llama is through pip.
@@ -142,7 +149,8 @@ Select your backend from the list below to see your installation instructions. I
 <summary>CPU only</summary>
 
 ```
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+pip install --upgrade easy-llama
 ```
 
 </details>
@@ -152,8 +160,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_CUDA=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_CUDA=on" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -162,8 +171,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `brew`. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_METAL=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_METAL=on" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -172,8 +182,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_HIPBLAS=on" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -182,8 +193,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_VULKAN=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_VULKAN=on" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -192,8 +204,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_CLBLAST=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_CLBLAST=on" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -202,8 +215,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -212,7 +226,9 @@ pip install easy-llama
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
-CMAKE_ARGS="-DLLAMA_KOMPUTE=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
+pip uninstall llama-cpp-python -y
+CMAKE_ARGS="-DLLAMA_KOMPUTE=on" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 <details>
@@ -221,9 +237,10 @@ CMAKE_ARGS="-DLLAMA_KOMPUTE=on" pip install --no-cache-dir --force-reinstall --u
 You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 ```bash
+pip uninstall llama-cpp-python -y
 source /opt/intel/oneapi/setvars.sh
-CMAKE_ARGS="-DLLAMA_SYCL=on -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python 
-pip install easy-llama
+CMAKE_ARGS="-DLLAMA_SYCL=on -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx" pip install --no-cache-dir llama-cpp-python 
+pip install --upgrade easy-llama
 ```
 </details>
 
@@ -233,14 +250,14 @@ Installation from source is only necessary if you rely on some functionality fro
 
 > [!NOTE]
 >
-> You will need to modify the CMAKE_ARGS according to your backend. The arguments shown below are for CUDA support. If you're not using CUDA, select your backend above to see the correct CMAKE_ARGS.
+> You will need to modify the `CMAKE_ARGS` variable according to your backend. The arguments shown below are for CUDA support. If you're not using CUDA, select your backend above to see the correct `CMAKE_ARGS`.
 
 To install easy-llama from source, copy and paste the following commands into your terminal:
 
-<details>
-<summary>Click to expand</summary>
-
 ```bash
+pip uninstall easy-llama llama-cpp-python -y
+rm -rf ./easy-llama
+rm -rf ./llama-cpp-python
 git clone https://github.com/abetlen/llama-cpp-python
 cd ./llama-cpp-python/vendor/
 rm -rf ./llama.cpp
@@ -250,7 +267,6 @@ git clone https://github.com/ddh0/easy-llama
 CMAKE_ARGS="-DLLAMA_CUDA=on" pip install -e ./llama-cpp-python
 pip install -e ./easy-llama
 ```
-</details>
 
 ## Acknowledgments
 easy-llama stands on the shoulders of giants. Thank you to [Andrei Betlen](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), and to [Georgi Gerganov](https://github.com/ggerganov) for [llama.cpp](https://github.com/ggerganov/llama.cpp) and [GGML](https://github.com/ggerganov/ggml). Thank you to all who have made contributions to these projects.
