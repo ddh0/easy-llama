@@ -230,7 +230,7 @@ easy-llama comes with several built-in SamplerSettings objects that can be used 
 
 # `ez.formats`
 
-easy-llama comes with several built-in prompt formats that correspond to well-known language models or families of language models, such as Llama 3, Mistral Instruct, Vicuna, Guanaco, and many more. For a complete list of available formats, see [easy_llama/formats.py](formats.py).
+easy-llama comes with several built-in prompt formats that correspond to well-known language models or families of language models, such as Llama 3, Mistral Instruct, Vicuna, Guanaco, and many more. For a complete list of available formats, see [formats.py](easy_llama/formats.py).
 
 Formats have the type `Dict[str, Union[str, list]]`, and they look like this:
 
