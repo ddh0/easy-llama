@@ -3,13 +3,13 @@
 
 """Submodule containing convenience functions and GGUFReader"""
 
+import sys
+
 from time     import strftime
 from enum     import IntEnum
 from struct   import unpack
 from colorama import Fore
 from typing   import Any
-
-from sys import stderr as sys_stderr
 
 
 # color codes used in Thread.interact()
@@ -140,10 +140,10 @@ def get_timestamp_prefix_str() -> str:
     return strftime("[%Y, %b %e, %a %l:%M %p] ")
 
 def print_verbose(text: str) -> None:
-    print("easy_llama: verbose:", text, file=sys_stderr, flush=True)
+    print("easy_llama: verbose:", text, file=sys.stderr, flush=True)
 
 def print_info(text: str) -> None:
-    print("easy_llama: info:", text, file=sys_stderr, flush=True)
+    print("easy_llama: info:", text, file=sys.stderr, flush=True)
 
 def print_warning(text: str) -> None:
-    print("easy_llama: warning:", text, file=sys_stderr, flush=True)
+    print("easy_llama: warning:", text, file=sys.stderr, flush=True)

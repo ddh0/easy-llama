@@ -3,7 +3,7 @@
 
 """Text generation in Python, made easy"""
 
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
 from . import formats
 from . import samplers

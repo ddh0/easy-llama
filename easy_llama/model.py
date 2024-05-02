@@ -3,6 +3,8 @@
 
 """Submodule containing the Model class to work with language models"""
 
+import sys
+
 from typing     import Generator, Optional, TextIO, Union, List
 from .utils     import GGUFReader, print_warning, print_verbose
 from .samplers  import SamplerSettings, DefaultSampling
@@ -10,7 +12,6 @@ from llama_cpp  import Llama, StoppingCriteriaList
 from os.path    import isdir, exists
 
 from os  import cpu_count as os_cpu_count
-from sys import stdout    as sys_stdout
 
 
 # for typing of Model.stream_print() parameter `file`
@@ -519,7 +520,7 @@ class Model:
             stops: list[Union[str, int]] = [],
             sampler: SamplerSettings = DefaultSampling,
             end: str = "\n",
-            file: _SupportsWriteAndFlush = sys_stdout,
+            file: _SupportsWriteAndFlush = sys.stdout,
             flush: bool = True
     ) -> str:
         """

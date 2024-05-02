@@ -1,8 +1,11 @@
+# easy_llama.py
+# https://github.com/ddh0/easy-llama/
+
 from setuptools import setup
 
 setup(
     name='easy_llama',
-    version='0.1.6',
+    version='0.1.7',
     description='Text generation in Python, made easy',
     long_description="""To view the current documentation for easy-llama, visit the project's GitHub repository:\nhttps://github.com/ddh0/easy-llama""",
     url='https://github.com/ddh0/easy-llama/',
