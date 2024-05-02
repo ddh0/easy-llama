@@ -62,6 +62,7 @@ class Model:
             context_length: Optional[int] = None,
             n_gpu_layers: int = 0,
             offload_kqv: bool = True,
+            flash_attn: bool = False,
             verbose: bool = False
         ):
         """
@@ -73,6 +74,7 @@ class Model:
         - context_length: The context length at which to load the model, in tokens
         - n_gpu_layers: The number of layers to be offloaded to the GPU
         - offload_kqv: Whether or not the KQV cache (context) should be offloaded
+        - flash_attn: Whether or not to use Flash Attention (experimental)
         - verbose: Whether or not to print additional backend information
         """
 
@@ -84,12 +86,15 @@ class Model:
             f"Model: the given model_path '{model_path}' is a directory, not a GGUF file"
         assert isinstance(context_length, (int, type(None))), \
             f"Model: context_length should be int or None, not {type(context_length)}"
+        assert isinstance(flash_attn, bool), \
+            f"Model: flash_attn should be bool (True or False), not {type(flash_attn)}"
         
         # save __init__ parameters for __repr__
         self._model_path = model_path
         self._context_length = context_length
         self._n_gpu_layers = n_gpu_layers
         self._offload_kqv = offload_kqv
+        self._flash_attn = flash_attn
         self._verbose = self.verbose = verbose
 
         # if context_length <= 0, use n_ctx_train
@@ -171,11 +176,6 @@ class Model:
                     'expect SIGNIFICANT loss of quality'
                 )
         
-        # expose these values because they may be useful / informative
-        self.n_ctx_train = n_ctx_train
-        self.rope_freq_base_train = rope_freq_base_train
-        self.rope_freq_base = rope_freq_base
-        
         try:
             self.tokens: List[str] = self.metadata['tokenizer.ggml.tokens']
         except KeyError:
@@ -206,6 +206,20 @@ class Model:
         n_threads = max(cpu_count//2, 1)
         n_threads_batch = cpu_count
 
+        if flash_attn:
+            if n_gpu_layers == 0:
+                print_warning(
+                    "disabling flash_attn because n_gpu_layers == 0"
+                )
+                flash_attn = False
+            else:
+                print_warning(
+                    "flash_attn enabled"
+                )
+                print_warning(
+                    "please note that flash_attn is currently experimental"
+                )
+
         self.llama: Llama = Llama(
             model_path=model_path,
             n_ctx=self.context_length,
@@ -219,6 +233,7 @@ class Model:
             rope_freq_base=rope_freq_base,
             mul_mat_q=True,
             offload_kqv=offload_kqv,
+            flash_attn=flash_attn,
             # KV cache quantization
             # use 1 for F16 (default), 8 for q8_0, 2 for q4_0, 3 for q4_1
             #type_k=8,
@@ -230,11 +245,18 @@ class Model:
         # with metadata (as read using the more robust llama-cpp-python code) 
         self.metadata = self.llama.metadata
 
+        # expose these values because they may be useful / informative
+        self.n_ctx_train = n_ctx_train
+        self.rope_freq_base_train = rope_freq_base_train
+        self.rope_freq_base = rope_freq_base
+        self.flash_attn = flash_attn
+
         if self.verbose:
             print_verbose("new Model instance with the following attributes:")
             print_verbose(f"model: {model_path}")
             print_verbose(f"param: n_gpu_layers         == {n_gpu_layers}")
             print_verbose(f"param: offload_kqv          == {offload_kqv}")
+            print_verbose(f"param: flash_attn           == {flash_attn}")
             print_verbose(f"param: n_batch              == {n_batch}")
             print_verbose(f"param: n_threads            == {n_threads}")
             print_verbose(f"param: n_threads_batch      == {n_threads_batch}")
@@ -249,6 +271,7 @@ class Model:
             f"context_length={self._context_length}, " + \
             f"n_gpu_layers={self._n_gpu_layers}, " + \
             f"offload_kqv={self._offload_kqv}, "+ \
+            f"flash_attn={self._flash_attn}, " + \
             f"verbose={self._verbose})"
 
     def __del__(self):
