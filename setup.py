@@ -3,6 +3,7 @@
 
 from setuptools import setup
 
+
 setup(
     name='easy_llama',
     version='0.1.8',
