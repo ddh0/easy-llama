@@ -31,7 +31,7 @@ blank: Dict[str, Union[str, list]] = {
     "bot_prefix": "",
     "bot_content": "",
     "bot_postfix": "",
-    "stops": [],
+    "stops": []
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
@@ -46,7 +46,7 @@ alpaca: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Response:\n",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ['###', 'Instruction:', '\n\n\n'],
+    "stops": ['###', 'Instruction:', '\n\n\n']
 }
 
 # https://docs.mistral.ai/models/
@@ -71,7 +71,7 @@ mistral_instruct: Dict[str, Union[str, list]] = {
     "bot_prefix": "",
     "bot_content": "",
     "bot_postfix": "",
-    "stops": [],
+    "stops": []
 }
 
 # https://docs.mistral.ai/platform/guardrailing/
@@ -88,7 +88,7 @@ mistral_instruct_safe: Dict[str, Union[str, list]] = {
     "bot_prefix": "",
     "bot_content": "",
     "bot_postfix": "",
-    "stops": [],
+    "stops": []
 }
 
 # https://github.com/openai/openai-python/blob/main/chatml.md
@@ -102,7 +102,7 @@ chatml: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|im_start|>assistant\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ['<|im_start|>', '</s>'],
+    "stops": ['<|im_start|>', '</s>']
 }
 
 # https://huggingface.co/blog/llama2
@@ -117,7 +117,7 @@ llama2chat: Dict[str, Union[str, list]] = {
     "bot_prefix": " ",
     "bot_content": "",
     "bot_postfix": " [INST] ",
-    "stops": ['[INST]', '[/INST]'],
+    "stops": ['[INST]', '[/INST]']
 }
 
 # https://github.com/ggerganov/llama.cpp/issues/6747#issuecomment-2065013606
@@ -132,7 +132,7 @@ llama3: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|start_header_id|>assistant<|end_header_id|>\n\n",
     "bot_content": "",
     "bot_postfix": "<|eot_id|>\n",
-    "stops": [128001, 128009],
+    "stops": [128001, 128009]
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
@@ -147,7 +147,7 @@ alpaca: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Response:\n",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ['###', 'Instruction:', '\n\n\n'],
+    "stops": ['###', 'Instruction:', '\n\n\n']
 }
 
 # this is the official vicuna. it is often butchered in various ways,
@@ -163,7 +163,7 @@ vicuna_lmsys: Dict[str, Union[str, list]] = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "</s> ",
-    "stops": ['USER:'],
+    "stops": ['USER:']
 }
 
 # spotted here and elsewhere:
@@ -180,7 +180,7 @@ vicuna_common: Dict[str, Union[str, list]] = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['USER:', 'ASSISTANT:'],
+    "stops": ['USER:', 'ASSISTANT:']
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b
@@ -196,7 +196,7 @@ guanaco: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Assistant:",
     "bot_content": "",
     "bot_postfix": " ",
-    "stops": ['###', 'Human:'],
+    "stops": ['###', 'Human:']
 }
 
 # https://huggingface.co/pankajmathur/orca_mini_v3_7b
@@ -211,7 +211,7 @@ orca_mini: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Assistant:\n",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ['###', 'User:'],
+    "stops": ['###', 'User:']
 }
 
 # https://huggingface.co/HuggingFaceH4/zephyr-7b-beta
@@ -225,7 +225,7 @@ zephyr: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|assistant|>\n",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['<|user|>'],
+    "stops": ['<|user|>']
 }
 
 # OpenChat: https://huggingface.co/openchat/openchat-3.5-0106
@@ -239,7 +239,7 @@ openchat: Dict[str, Union[str, list]] = {
     "bot_prefix": "GPT4 Correct Assistant:",
     "bot_content": "",
     "bot_postfix": "<|end_of_turn|>",
-    "stops": ['<|end_of_turn|>'],
+    "stops": ['<|end_of_turn|>']
 }
 
 # SynthIA by Migel Tissera
@@ -256,7 +256,7 @@ synthia: Dict[str, Union[str, list]] = {
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
     "bot_postfix": "\n",
-    "stops": ['USER:', 'ASSISTANT:', 'SYSTEM:', '\n\n\n'],
+    "stops": ['USER:', 'ASSISTANT:', 'SYSTEM:', '\n\n\n']
 }
 
 # Intel's neural chat v3
@@ -277,7 +277,7 @@ neural_chat: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Assistant:\n",
     "bot_content": "",
     "bot_postfix": "</s>\n\n",
-    "stops": ['###'],
+    "stops": ['###']
 }
 
 # experimental: stanford's alpaca format adapted for chatml models
@@ -292,7 +292,7 @@ chatml_alpaca: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|im_start|>response\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ['<|im_end|>', '<|im_start|>'],
+    "stops": ['<|im_end|>', '<|im_start|>']
 }
 
 # experimental
@@ -308,7 +308,7 @@ autocorrect: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|im_start|>output\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ['<|im_end|>', '<|im_start|>'],
+    "stops": ['<|im_end|>', '<|im_start|>']
 }
 
 # https://huggingface.co/jondurbin/bagel-dpo-7b-v0.1
@@ -323,7 +323,7 @@ bagel: Dict[str, Union[str, list]] = {
     "bot_prefix": "assistant\n",
     "bot_content": "",
     "bot_postfix": "</s>\n",
-    "stops": ['user\n', 'assistant\n', 'system\n'],
+    "stops": ['user\n', 'assistant\n', 'system\n']
 }
 
 # https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0
@@ -337,7 +337,7 @@ solar_instruct: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Assistant:\n",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ['### User:', '###', '### Assistant:'],
+    "stops": ['### User:', '###', '### Assistant:']
 }
 
 # NeverSleep's Noromaid - alpaca with character names prefixed
@@ -352,7 +352,7 @@ noromaid: Dict[str, Union[str, list]] = {
     "bot_prefix": "### Response:\nAlice:",
     "bot_content": "",
     "bot_postfix": "\n\n",
-    "stops": ['###', 'Instruction:', '\n\n\n'],
+    "stops": ['###', 'Instruction:', '\n\n\n']
 }
 
 # https://huggingface.co/Undi95/Borealis-10.7B
@@ -366,7 +366,7 @@ nschatml: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|im_bot|>\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": [],
+    "stops": []
 }
 
 # natural format for many models
@@ -394,7 +394,7 @@ command: Dict[str, Union[str, list]] = {
     "bot_prefix": "<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>",
     "bot_content": "",
     "bot_postfix": "<|END_OF_TURN_TOKEN|>",
-    "stops": [],
+    "stops": []
 }
 
 mistral_openorca = chatml.copy()

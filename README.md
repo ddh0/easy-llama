@@ -12,6 +12,9 @@
 
 easy-llama's purpose is to make use of **on-device large language models (LLMs) as easily as possible**. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) project.
 
+## Documentation
+The latest documentation is available [here](DOCS.md).
+
 ## Features
 - [x] Automatic arbitrary context length extension
 	- Just specify your desired context length, and easy-llama will adjust the necessary parameters accordingly

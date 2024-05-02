@@ -3,9 +3,11 @@
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
+import sys
+
+from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from typing    import Optional, Literal, Tuple, Dict, Union, List
 from .samplers import SamplerSettings, DefaultSampling
-from .model    import Model, assert_model_is_loaded
 from .utils    import RESET_ALL, cls, print_verbose
 
 from .formats import blank as formats_blank
@@ -33,8 +35,8 @@ class Thread:
     The following attributes are available:
     - `.format` - The format being used for messages in this thread
     - `.messages` - The list of messages in this thread
-    - `.model` - The Model instance used by this thread
-    - `.sampler` - The SamplerSettings object being used in this thread
+    - `.model` - The `ez.Model` instance used by this thread
+    - `.sampler` - The SamplerSettings object used in this thread
     """
 
     def __init__(self,
@@ -168,12 +170,14 @@ class Thread:
             }
     
     def len_messages(self) -> int:
-        """Return the total length of all messages in tokens"""
+        """Return the total length of all messages in this thread, in tokens"""
 
         return self.model.get_length(self.as_string())
 
     def add_message(self, role: Literal['system', 'user', 'bot'], content: str) -> None:
         """
+        Create a message and append it to `Thread.messages`.
+
         `Thread.add_message(...)` is a shorthand for
         `Thread.messages.append(Thread.create_message(...))`
         """
@@ -186,8 +190,8 @@ class Thread:
 
     def inference_str_from_messages(self) -> str:
         """
-        Using the list of messages, construct a string suitable for
-        inference, respecting the format and context length of this Thread
+        Using the list of messages, construct a string suitable for inference,
+        respecting the format and context length of this thread.
         """
 
         messages = self.messages
@@ -555,14 +559,17 @@ class Thread:
 
 
     def reset(self) -> None:
-        """Clear the list of messages"""
+        """
+        Clear the list of messages, which resets the thread to its original
+        state
+        """
         self.messages: List[Dict[str, str]] = [
             self.create_message("system", self.format['system_content'])
         ]
     
     
     def as_string(self) -> str:
-        """Return this Thread's message history as a string"""
+        """Return this thread's message history as a string"""
         ret = ''
         for msg in self.messages:
             ret += msg['prefix']
@@ -571,11 +578,16 @@ class Thread:
         return ret
 
     
-    def print_stats(self) -> None:
-        """Print stats about the context usage in this Thread"""
+    def print_stats(
+        self,
+        end: str = '\n',
+        file: _SupportsWriteAndFlush = sys.stdout,
+        flush: bool = True
+    ) -> None:
+        """Print stats about the context usage in this thread"""
         thread_len_tokens = self.len_messages()
         max_ctx_len = self.model.context_length
         context_used_percentage = round((thread_len_tokens/max_ctx_len)*100)
-        print(f"{thread_len_tokens} / {max_ctx_len} tokens")
-        print(f"{context_used_percentage}% of context used")
-        print(f"{len(self.messages)} messages")
+        print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file, flush=flush)
+        print(f"{context_used_percentage}% of context used", file=file, flush=flush)
+        print(f"{len(self.messages)} messages", end=end, file=file, flush=flush)

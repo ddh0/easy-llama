@@ -46,6 +46,7 @@ class Model:
     The following attributes are available:
     - `.bos_token` - The model's beginning-of-stream token ID
     - `.context_length` - The model's loaded context length
+    - `.flash_attn` - Whether the model was loaded with `flash_attn=True`
     - `.eos_token` - The model's end-of-stream token ID
     - `.llama` - The underlying `llama_cpp.Llama` instance
     - `.metadata` - The GGUF metadata of the model
@@ -462,7 +463,7 @@ class Model:
         ) -> Generator:
 
         """
-        Given a prompt, return a generator that yields dicts containing tokens.
+        Given a prompt, return a Generator that yields dicts containing tokens.
 
         To get the token string itself, subscript the dict with:
 
@@ -551,6 +552,7 @@ class Model:
         The returned string does not include the `end` parameter.
 
         `Model.stream_print(...)` is a shorthand for:
+        
         ```
         s = Model.stream(prompt, stops=stops, sampler=sampler)
         for i in s:
@@ -604,7 +606,7 @@ class Model:
             self,
             prompt: str,
             k: int
-        ) -> list[str]:
+        ) -> List[str]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
         top k candidates for most likely next token

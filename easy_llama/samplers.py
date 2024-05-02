@@ -11,7 +11,7 @@ MAX_TEMP = float(maxsize)
 
 class SamplerSettings:
     """
-    A SamplerSettings object specifies the the sampling parameters that will be
+    A SamplerSettings object specifies the sampling parameters that will be
     used to control text generation
     """
 
