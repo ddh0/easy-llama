@@ -611,13 +611,22 @@ class Model:
         Given prompt `str` and k `int`, return a sorted list of the
         top k candidates for most likely next token
         """
+        # TODO: optimize
+
+        assert isinstance(prompt, str), \
+            f"next_candidates: prompt should be str, not {type(prompt)}"
+        assert isinstance(k, int), \
+            f"next_candidates: k should be int, not {type(k)}"
+        assert 0 < k <= len(self.tokens), \
+            f"next_candidates: k should be between 0 and {len(self.tokens)}"
 
         assert_model_is_loaded(self)
-        tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
-        self.llama.eval(tokens)
+        prompt_tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
+        self.llama.reset() # reset model state
+        self.llama.eval(prompt_tokens)
         # len(self.llama.scores) == self.context_length
         # len(self.llama.scores[i]) == len(self.tokens)
-        next_token_scores: List[float] = list(self.llama.scores[len(tokens) - 1])
+        next_token_scores: List[float] = list(self.llama.scores[len(prompt_tokens) - 1])
         token_probs_dict: Dict[str, float] = {}
         i = 0
         for tok_str in self.tokens:
