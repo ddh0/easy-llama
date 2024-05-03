@@ -139,6 +139,9 @@ def get_timestamp_prefix_str() -> str:
     # helpful: https://strftime.net
     return strftime("[%Y, %b %e, %a %l:%M %p] ")
 
+def truncate(text: str) -> str:
+    return text if len(text) < 53 else f"{text[:50]}..."
+
 def print_verbose(text: str) -> None:
     print("easy_llama: verbose:", text, file=sys.stderr, flush=True)
 

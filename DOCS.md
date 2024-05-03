@@ -17,7 +17,7 @@ The following attributes are available:
 - `.rope_freq_base` - The model's loaded RoPE frequency base
 - `.rope_freq_base_train` - The model's native RoPE frequency base
 - `.tokens` - A list of all the tokens in the model's tokenizer
-- `.verbose` - Whether or not the model was loaded with `verbose=True`
+- `.verbose` - Whether the model was loaded with `verbose=True`
 
 ## `Model.__init__()`
 

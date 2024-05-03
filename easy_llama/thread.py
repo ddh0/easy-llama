@@ -8,7 +8,7 @@ import sys
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from typing    import Optional, Literal, Tuple, Dict, Union, List
 from .samplers import SamplerSettings, DefaultSampling
-from .utils    import RESET_ALL, cls, print_verbose
+from .utils    import RESET_ALL, cls, print_verbose, truncate
 
 from .formats import blank as formats_blank
 
@@ -96,6 +96,16 @@ class Thread:
         if self.model.verbose:
             print_verbose("new Thread instance with the following attributes:")
             print_verbose(f"model                     == {self.model}")
+            print_verbose(f"format['system_prefix']   == {truncate(self.format['system_prefix'])}")
+            print_verbose(f"format['system_content']  == {truncate(self.format['system_content'])}")
+            print_verbose(f"format['system_postfix']  == {truncate(self.format['system_postfix'])}")
+            print_verbose(f"format['user_prefix']     == {truncate(self.format['user_prefix'])}")
+            print_verbose(f"format['user_content']    == {truncate(self.format['user_content'])}")
+            print_verbose(f"format['user_postfix']    == {truncate(self.format['user_postfix'])}")
+            print_verbose(f"format['bot_prefix']      == {truncate(self.format['bot_prefix'])}")
+            print_verbose(f"format['bot_content']     == {truncate(self.format['bot_content'])}")
+            print_verbose(f"format['bot_postfix']     == {truncate(self.format['bot_postfix'])}")
+            print_verbose(f"format['stops']           == {truncate(repr(self.format['stops']))}")
             print_verbose(f"sampler.temp              == {self.sampler.temp}")
             print_verbose(f"sampler.top_p             == {self.sampler.top_p}")
             print_verbose(f"sampler.min_p             == {self.sampler.min_p}")
