@@ -5,7 +5,7 @@
 
 import sys
 
-from typing     import Generator, Optional, TextIO, Union, List
+from typing     import Generator, Optional, TextIO, Union, List, Dict, Tuple
 from .utils     import GGUFReader, print_warning, print_verbose
 from .samplers  import SamplerSettings, DefaultSampling
 from llama_cpp  import Llama, StoppingCriteriaList
@@ -611,14 +611,25 @@ class Model:
         Given prompt `str` and k `int`, return a sorted list of the
         top k candidates for most likely next token
         """
-        # WIP
-        raise NotImplementedError(
-            'Model.next_candidates() is not yet implemented'
-        )
+
         assert_model_is_loaded(self)
         tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
         self.llama.eval(tokens)
-        self.llama.scores
+        # len(self.llama.scores) == self.context_length
+        # len(self.llama.scores[i]) == len(self.tokens)
+        next_token_scores: List[float] = list(self.llama.scores[len(tokens) - 1])
+        token_probs_dict: Dict[str, float] = {}
+        i = 0
+        for tok_str in self.tokens:
+            token_probs_dict[tok_str] = next_token_scores[i]
+            i += 1
+        sorted_probs_list: List[Tuple[str, float]] = sorted(
+            token_probs_dict.items(),
+            key=lambda x:x[1],
+            reverse=True # sort most likely to least likely
+        )
+        return [tok_str[0] for tok_str in sorted_probs_list[:k]]
+
 
 def assert_model_is_loaded(model: Model) -> None:
     """

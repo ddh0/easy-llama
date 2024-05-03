@@ -114,7 +114,7 @@ MinPSampling = SamplerSettings(
     top_k = -1
 )
 
-# use min_p as the only filter (strong)
+# use min_p as the only filter (strict)
 StrictMinPSampling = SamplerSettings(
     temp = MAX_TEMP,
     top_p = 1.0,
