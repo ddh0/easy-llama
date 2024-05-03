@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='easy_llama',
-    version='0.1.14',
+    version='0.1.15',
     description='Text generation in Python, made easy',
     long_description="""To view the current documentation for easy-llama, visit the project's GitHub repository:\nhttps://github.com/ddh0/easy-llama""",
     url='https://github.com/ddh0/easy-llama/',
@@ -17,6 +17,7 @@ setup(
     install_requires=[
         'llama_cpp_python',
         'colorama',
+        'numpy',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
