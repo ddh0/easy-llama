@@ -1,6 +1,8 @@
 # Documentation for easy-llama
 
-## `class ez.Model`
+**HINT:** Click the icon in the top right of this box to expand the outline, which lets you jump to a particular item. 
+
+# `class ez.Model`
 
 A high-level abstraction of a llama model
 
@@ -17,7 +19,7 @@ The following attributes are available:
 - `.tokens` - A list of all the tokens in the model's tokenizer
 - `.verbose` - Whether or not the model was loaded with `verbose=True`
 
-### `Model.__init__()`
+## `Model.__init__()`
 
 Given the path to a GGUF file, construct a Model instance.
 

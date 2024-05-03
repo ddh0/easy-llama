@@ -1,7 +1,11 @@
 # easy_llama.py
 # https://github.com/ddh0/easy-llama/
 
-"""Text generation in Python, made easy"""
+"""
+Text generation in Python, made easy
+
+For documentation, see:
+https://github.com/ddh0/easy-llama/blob/main/DOCS.md"""
 
 __version__ = '0.1.10'
 
