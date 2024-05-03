@@ -38,7 +38,7 @@ The latest documentation is available [here](DOCS.md).
   - Easily extend, duplicate and modify built-in formats
   - `easy_llama.formats.wrap(prompt)` - Wrap a given prompt in any prompt format for single-turn completion
 - [X] Message-based context length handling
-- [ ] Retrieve sorted list of candidates for the most likely next token (i.e. logits)
+- [X] Retrieve sorted list of candidates for the most likely next token (i.e. logits)
 - [X] Support all models supported by llama-cpp-python
 
 ## Examples
