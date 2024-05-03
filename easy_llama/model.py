@@ -4,14 +4,25 @@
 """Submodule containing the Model class to work with language models"""
 
 import sys
+import numpy as np # np is required by llama-cpp-python, so guaranteed available
 
-from typing     import Generator, Optional, TextIO, Union, List, Dict, Tuple
+from typing     import Generator, Optional, TextIO, Union, List, Dict, Tuple, Iterable
 from .utils     import GGUFReader, print_warning, print_verbose
 from .samplers  import SamplerSettings, DefaultSampling
 from llama_cpp  import Llama, StoppingCriteriaList
 from os.path    import isdir, exists
+from heapq      import nlargest
 
 from os  import cpu_count as os_cpu_count
+
+
+def softmax(z) -> np.ndarray:
+    """
+    Compute softmax values for each sets of scores in z
+    where z is array-like
+    """
+    e_z = np.exp(z - np.max(z))
+    return e_z / e_z.sum()
 
 
 # for typing of Model.stream_print() parameter `file`
@@ -606,10 +617,11 @@ class Model:
             self,
             prompt: str,
             k: int
-        ) -> List[str]:
+        ) -> List[Tuple[str, np.float64]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
-        top k candidates for most likely next token
+        top k candidates for most likely next token, along with their
+        normalized probabilities
         """
         # TODO: optimize
 
@@ -624,20 +636,24 @@ class Model:
         prompt_tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
         self.llama.reset() # reset model state
         self.llama.eval(prompt_tokens)
+
         # len(self.llama.scores) == self.context_length
         # len(self.llama.scores[i]) == len(self.tokens)
-        next_token_scores: List[float] = list(self.llama.scores[len(prompt_tokens) - 1])
-        token_probs_dict: Dict[str, float] = {}
+        
+        # normalize scores with softmax
+        normalized_scores: List[np.float64] = list(
+            softmax(
+                self.llama.scores[len(prompt_tokens) - 1]
+            )
+        )
+        token_probs_list: List[Tuple[str, np.float64]] = []
         i = 0
         for tok_str in self.tokens:
-            token_probs_dict[tok_str] = next_token_scores[i]
+            token_probs_list.append((tok_str, normalized_scores[i]))
             i += 1
-        sorted_probs_list: List[Tuple[str, float]] = sorted(
-            token_probs_dict.items(),
-            key=lambda x:x[1],
-            reverse=True # sort most likely to least likely
-        )
-        return [tok_str[0] for tok_str in sorted_probs_list[:k]]
+
+        # return token_probs_list, sorted by probability, only top k
+        return nlargest(k, token_probs_list, key=lambda x:x[1])
 
 
 def assert_model_is_loaded(model: Model) -> None:

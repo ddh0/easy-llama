@@ -7,7 +7,7 @@ Text generation in Python, made easy
 For documentation, see:
 https://github.com/ddh0/easy-llama/blob/main/DOCS.md"""
 
-__version__ = '0.1.12'
+__version__ = '0.1.13'
 
 from . import formats
 from . import samplers
