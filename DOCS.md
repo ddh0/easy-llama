@@ -29,7 +29,7 @@ The following parameter is required:
 The following parameters are optional:
 - `context_length: int` - The context length at which to load the model, in tokens. May be less than or greater than the native context length of the model. A warning will be displayed if the chosen context length is large enough to cause a loss of quality. Modifies `rope_freq_base` for context scaling, which does not degrade quality as much as linear RoPE scaling. Defaults to `None`, which will use the native context length of the model.
 - `n_gpu_layers: int` - The number of layers to offload to the GPU. Defaults to `0`.
-- `offload_kqv: bool` - Whether or not to offload the K, Q, and V caches to the GPU Defaults to `True`.
+- `offload_kqv: bool` - Whether or not to offload the K, Q, and V caches (i.e. context) to the GPU Defaults to `True`.
 - `flash_attn: bool` - Whether to use Flash Attention ([ref](https://github.com/ggerganov/llama.cpp/pull/5021)). Defaults to `False`.
 - `verbose: bool` - Whether to show output from `llama-cpp-python`/`llama.cpp` or not. This is lots of very detailed output.
 
@@ -109,13 +109,25 @@ Ingest the given text into the model's cache, to reduce latency of future genera
 The following parameter is required:
 - `text: str` - The text to ingest
 
-## `Model.next_candidates() -> List[str]`
+## `Model.candidates() -> List[Tuple[str, np.float64]]`
 
-Given prompt `str` and k `int`, return a sorted list of the top k candidates for most likely next token.
+Given prompt `str` and k `int`, return a sorted list of the top k candidates for most likely next token, along with their normalized probabilities.
 
 The following parameters are required:
 - `prompt: str` - The text to evaluate
 - `k: int` - The number of candidate tokens to return
+
+## `Model.print_candidates() -> None`
+
+Like `Model.candidates()`, but print the values instead of returning them.
+
+The following parameters are required:
+- `prompt: str` - The text to evaluate
+- `k: int` - The number of candidate tokens to return
+
+The following parameter is optional:
+- `file: _SupportsWriteAndFlush` - The file where text should be printed. Defaults to `sys.stdout`.
+- `flush: bool` - Whether to flush the stream after each line is printed. Defaults to `False`. The stream is always flushed at the end of the output.
 
 # `class ez.Thread`
 
@@ -206,12 +218,12 @@ Construct a SamplerSettings object.
 The following parameters are optional. If not specified, values will default to the current `llama.cpp` defaults.
 - `max_len_tokens: int` - The maximum length of generations, in tokens. Set to less than 1 for unlimited.
 - `temp: float` - The temperature value to use, which control randomness
-- `top_p` - Nucleus sampling
-- `min_p` - Min-P sampling
-- `frequency_penalty` - Penalty applied to tokens based on the frequency with which they appear in the input
-- `presence_penalty` - Penalty applied to tokens if they appear in the input
-- `repeat_penalty` - Penalty applied to repetitive tokens
-- `top_k` - The number of most likely tokens to consider when sampling
+- `top_p: float` - Nucleus sampling
+- `min_p: float` - Min-P sampling
+- `frequency_penalty: float` - Penalty applied to tokens based on the frequency with which they appear in the input
+- `presence_penalty: float` - Flat penalty applied to tokens if they appear in the input
+- `repeat_penalty: float` - Penalty applied to repetitive tokens
+- `top_k: int` - The number of most likely tokens to consider when sampling
 
 ## Preset samplers:
 

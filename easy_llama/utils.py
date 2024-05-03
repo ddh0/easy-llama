@@ -4,12 +4,13 @@
 """Submodule containing convenience functions and GGUFReader"""
 
 import sys
+import numpy as np
 
+from typing   import Any, Iterable, TextIO
 from time     import strftime
 from enum     import IntEnum
 from struct   import unpack
 from colorama import Fore
-from typing   import Any
 
 
 # color codes used in Thread.interact()
@@ -18,6 +19,14 @@ USER_STYLE = RESET_ALL + Fore.GREEN
 BOT_STYLE = RESET_ALL + Fore.CYAN
 DIM_STYLE = RESET_ALL + Fore.LIGHTBLACK_EX
 SPECIAL_STYLE = RESET_ALL + Fore.YELLOW
+
+# for typing of softmax parameter `z`
+class _ArrayLike(Iterable):
+    pass
+
+# for typing of Model.stream_print() parameter `file`
+class _SupportsWriteAndFlush(TextIO):
+    pass
 
 class GGUFReader:
     """
@@ -129,6 +138,13 @@ class GGUFReader:
                     metadata[key.decode()] = value
 
         return metadata
+
+def softmax(z: _ArrayLike) -> np.ndarray:
+    """
+    Compute softmax over values in z, where z is array-like
+    """
+    e_z = np.exp(z - np.max(z))
+    return e_z / e_z.sum()
 
 def cls() -> None:
     """Clear the terminal"""

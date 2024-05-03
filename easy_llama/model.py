@@ -4,10 +4,17 @@
 """Submodule containing the Model class to work with language models"""
 
 import sys
-import numpy as np # np is required by llama-cpp-python, so guaranteed available
+import numpy as np # numpy is required by llama-cpp-python, and thus available
 
-from typing     import Generator, Optional, TextIO, Union, List, Dict, Tuple, Iterable
-from .utils     import GGUFReader, print_warning, print_verbose
+from .utils import (
+    GGUFReader,
+    print_warning,
+    print_verbose,
+    softmax,
+    _SupportsWriteAndFlush
+)
+
+from typing     import Generator, Optional, Union, List, Tuple
 from .samplers  import SamplerSettings, DefaultSampling
 from llama_cpp  import Llama, StoppingCriteriaList
 from os.path    import isdir, exists
@@ -15,19 +22,6 @@ from heapq      import nlargest
 
 from os  import cpu_count as os_cpu_count
 
-
-def softmax(z) -> np.ndarray:
-    """
-    Compute softmax values for each sets of scores in z
-    where z is array-like
-    """
-    e_z = np.exp(z - np.max(z))
-    return e_z / e_z.sum()
-
-
-# for typing of Model.stream_print() parameter `file`
-class _SupportsWriteAndFlush(TextIO):
-    pass
 
 class ModelUnloadedException(Exception):
     """Exception raised when trying to use a Model that has been unloaded"""
@@ -86,7 +80,7 @@ class Model:
         - context_length: The context length at which to load the model, in tokens
         - n_gpu_layers: The number of layers to be offloaded to the GPU
         - offload_kqv: Whether or not the KQV cache (context) should be offloaded
-        - flash_attn: Whether or not to use Flash Attention (experimental)
+        - flash_attn: Whether or not to use Flash Attention
         - verbose: Whether or not to print additional backend information
         """
 
@@ -224,13 +218,11 @@ class Model:
                     "disabling flash_attn because n_gpu_layers == 0"
                 )
                 flash_attn = False
-            else:
-                print_warning(
-                    "flash_attn enabled"
-                )
-                print_warning(
-                    "please note that flash_attn is currently experimental"
-                )
+
+        if flash_attn and verbose:
+            print_verbose(
+                "flash_attn enabled"
+            )
 
         self.llama: Llama = Llama(
             model_path=model_path,
@@ -319,7 +311,7 @@ class Model:
             self.llama._model._llama_free_model(self.llama._model.model)
             self.llama._model.model = None
         except AttributeError:
-            # broken or already being destoryed by GC, abort
+            # broken or already being destroyed by GC, abort
             return
         if hasattr(self, 'llama'):
             delattr(self, 'llama')
@@ -594,7 +586,7 @@ class Model:
             print(tok, end='', file=file, flush=flush)
             res += tok
 
-        # always flush stream after generation is done
+        # print `end`, and always flush stream after generation is done
         print(end, end='', file=file, flush=True)
 
         return res
@@ -613,7 +605,7 @@ class Model:
         )
     
 
-    def next_candidates(
+    def candidates(
             self,
             prompt: str,
             k: int
@@ -623,7 +615,6 @@ class Model:
         top k candidates for most likely next token, along with their
         normalized probabilities
         """
-        # TODO: optimize
 
         assert isinstance(prompt, str), \
             f"next_candidates: prompt should be str, not {type(prompt)}"
@@ -636,24 +627,47 @@ class Model:
         prompt_tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
         self.llama.reset() # reset model state
         self.llama.eval(prompt_tokens)
+        scores = self.llama.scores[len(prompt_tokens) - 1]
 
         # len(self.llama.scores) == self.context_length
         # len(self.llama.scores[i]) == len(self.tokens)
         
         # normalize scores with softmax
-        normalized_scores: List[np.float64] = list(
-            softmax(
-                self.llama.scores[len(prompt_tokens) - 1]
-            )
-        )
-        token_probs_list: List[Tuple[str, np.float64]] = []
+        # must normalize over all tokens in vocab, not just top k
+        if self.verbose:
+            print_verbose(f'calculating softmax over {len(scores)} values')
+        normalized_scores: List[np.float64] = list(softmax(scores))
+
+        # construct the final list
         i = 0
+        token_probs_list: List[Tuple[str, np.float64]] = []
         for tok_str in self.tokens:
             token_probs_list.append((tok_str, normalized_scores[i]))
             i += 1
 
         # return token_probs_list, sorted by probability, only top k
         return nlargest(k, token_probs_list, key=lambda x:x[1])
+
+
+    def print_candidates(self,
+            prompt: str,
+            k: int,
+            file: _SupportsWriteAndFlush = sys.stdout,
+            flush: bool = False
+        ) -> None:
+        """
+        Like `Model.candidates()`, but print the values instead
+        of returning them
+        """
+
+        for _tuple in self.candidates(prompt, k):
+            print(
+                f"token '{_tuple[0]}' has probability {_tuple[1]}",
+                file=file,
+                flush=flush
+            )
+        # always flush the stream after all lines are printed
+        file.flush()
 
 
 def assert_model_is_loaded(model: Model) -> None:
