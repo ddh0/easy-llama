@@ -251,6 +251,8 @@ pip install --upgrade easy-llama
 
 Installation from source is only necessary if you rely on some functionality from llama.cpp that is not yet supported by llama-cpp-python. In most cases, you should prefer installing with pip.
 
+You will need `cmake`. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
+
 > [!NOTE]
 >
 > You will need to modify the `CMAKE_ARGS` variable according to your backend. The arguments shown below are for CUDA support. If you're not using CUDA, select your backend above to see the correct `CMAKE_ARGS`.

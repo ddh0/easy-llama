@@ -7,8 +7,8 @@ import sys
 
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from typing    import Optional, Literal, Tuple, Dict, Union, List
-from .samplers import SamplerSettings, DefaultSampling
 from .utils    import RESET_ALL, cls, print_verbose, truncate
+from .samplers import SamplerSettings, DefaultSampling
 
 from .formats import blank as formats_blank
 
