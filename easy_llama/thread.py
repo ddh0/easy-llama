@@ -479,7 +479,12 @@ class Thread:
                 return full_user_input, None
 
 
-    def interact(self, color: bool = True, header: Optional[str] = None) -> None:
+    def interact(
+            self,
+            color: bool = True,
+            header: Optional[str] = None,
+            stream: bool = True
+        ) -> None:
         """
         Start an interactive chat session using this Thread.
 
@@ -495,6 +500,7 @@ class Thread:
         The following parameters are optional:
         - color: Whether or not to use colored text to differentiate user / bot
         - header: Header text to print at the start of the interaction
+        - stream: Whether or not to stream text as it is generated
         """
         print()
 
@@ -533,12 +539,20 @@ class Thread:
             if next_message_start is not None:
                 print(f"{BOT_STYLE}{next_message_start}", end='', flush=True)
                 try:
-                    output = next_message_start + self.model.stream_print(
-                        self.inference_str_from_messages() + next_message_start,
-                        stops=self.format['stops'],
-                        sampler=self.sampler,
-                        end=''
-                    )
+                    if stream:
+                        output = next_message_start + self.model.stream_print(
+                            self.inference_str_from_messages() + next_message_start,
+                            stops=self.format['stops'],
+                            sampler=self.sampler,
+                            end=''
+                        )
+                    else:
+                        output = next_message_start + self.model.generate(
+                            self.inference_str_from_messages() + next_message_start,
+                            stops=self.format['stops'],
+                            sampler=self.sampler
+                        )
+                        print(output, end='', flush=True)
                 except KeyboardInterrupt:
                     print(f"{DIM_STYLE} [message not added to history; press ENTER to re-roll]\n")
                     continue
@@ -549,12 +563,20 @@ class Thread:
                 if user_prompt != "":
                     self.add_message("user", user_prompt)
                 try:
-                    output = self.model.stream_print(
-                        self.inference_str_from_messages(),
-                        stops=self.format['stops'],
-                        sampler=self.sampler,
-                        end=''
-                    )
+                    if stream:
+                        output = self.model.stream_print(
+                            self.inference_str_from_messages(),
+                            stops=self.format['stops'],
+                            sampler=self.sampler,
+                            end=''
+                        )
+                    else:
+                        output = self.model.generate(
+                            self.inference_str_from_messages(),
+                            stops=self.format['stops'],
+                            sampler=self.sampler
+                        )
+                        print(output, end='', flush=True)
                 except KeyboardInterrupt:
                     print(f"{DIM_STYLE} [message not added to history; press ENTER to re-roll]\n")
                     continue

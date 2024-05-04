@@ -21,7 +21,7 @@ The latest documentation is available [here](DOCS.md).
 	- A warning will be displayed if the chosen context length is likely to cause a loss of quality
 - [x] Terminal-based interactive chat
     - `Thread.interact()`  
-	- Text streaming
+	- Optional text streaming
 	- Different colored text to differentiate user / bot
 	- Some basic commands accessible by typing `!` and pressing `ENTER`:
 		- `reroll` - Re-roll/swipe last response

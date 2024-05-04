@@ -183,6 +183,7 @@ Type `!` and press `ENTER` to enter a basic command prompt. For a list of comman
 The following parameters are optional:
 - `color: bool` - Whether or not to use colored text to differentiate user / bot. Defaults to `True`.
 - `header: str` - Header text to print at the start of the interaction. Defaults to `None`.
+- `stream: bool` - Whether or not to stream text as it is generated. If `False`, then print generated messages all at once. Defaults to `True`.
 
 ## `Thread.reset() -> None`
 
