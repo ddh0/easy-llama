@@ -1,5 +1,6 @@
 # samplers.py
 # https://github.com/ddh0/easy-llama/
+__version__ = '0.1.16'
 
 """Submodule containing SamplerSettings class and some preset samplers"""
 

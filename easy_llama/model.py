@@ -1,5 +1,6 @@
 # model.py
 # https://github.com/ddh0/easy-llama/
+__version__ = '0.1.16'
 
 """Submodule containing the Model class to work with language models"""
 
@@ -83,6 +84,9 @@ class Model:
         - flash_attn: Whether or not to use Flash Attention
         - verbose: Whether or not to print additional backend information
         """
+
+        if verbose:
+            print_verbose(f"package version: {__version__}")
 
         assert isinstance(model_path, str), \
             f"Model: model_path should be a string, not {type(model_path)}"

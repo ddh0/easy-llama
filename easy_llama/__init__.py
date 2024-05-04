@@ -1,13 +1,13 @@
-# easy_llama.py
+# __init__.py
 # https://github.com/ddh0/easy-llama/
+__version__ = '0.1.16'
 
 """
 Text generation in Python, made easy
 
 For documentation, see:
-https://github.com/ddh0/easy-llama/blob/main/DOCS.md"""
-
-__version__ = '0.1.15'
+https://github.com/ddh0/easy-llama/blob/main/DOCS.md
+"""
 
 from . import formats
 from . import samplers
