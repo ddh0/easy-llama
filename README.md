@@ -1,4 +1,5 @@
 # easy-llama
+[![PyPI](https://img.shields.io/pypi/v/easy-llama)](https://pypi.org/project/easy-llama/)  [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/easy-llama)](https://pypi.org/project/easy-llama/)  [![PyPI - License](https://img.shields.io/pypi/l/easy-llama)](https://pypi.org/project/easy-llama/)
 
 ## Text generation in Python, made easy
 
