@@ -1,6 +1,6 @@
 # thread.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.17'
+__version__ = '0.1.18'
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
@@ -537,9 +537,9 @@ class Thread:
                 break
             
             if next_message_start is not None:
-                print(f"{BOT_STYLE}{next_message_start}", end='', flush=True)
                 try:
                     if stream:
+                        print(f"{BOT_STYLE}{next_message_start}", end='', flush=True)
                         output = next_message_start + self.model.stream_print(
                             self.inference_str_from_messages() + next_message_start,
                             stops=self.format['stops'],
@@ -547,6 +547,7 @@ class Thread:
                             end=''
                         )
                     else:
+                        print(f"{BOT_STYLE}", end='', flush=True)
                         output = next_message_start + self.model.generate(
                             self.inference_str_from_messages() + next_message_start,
                             stops=self.format['stops'],
