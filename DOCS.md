@@ -55,7 +55,7 @@ If you attempt to use a Model after it has been unloaded, `easy_llama.model.Mode
 ### Example usage
 ```python
 # load a model (using 5GB memory)
-Mistral = ez.Model('mistral-7b-instruct-v0.1.Q4_K_S.gguf)
+Mistral = ez.Model('mistral-7b-instruct-v0.1.Q4_K_S.gguf')
 
 # returns ' the sun is shining, and...'
 Mistral.generate('The sky is blue, and')
@@ -88,7 +88,6 @@ The following parameter is required:
 ```python
 >>> Mistral.get_length('Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who’s Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn’t tell you under other circumstances anyway.')
 109
->>> 
 ```
 
 ## `Model.generate() -> str`
@@ -261,7 +260,7 @@ The following parameters are optional. If not specified, values will default to 
 - `repeat_penalty: float` - Penalty applied to repetitive tokens
 - `top_k: int` - The number of most likely tokens to consider when sampling
 
-## Preset samplers:
+## Preset samplers
 
 easy-llama comes with several built-in SamplerSettings objects that can be used out of the box for different purposes:
 - `ez.samplers.GreedyDecoding` - Most likely next token is always chosen (temperature = 0.0)
