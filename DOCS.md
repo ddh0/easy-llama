@@ -1,6 +1,8 @@
 # Documentation for easy-llama
 
-**HINT:** Click the icon in the top right of this box to expand the outline, which lets you jump to a particular item. 
+> [!TIP]
+>
+> Click the icon in the top right of this box to expand the outline, which lets you jump to a particular item. 
 
 # `class ez.Model`
 
@@ -33,11 +35,37 @@ The following parameters are optional:
 - `flash_attn: bool` - Whether to use Flash Attention ([ref](https://github.com/ggerganov/llama.cpp/pull/5021)). Defaults to `False`.
 - `verbose: bool` - Whether to show output from `llama-cpp-python`/`llama.cpp` or not. This is lots of very detailed output.
 
+### Example usage:
+```python
+# load a model from a GGUF file
+Mistral = ez.Model(
+	'mistral-7b-instruct-v0.1.Q4_K_S.gguf',
+	n_gpu_layers=-1,
+	flash_attn=True
+)
+```
+
+
 ##  `Model.unload() -> None`
 
 Unload the Model from memory. If the Model is already unloaded, do nothing.
 
 If you attempt to use a Model after it has been unloaded, `easy_llama.model.ModelUnloadedException` will be raised.
+
+### Example usage:
+```python
+# load a model (using 5GB memory)
+Mistral = ez.Model('mistral-7b-instruct-v0.1.Q4_K_S.gguf)
+
+# returns ' the sun is shining, and...'
+Mistral.generate('The sky is blue, and')
+
+# unload model (frees 5GB memory)
+Mistral.unload()
+
+# raises ez.model.ModelUnloadedException
+Mistral.generate('The girl walked down')
+```
 
 ## `Model.trim() -> str`
 
@@ -55,6 +83,13 @@ Get the length of a given text in tokens according to this Model, including the 
 
 The following parameter is required:
 - `text: str` - The text to read
+
+### Example usage:
+```python
+>>> Mistral.get_length('Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who’s Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn’t tell you under other circumstances anyway.')
+109
+>>> 
+```
 
 ## `Model.generate() -> str`
 
