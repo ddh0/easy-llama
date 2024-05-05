@@ -29,7 +29,7 @@ The following parameter is required:
 The following parameters are optional:
 - `context_length: int` - The context length at which to load the model, in tokens. May be less than or greater than the native context length of the model. A warning will be displayed if the chosen context length is large enough to cause a loss of quality. Modifies `rope_freq_base` for context scaling, which does not degrade quality as much as linear RoPE scaling. Defaults to `None`, which will use the native context length of the model.
 - `n_gpu_layers: int` - The number of layers to offload to the GPU. Defaults to `0`.
-- `offload_kqv: bool` - Whether or not to offload the K, Q, and V caches (i.e. context) to the GPU Defaults to `True`.
+- `offload_kqv: bool` - Whether or not to offload the K, Q, and V caches (i.e. context) to the GPU. Defaults to `True`.
 - `flash_attn: bool` - Whether to use Flash Attention ([ref](https://github.com/ggerganov/llama.cpp/pull/5021)). Defaults to `False`.
 - `verbose: bool` - Whether to show output from `llama-cpp-python`/`llama.cpp` or not. This is lots of very detailed output.
 

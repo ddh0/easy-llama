@@ -1,6 +1,6 @@
 # formats.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.18'
+from ._version import __version__
 
 """Submodule containing various prompt formats used by models"""
 

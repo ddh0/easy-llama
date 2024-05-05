@@ -1,6 +1,6 @@
 # __init__.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.18'
+from ._version import __version__
 
 """
 Text generation in Python, made easy

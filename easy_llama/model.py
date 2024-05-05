@@ -1,6 +1,6 @@
 # model.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.18'
+from ._version import __version__
 
 """Submodule containing the Model class to work with language models"""
 
