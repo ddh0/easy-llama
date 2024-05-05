@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-from .easy_llama._version import __version__
+from easy_llama._version import __version__
 
 from setuptools import setup
 
