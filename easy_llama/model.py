@@ -1,18 +1,18 @@
 # model.py
 # https://github.com/ddh0/easy-llama/
-from ._version import __version__
+from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing the Model class to work with language models"""
 
 import sys
-import numpy as np # numpy is required by llama-cpp-python, and thus available
+import numpy as np
 
 from .utils import (
-    GGUFReader,
+    _SupportsWriteAndFlush,
     print_warning,
     print_verbose,
-    softmax,
-    _SupportsWriteAndFlush
+    GGUFReader,
+    softmax
 )
 
 from typing     import Generator, Optional, Union, List, Tuple
@@ -21,7 +21,7 @@ from llama_cpp  import Llama, StoppingCriteriaList
 from os.path    import isdir, exists
 from heapq      import nlargest
 
-from os  import cpu_count as os_cpu_count
+from os        import cpu_count   as os_cpu_count
 
 
 class ModelUnloadedException(Exception):
@@ -86,7 +86,8 @@ class Model:
         """
 
         if verbose:
-            print_verbose(f"package version: {__version__}")
+            print_verbose(f"easy_llama package version: {__version__}")
+            print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
 
         assert isinstance(model_path, str), \
             f"Model: model_path should be a string, not {type(model_path)}"

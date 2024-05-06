@@ -1,6 +1,6 @@
 # thread.py
 # https://github.com/ddh0/easy-llama/
-from ._version import __version__
+from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 

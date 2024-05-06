@@ -1,6 +1,6 @@
 # __init__.py
 # https://github.com/ddh0/easy-llama/
-from ._version import __version__
+from ._version import __version__, __llama_cpp_version__
 
 """
 Text generation in Python, made easy
