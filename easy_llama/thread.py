@@ -7,9 +7,9 @@ from ._version import __version__, __llama_cpp_version__
 import sys
 
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
-from typing    import Optional, Literal, Tuple, Dict, Union, List
 from .utils    import RESET_ALL, cls, print_verbose, truncate
 from .samplers import SamplerSettings, DefaultSampling
+from typing    import Optional, Literal, Union
 
 from .formats import blank as formats_blank
 
@@ -18,7 +18,7 @@ class Thread:
     """
     Provide functionality to facilitate easy interactions with a Model
 
-    This is just a brief overview of easy_llama.Thread.
+    This is just a brief overview of ez.Thread.
     To see a full description of each method and its parameters,
     call help(Thread), or see the relevant docstring.
 
@@ -40,16 +40,17 @@ class Thread:
     - `.sampler` - The SamplerSettings object used in this thread
     """
 
-    def __init__(self,
-                 model: Model,
-                 format: Dict[str, Union[str, list]],
-                 sampler: SamplerSettings = DefaultSampling
-            ):
+    def __init__(
+        self,
+        model: Model,
+        format: dict[str, Union[str, list]],
+        sampler: SamplerSettings = DefaultSampling
+    ):
         """
         Given a Model and a format, construct a Thread instance.
 
         model: The Model to use for text generation
-        format: The format specifying how messages should be structured (see easy_llama.formats)
+        format: The format specifying how messages should be structured (see ez.formats)
 
         The following parameter is optional:
         - sampler: The SamplerSettings object used to control text generation
@@ -88,8 +89,8 @@ class Thread:
         ), 'Thread: sampler is missing one or more required attributes'
         
         self.model: Model = model
-        self.format: Dict[str, Union[str, list]] = format
-        self.messages: List[Dict[str, str]] = [
+        self.format: dict[str, Union[str, list]] = format
+        self.messages: list[dict[str, str]] = [
             self.create_message("system", self.format['system_content'])
         ]
         self.sampler: SamplerSettings = sampler
@@ -142,10 +143,10 @@ class Thread:
         return self.len_messages()
 
     def create_message(
-            self,
-            role: Literal['system', 'user', 'bot'],
-            content: str
-        ) -> Dict[str, str]:
+        self,
+        role: Literal['system', 'user', 'bot'],
+        content: str
+    ) -> dict[str, str]:
         """
         Create a message using the format of this Thread
         """
@@ -181,11 +182,18 @@ class Thread:
             }
     
     def len_messages(self) -> int:
-        """Return the total length of all messages in this thread, in tokens"""
+        """
+        Return the total length of all messages in this thread, in tokens.
+        
+        Equivalent to `len(Thread)`."""
 
         return self.model.get_length(self.as_string())
 
-    def add_message(self, role: Literal['system', 'user', 'bot'], content: str) -> None:
+    def add_message(
+        self,
+        role: Literal['system', 'user', 'bot'],
+        content: str
+    ) -> None:
         """
         Create a message and append it to `Thread.messages`.
 
@@ -342,11 +350,11 @@ class Thread:
                 
 
     def _interactive_input(self,
-                          prompt: str,
-                          _dim_style: str,
-                          _user_style: str,
-                          _bot_style: str
-                          ) -> Tuple:
+        prompt: str,
+        _dim_style: str,
+        _user_style: str,
+        _bot_style: str
+    ) -> tuple:
         """
         Recive input from the user, while handling multi-line input
         and commands
@@ -480,11 +488,11 @@ class Thread:
 
 
     def interact(
-            self,
-            color: bool = True,
-            header: Optional[str] = None,
-            stream: bool = True
-        ) -> None:
+        self,
+        color: bool = True,
+        header: Optional[str] = None,
+        stream: bool = True
+    ) -> None:
         """
         Start an interactive chat session using this Thread.
 
@@ -494,13 +502,16 @@ class Thread:
 
         At the prompt, press `^C` to end the chat session.
 
-        Type `!` and press `ENTER` to enter a basic command prompt. For a list of 
-        commands, type `help` at this prompt.
+        Type `!` and press `ENTER` to enter a basic command prompt. For a list
+        of  commands, type `help` at this prompt.
+        
+        Type `<` and press `ENTER` to prefix the bot's next message, for
+        example with `Sure!`.
 
         The following parameters are optional:
-        - color: Whether or not to use colored text to differentiate user / bot
+        - color: Whether to use colored text to differentiate user / bot
         - header: Header text to print at the start of the interaction
-        - stream: Whether or not to stream text as it is generated
+        - stream: Whether to stream text as it is generated
         """
         print()
 
@@ -597,7 +608,7 @@ class Thread:
         Clear the list of messages, which resets the thread to its original
         state
         """
-        self.messages: List[Dict[str, str]] = [
+        self.messages: list[dict[str, str]] = [
             self.create_message("system", self.format['system_content'])
         ]
     

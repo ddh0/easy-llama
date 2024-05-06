@@ -132,7 +132,13 @@ class GGUFReader:
                         unpack("<I", file.read(4))[0]
                     )
                     length = unpack("<Q", file.read(8))[0]
-                    arr = [GGUFReader.get_single(self, ltype, file) for _ in range(length)]
+                    arr = [
+                        GGUFReader.get_single(
+                            self,
+                            ltype,
+                            file
+                        ) for _ in range(length)
+                    ]
                     metadata[key.decode()] = arr
                 else:
                     value = GGUFReader.get_single(self, value_type, file)

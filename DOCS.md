@@ -4,6 +4,10 @@
 >
 > Click the icon in the top right of this box to expand the outline, which lets you jump to a particular item. 
 
+> [!NOTE]
+>
+> The documentation assumes you have imported easy-llama with `import easy_llama as ez`.
+
 # `class ez.Model`
 
 A high-level abstraction of a llama model
@@ -31,7 +35,7 @@ The following parameter is required:
 The following parameters are optional:
 - `context_length: int` - The context length at which to load the model, in tokens. May be less than or greater than the native context length of the model. A warning will be displayed if the chosen context length is large enough to cause a loss of quality. Modifies `rope_freq_base` for context scaling, which does not degrade quality as much as linear RoPE scaling. Defaults to `None`, which will use the native context length of the model.
 - `n_gpu_layers: int` - The number of layers to offload to the GPU. Defaults to `0`.
-- `offload_kqv: bool` - Whether or not to offload the K, Q, and V caches (i.e. context) to the GPU. Defaults to `True`.
+- `offload_kqv: bool` - Whether to offload the K, Q, and V caches (i.e. context) to the GPU. Defaults to `True`.
 - `flash_attn: bool` - Whether to use Flash Attention ([ref](https://github.com/ggerganov/llama.cpp/pull/5021)). Defaults to `False`.
 - `verbose: bool` - Whether to show output from `llama-cpp-python`/`llama.cpp` or not. This is lots of very detailed output.
 
@@ -54,13 +58,13 @@ If you attempt to use a Model after it has been unloaded, `easy_llama.model.Mode
 
 ### Example usage
 ```python
-# load a model (using 5GB memory)
+# load a model (allocates memory)
 Mistral = ez.Model('mistral-7b-instruct-v0.1.Q4_K_S.gguf')
 
-# returns ' the sun is shining, and...'
+# returns ' the sun is shining, and blah blah blah...'
 Mistral.generate('The sky is blue, and')
 
-# unload model (frees 5GB memory)
+# unload model (frees memory)
 Mistral.unload()
 
 # raises ez.model.ModelUnloadedException
@@ -143,13 +147,19 @@ Ingest the given text into the model's cache, to reduce latency of future genera
 The following parameter is required:
 - `text: str` - The text to ingest
 
-## `Model.candidates() -> List[Tuple[str, np.float64]]`
+## `Model.candidates() -> list[tuple[str, np.float64]]`
 
 Given prompt `str` and k `int`, return a sorted list of the top k candidates for most likely next token, along with their normalized probabilities.
 
 The following parameters are required:
 - `prompt: str` - The text to evaluate
 - `k: int` - The number of candidate tokens to return
+
+### Example usage
+```python
+>>> Mixtral.candidates('The dog says woof, but the cat says', 5)
+[('▁me', 0.512151), ('▁“', 0.048059467), (',', 0.029822024), ('▁wo', 0.023914132), ('…', 0.023838354)]
+```
 
 ## `Model.print_candidates() -> None`
 
@@ -163,6 +173,16 @@ The following parameter is optional:
 - `file: _SupportsWriteAndFlush` - The file where text should be printed. Defaults to `sys.stdout`.
 - `flush: bool` - Whether to flush the stream after each line is printed. Defaults to `False`. The stream is always flushed at the end of the output.
 
+### Example usage
+```python
+>>> Mixtral.print_candidates('The dog says woof, but the cat says', 5)
+token '▁me' has probability 0.5121510028839111
+token '▁“' has probability 0.04805946722626686
+token ',' has probability 0.02982202358543873
+token '▁wo' has probability 0.02391413226723671
+token '…' has probability 0.023838354274630547
+```
+
 # `class ez.Thread`
 
 Provide functionality to facilitate easy interactions with a Model
@@ -173,7 +193,7 @@ The following attributes are available:
 - `.model` - The `ez.Model` instance used by this thread
 - `.sampler` - The `ez.SamplerSettings` object used in this thread
 
-## `Thread.create_message() -> Dict[str, str]`
+## `Thread.create_message() -> dict[str, str]`
 
 Create a message using the format of this thread. If you are looking to create a message and also add it to the Thread's message history, see `Thread.add_message()`.
 
@@ -183,11 +203,13 @@ The following parameters are required:
 
 ## `Thread.len_messages() -> int`
 
-Return the total length of all messages in this thread, in tokens.
+Return the total length of all messages in this thread, in tokens. Equivalent to `len(Thread)`.
 
 ## `Thread.add_message() -> None`
 
-Create a message and append it to `Thread.messages`. `Thread.add_message(...)` is a shorthand for `Thread.messages.append(Thread.create_message(...))`
+Create a message and append it to `Thread.messages`.
+
+`Thread.add_message(...)` is a shorthand for `Thread.messages.append(Thread.create_message(...))`
 
 The following parameters are required:
 - `role: str` - The role of the message. Must be one of `'system'`, `'user'`, or `'bot'`. Case-insensitive.
@@ -214,10 +236,12 @@ At the prompt, press `^C` to end the chat session.
 
 Type `!` and press `ENTER` to enter a basic command prompt. For a list of commands, type `help` at this prompt.
 
+Type `<` and press `ENTER` to prefix the bot's next message, for example with `Sure!`.
+
 The following parameters are optional:
-- `color: bool` - Whether or not to use colored text to differentiate user / bot. Defaults to `True`.
+- `color: bool` - Whether to use colored text to differentiate user / bot. Defaults to `True`.
 - `header: str` - Header text to print at the start of the interaction. Defaults to `None`.
-- `stream: bool` - Whether or not to stream text as it is generated. If `False`, then print generated messages all at once. Defaults to `True`.
+- `stream: bool` - Whether to stream text as it is generated. If `False`, then print generated messages all at once. Defaults to `True`.
 
 ## `Thread.reset() -> None`
 
@@ -281,14 +305,13 @@ easy-llama comes with several built-in SamplerSettings objects that can be used 
 
 easy-llama comes with several built-in prompt formats that correspond to well-known language models or families of language models, such as Llama 3, Mistral Instruct, Vicuna, Guanaco, and many more. For a complete list of available formats, see [formats.py](easy_llama/formats.py).
 
-Formats have the type `Dict[str, Union[str, list]]`, and they look like this:
+Formats have the type `dict[str, Union[str, list]]`, and they look like this:
 
 ```python
 # https://github.com/tatsu-lab/stanford_alpaca
-alpaca: Dict[str, Union[str, list]] = {
+alpaca: dict[str, Union[str, list]] = {
 	"system_prefix": "",
-	"system_content": "Below is an instruction that describes a task. " + \
-	"Write a response that appropriately completes the request.",
+	"system_content": "Below is an instruction that describes a task. Write a response that appropriately completes the request.",
 	"system_postfix": "\n\n",
 	"user_prefix": "### Instruction:\n",
 	"user_content": "",

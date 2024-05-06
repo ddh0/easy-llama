@@ -15,13 +15,13 @@ from .utils import (
     softmax
 )
 
-from typing     import Generator, Optional, Union, List, Tuple
-from .samplers  import SamplerSettings, DefaultSampling
-from llama_cpp  import Llama, StoppingCriteriaList
-from os.path    import isdir, exists
-from heapq      import nlargest
+from .samplers import SamplerSettings, DefaultSampling
+from llama_cpp import Llama, StoppingCriteriaList
+from typing    import Generator, Optional, Union
+from os.path   import isdir, exists
+from heapq     import nlargest
 
-from os        import cpu_count   as os_cpu_count
+from os import cpu_count as os_cpu_count
 
 
 class ModelUnloadedException(Exception):
@@ -35,7 +35,7 @@ class Model:
     """
     A high-level abstraction of a llama model
 
-    This is just a brief overview of easy_llama.Model.
+    This is just a brief overview of ez.Model.
     To see a full description of each method and its parameters,
     call help(Model), or see the relevant docstring.
 
@@ -60,18 +60,18 @@ class Model:
     - `.rope_freq_base` - The model's loaded RoPE frequency base
     - `.rope_freq_base_train` - The model's native RoPE frequency base
     - `.tokens` - A list of all the tokens in the model's tokenizer
-    - `.verbose` - Whether or not the model was loaded with `verbose=True`
+    - `.verbose` - Whether the model was loaded with `verbose=True`
     """
 
     def __init__(
-            self,
-            model_path: str,
-            context_length: Optional[int] = None,
-            n_gpu_layers: int = 0,
-            offload_kqv: bool = True,
-            flash_attn: bool = False,
-            verbose: bool = False
-        ):
+        self,
+        model_path: str,
+        context_length: Optional[int] = None,
+        n_gpu_layers: int = 0,
+        offload_kqv: bool = True,
+        flash_attn: bool = False,
+        verbose: bool = False
+    ):
         """
         Given the path to a GGUF file, construct a Model instance.
 
@@ -80,9 +80,9 @@ class Model:
         The following parameters are optional:
         - context_length: The context length at which to load the model, in tokens
         - n_gpu_layers: The number of layers to be offloaded to the GPU
-        - offload_kqv: Whether or not the KQV cache (context) should be offloaded
-        - flash_attn: Whether or not to use Flash Attention
-        - verbose: Whether or not to print additional backend information
+        - offload_kqv: Whether the KQV cache (context) should be offloaded
+        - flash_attn: Whether to use Flash Attention
+        - verbose: Whether to print additional backend information
         """
 
         if verbose:
@@ -164,31 +164,31 @@ class Model:
             if self.verbose:
                 print_verbose(
                     'chosen context length is greater than native context '
-                    f'length ({context_length} > {n_ctx_train}), ' + \
-                    'rope_freq_base will be changed from ' + \
+                    f'length ({context_length} > {n_ctx_train}), '
+                    'rope_freq_base will be changed from '
                     f'{rope_freq_base_train} to {rope_freq_base}'
                 )
 
             if 2 <= context_length/n_ctx_train < 4:
                 print_warning(
-                    'loading model with 2x native context length or more, ' + \
+                    'loading model with 2x native context length or more, '
                     'expect small loss of quality'
                 )
             
             elif 4 <= context_length/n_ctx_train < 8:
                 print_warning(
-                    'loading model with 4x native context length or more, ' + \
+                    'loading model with 4x native context length or more, '
                     'expect moderate loss of quality'
                 )
 
             elif context_length/n_ctx_train >= 8:
                 print_warning(
-                    'loading model with 8x native context length or more, ' + \
+                    'loading model with 8x native context length or more, '
                     'expect SIGNIFICANT loss of quality'
                 )
         
         try:
-            self.tokens: List[str] = self.metadata['tokenizer.ggml.tokens']
+            self.tokens: list[str] = self.metadata['tokenizer.ggml.tokens']
         except KeyError:
             print_warning(
                 "could not set Model.tokens, defaulting to None"
@@ -223,11 +223,6 @@ class Model:
                     "disabling flash_attn because n_gpu_layers == 0"
                 )
                 flash_attn = False
-
-        if flash_attn and verbose:
-            print_verbose(
-                "flash_attn enabled"
-            )
 
         self.llama: Llama = Llama(
             model_path=model_path,
@@ -293,11 +288,11 @@ class Model:
         self.unload()
     
     def __call__(
-            self,
-            prompt: Union[str, list[int]],
-            stops: list[Union[str, int]] = [],
-            sampler: SamplerSettings = DefaultSampling
-        ) -> str:
+        self,
+        prompt: Union[str, list[int]],
+        stops: list[Union[str, int]] = [],
+        sampler: SamplerSettings = DefaultSampling
+    ) -> str:
         """
         `Model(...)` is a shorthand for `Model.generate(...)`
         """
@@ -324,9 +319,9 @@ class Model:
             print_verbose('Model unloaded')
     
     def trim(self,
-             text: str,
-             overwrite: Optional[str] = None
-        ) -> str:
+        text: str,
+        overwrite: Optional[str] = None
+    ) -> str:
 
         """
         Trim the given text to the context length of this model,
@@ -387,11 +382,11 @@ class Model:
             ))
 
     def generate(
-            self,
-            prompt: Union[str, list[int]],
-            stops: list[Union[str, int]] = [],
-            sampler: SamplerSettings = DefaultSampling
-            ) -> str:
+        self,
+        prompt: Union[str, list[int]],
+        stops: list[Union[str, int]] = [],
+        sampler: SamplerSettings = DefaultSampling
+    ) -> str:
         """
         Given a prompt, return a generated string.
 
@@ -464,11 +459,11 @@ class Model:
     
 
     def stream(
-            self,
-            prompt: Union[str, list[int]],
-            stops: list[Union[str, int]] = [],
-            sampler: SamplerSettings = DefaultSampling
-        ) -> Generator:
+        self,
+        prompt: Union[str, list[int]],
+        stops: list[Union[str, int]] = [],
+        sampler: SamplerSettings = DefaultSampling
+    ) -> Generator:
 
         """
         Given a prompt, return a Generator that yields dicts containing tokens.
@@ -547,13 +542,13 @@ class Model:
 
 
     def stream_print(
-            self,
-            prompt: Union[str, list[int]],
-            stops: list[Union[str, int]] = [],
-            sampler: SamplerSettings = DefaultSampling,
-            end: str = "\n",
-            file: _SupportsWriteAndFlush = sys.stdout,
-            flush: bool = True
+        self,
+        prompt: Union[str, list[int]],
+        stops: list[Union[str, int]] = [],
+        sampler: SamplerSettings = DefaultSampling,
+        end: str = "\n",
+        file: _SupportsWriteAndFlush = sys.stdout,
+        flush: bool = True
     ) -> str:
         """
         Given a prompt, stream text as it is generated, and return the generated string.
@@ -611,10 +606,10 @@ class Model:
     
 
     def candidates(
-            self,
-            prompt: str,
-            k: int
-        ) -> List[Tuple[str, np.float64]]:
+        self,
+        prompt: str,
+        k: int
+    ) -> list[tuple[str, np.float64]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
         top k candidates for most likely next token, along with their
@@ -641,11 +636,11 @@ class Model:
         # must normalize over all tokens in vocab, not just top k
         if self.verbose:
             print_verbose(f'calculating softmax over {len(scores)} values')
-        normalized_scores: List[np.float64] = list(softmax(scores))
+        normalized_scores: list[np.float64] = list(softmax(scores))
 
         # construct the final list
         i = 0
-        token_probs_list: List[Tuple[str, np.float64]] = []
+        token_probs_list: list[tuple[str, np.float64]] = []
         for tok_str in self.tokens:
             token_probs_list.append((tok_str, normalized_scores[i]))
             i += 1
@@ -655,11 +650,11 @@ class Model:
 
 
     def print_candidates(self,
-            prompt: str,
-            k: int,
-            file: _SupportsWriteAndFlush = sys.stdout,
-            flush: bool = False
-        ) -> None:
+        prompt: str,
+        k: int,
+        file: _SupportsWriteAndFlush = sys.stdout,
+        flush: bool = False
+    ) -> None:
         """
         Like `Model.candidates()`, but print the values instead
         of returning them

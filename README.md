@@ -1,20 +1,20 @@
 # easy-llama
 [![PyPI](https://img.shields.io/pypi/v/easy-llama)](https://pypi.org/project/easy-llama/)  [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/easy-llama)](https://pypi.org/project/easy-llama/)  [![PyPI - License](https://img.shields.io/pypi/l/easy-llama)](https://pypi.org/project/easy-llama/)
 
-## Text generation in Python, made easy
+## Text generation in Python, as easy as possible
 
 ```python
 >>> import easy_llama as ez
 >>> Mixtral = ez.Model('Mixtral-8x7B-v0.1-q8_0.gguf')
->>> Mixtral.generate('The sky is')
-' an inverted bowl that covers the earth with an infinite dome, and the sun, moon and stars are attached to its inside surface. The sun revolves around the earth once a day and the stars revolve around the earth at night.\n\nThis is the basic theory of the geocentric model of the universe. This model was the accepted cosmological view of the world in Ancient Greece, and was adopted by the Roman Catholic Church and was the official view of the Church until 1600.\n\nThe geocentric model was based on the writings of Aristotle and Ptolemy, and the Catholic Church accepted it as an article of faith. The Catholic Church was opposed to any views that contradicted the geocentric model, and threatened with excommunication anyone who held to the heliocentric view.\n\nThe heliocentric model of the universe was first proposed by Aristarchus of Samos in the 3rd Century BC, and was based on the observation that the planets and the moon revolve around the sun. The sun is in the center of the universe and the earth and other planets revolve around it.\n\nThe heliocentric model was not accepted by the Catholic Church, and was not accepted as a scientific theory until the 1600s.'
+>>> Mixtral.generate('The sky is blue, and')
+' the grass is green. It seems like the most natural thing in the world to most of us. However, have you ever stopped to think that the color of these things is actually a perception of our brain?'
 >>> 
 ```
 
 easy-llama's purpose is to make use of **on-device large language models (LLMs) as easily as possible**. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) project.
 
 ## Documentation
-The latest documentation is available [here](DOCS.md).
+Documentation is available [in DOCS.md](DOCS.md).
 
 ## Features
 - [x] Automatic arbitrary context length extension
@@ -34,10 +34,10 @@ The latest documentation is available [here](DOCS.md).
 	- `Thread.send(prompt)` -> `response`
 	- Both your message and bot's message are added to Thread
 - [x] Several common prompt formats built-in
-  - accessible under `easy_llama.formats`
+  - accessible under `ez.formats`
   - Stanford Alpaca, Mistral Instruct, Mistral Instruct Safe, ChatML, Llama2Chat, Llama3, Command-R, Vicuna LMSYS, Vicuna Common, Dolphin, Guanaco, & more
   - Easily extend, duplicate and modify built-in formats
-  - `easy_llama.formats.wrap(prompt)` - Wrap a given prompt in any prompt format for single-turn completion
+  - `ez.formats.wrap(prompt)` - Wrap a given prompt in any prompt format for single-turn completion
 - [X] Message-based context length handling
 - [X] Retrieve sorted list of candidates for the most likely next token (i.e. logits)
 - [X] Support all models supported by llama-cpp-python

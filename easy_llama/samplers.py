@@ -4,8 +4,7 @@ from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing SamplerSettings class and some preset samplers"""
 
-from sys    import maxsize
-from typing import Dict
+from sys import maxsize
 
 
 MAX_TEMP = float(maxsize)
@@ -16,7 +15,7 @@ class SamplerSettings:
     used to control text generation
     """
 
-    ParamTypes: Dict[str, type] = {
+    ParamTypes: dict[str, type] = {
         'max_len_tokens':    int,
         'temp':              float,
         'top_p':             float,
@@ -28,16 +27,16 @@ class SamplerSettings:
     }
 
     def __init__(
-            self,
-            max_len_tokens:    int   = -1,
-            temp:              float = 0.8,
-            top_p:             float = 0.95,
-            min_p:             float = 0.05,
-            frequency_penalty: float = 0.0,
-            presence_penalty:  float = 0.0,
-            repeat_penalty:    float = 1.0,
-            top_k:             int   = 40
-        ):
+        self,
+        max_len_tokens:    int   = -1,
+        temp:              float = 0.8,
+        top_p:             float = 0.95,
+        min_p:             float = 0.05,
+        frequency_penalty: float = 0.0,
+        presence_penalty:  float = 0.0,
+        repeat_penalty:    float = 1.0,
+        top_k:             int   = 40
+    ):
         """
         Construct a new SamplerSettings instance
         """
