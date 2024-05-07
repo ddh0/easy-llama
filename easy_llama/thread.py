@@ -85,7 +85,7 @@ class Thread:
                 'presence_penalty',
                 'repeat_penalty',
                 'top_k'
-                ]
+            ]
         ), 'Thread: sampler is missing one or more required attributes'
         
         self.model: Model = model
@@ -217,11 +217,9 @@ class Thread:
 
         context_len_budget = self.model.context_length
         if len(messages) > 0:
-            system_message = messages[0]
+            sys_msg = messages[0]
             sys_msg_str = (
-                system_message['prefix'] +
-                system_message['content'] +
-                system_message['postfix']
+                sys_msg['prefix'] + sys_msg['content'] + sys_msg['postfix']
             )
             context_len_budget -= self.model.get_length(sys_msg_str)
         else:
@@ -234,16 +232,14 @@ class Thread:
         # max_context_length, break without including that message
         for message in reversed(messages[1:]):
             context_len_budget -= self.model.get_length(
-                message['postfix'] + message['content'] + message['postfix']
+                message['prefix'] + message['content'] + message['postfix']
             )
 
             if context_len_budget <= 0:
                 break
 
             msg_str = (
-                message['prefix'] +
-                message['content'] +
-                message['postfix']
+                message['prefix'] + message['content'] + message['postfix']
             )
             
             inf_str = msg_str + inf_str

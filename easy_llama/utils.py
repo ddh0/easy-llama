@@ -102,8 +102,8 @@ class GGUFReader:
 
             if GGUF_MAGIC != b"GGUF":
                 raise ValueError(
-                    "your model file is not a valid GGUF file " + \
-                    f"(magic number mismatch, got {GGUF_MAGIC}, " + \
+                    "your model file is not a valid GGUF file "
+                    f"(magic number mismatch, got {GGUF_MAGIC}, "
                     "expected b'GGUF')"
                 )
 
@@ -111,8 +111,8 @@ class GGUFReader:
 
             if GGUF_VERSION == 1:
                 raise ValueError(
-                    "your model file reports GGUF version 1, " + \
-                    "but only versions 2 and above are supported. " + \
+                    "your model file reports GGUF version 1, "
+                    "but only versions 2 and above are supported. "
                     "re-convert your model or download a newer version"
                 )
 

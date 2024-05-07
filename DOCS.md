@@ -83,7 +83,7 @@ The following parameter is optional:
 
 ## `Model.get_length() -> int`
 
-Get the length of a given text in tokens according to this Model, including the appened BOS token.
+Get the length of a given text in tokens according to this Model, including the appended BOS token.
 
 The following parameter is required:
 - `text: str` - The text to read
