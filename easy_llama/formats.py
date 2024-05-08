@@ -103,7 +103,7 @@ chatml: dict[str, Union[str, list]] = {
     "bot_prefix": "<|im_start|>assistant\n",
     "bot_content": "",
     "bot_postfix": "<|im_end|>\n",
-    "stops": ['<|im_start|>', '</s>']
+    "stops": ['<|im_start|>']
 }
 
 # https://huggingface.co/blog/llama2
@@ -151,6 +151,20 @@ alpaca: dict[str, Union[str, list]] = {
     "stops": ['###', 'Instruction:', '\n\n\n']
 }
 
+# https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
+phi3: dict[str, Union[str, list]] = {
+    "system_prefix": "",
+    "system_content": "", # does not officially support system prompt
+    "system_postfix": "",
+    "user_prefix": "<|user|>\n",
+    "user_content": "",
+    "user_postfix": "<|end|>\n",
+    "bot_prefix": "<|assistant|>\n",
+    "bot_content": "",
+    "bot_postfix": "<|end|>\n",
+    "stops": []
+}
+
 # this is the official vicuna. it is often butchered in various ways,
 # most commonly by adding line breaks
 # https://github.com/flu0r1ne/FastChat/blob/main/docs/vicuna_weights_version.md
@@ -163,7 +177,7 @@ vicuna_lmsys: dict[str, Union[str, list]] = {
     "user_postfix": " ",
     "bot_prefix": "ASSISTANT: ",
     "bot_content": "",
-    "bot_postfix": "</s> ",
+    "bot_postfix": " ",
     "stops": ['USER:']
 }
 
@@ -317,13 +331,13 @@ autocorrect: dict[str, Union[str, list]] = {
 bagel: dict[str, Union[str, list]] = {
     "system_prefix": "system\n",
     "system_content": "",
-    "system_postfix": "</s>\n",
+    "system_postfix": "\n",
     "user_prefix": "user\n",
     "user_content": "",
-    "user_postfix": "</s>\n",
+    "user_postfix": "\n",
     "bot_prefix": "assistant\n",
     "bot_content": "",
-    "bot_postfix": "</s>\n",
+    "bot_postfix": "\n",
     "stops": ['user\n', 'assistant\n', 'system\n']
 }
 

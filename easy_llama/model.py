@@ -217,12 +217,15 @@ class Model:
         n_threads = max(cpu_count//2, 1)
         n_threads_batch = cpu_count
 
-        if flash_attn:
-            if n_gpu_layers == 0:
-                print_warning(
-                    "disabling flash_attn because n_gpu_layers == 0"
-                )
-                flash_attn = False
+        if flash_attn and n_gpu_layers == 0:
+            print_warning(
+                "disabling flash_attn because n_gpu_layers == 0"
+            )
+            flash_attn = False
+        
+        # guard against models with no rope_freq_base
+        if rope_freq_base is None:
+            rope_freq_base = 0
 
         self.llama: Llama = Llama(
             model_path=model_path,
@@ -304,7 +307,7 @@ class Model:
         """
         # ref: llama_cpp._internals._LlamaModel.__del__()
         if not hasattr(self, 'llama'):
-            # model already unloaded, do nothing
+            # nothing can be done
             return
         try:
             # actually unload the model from memory
@@ -318,7 +321,8 @@ class Model:
         if self.verbose:
             print_verbose('Model unloaded')
     
-    def trim(self,
+    def trim(
+        self,
         text: str,
         overwrite: Optional[str] = None
     ) -> str:
@@ -649,7 +653,8 @@ class Model:
         return nlargest(k, token_probs_list, key=lambda x:x[1])
 
 
-    def print_candidates(self,
+    def print_candidates(
+        self,
         prompt: str,
         k: int,
         file: _SupportsWriteAndFlush = sys.stdout,
@@ -666,8 +671,11 @@ class Model:
                 file=file,
                 flush=flush
             )
-        # always flush the stream after all lines are printed
-        file.flush()
+        
+        # if flush is False, then so far file is not flushed, but it should
+        # always be flused at the end of printing
+        if not flush:
+            file.flush()
 
 
 def assert_model_is_loaded(model: Model) -> None:

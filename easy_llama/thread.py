@@ -283,69 +283,70 @@ class Thread:
             new_top_k = input(f'top_k: {self.sampler.top_k} -> ')
         
         except KeyboardInterrupt:
-            print('\neasy_llama: sampler not updated\n')
+            print('\neasy_llama: sampler settings not updated\n')
             return
         print()
 
         try:
             self.sampler.max_len_tokens = int(new_max_len_tokens)
         except ValueError:
-            print('easy_llama: max_len_tokens not updated')
+            pass
         else:
             print('easy_llama: max_len_tokens updated')
         
         try:
             self.sampler.temp = float(new_temp)
         except ValueError:
-            print('easy_llama: temp not updated')
+            pass
         else:
             print('easy_llama: temp updated')
         
         try:
             self.sampler.top_p = float(new_top_p)
         except ValueError:
-            print('easy_llama: top_p not updated')
+            pass
         else:
             print('easy_llama: top_p updated')
 
         try:
             self.sampler.min_p = float(new_min_p)
         except ValueError:
-            print('easy_llama: min_p not updated')
+            pass
         else:
             print('easy_llama: min_p updated')
 
         try:
             self.sampler.frequency_penalty = float(new_frequency_penalty)
         except ValueError:
-            print('easy_llama: frequency_penalty not updated')
+            pass
         else:
             print('easy_llama: frequency_penalty updated')
         
         try:
             self.sampler.presence_penalty = float(new_presence_penalty)
         except ValueError:
-            print('easy_llama: presence_penalty not updated')
+            pass
         else:
             print('easy_llama: presence_penalty updated')
         
         try:
             self.sampler.repeat_penalty = float(new_repeat_penalty)
         except ValueError:
-            print('easy_llama: repeat_penalty not updated')
+            pass
         else:
             print('easy_llama: repeat_penalty updated')
         
         try:
             self.sampler.top_k = int(new_top_k)
         except ValueError:
-            print('easy_llama: top_k not updated')
+            pass
         else:
             print('easy_llama: top_k updated')
         print()
                 
 
-    def _interactive_input(self,
+    def _interactive_input(
+        self,
         prompt: str,
         _dim_style: str,
         _user_style: str,
@@ -441,7 +442,11 @@ class Thread:
                     print('inference / inf     -- Print the inference string')
                     print('reroll / swipe      -- Regenerate the last message')
                     print('exit / quit         -- Exit the interactive chat (can also use ^C)')
-                    print('help / ?            -- Show this screen\n')
+                    print('help / ?            -- Show this screen')
+                    print()
+                    print("TIP: type < at the prompt and press ENTER to prefix the bot's next message.")
+                    print('     for example, type "Sure!" to bypass refusals')
+                    print()
 
                 else:
                     print(f'\n[unknown command]\n')
@@ -632,3 +637,5 @@ class Thread:
         print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file, flush=flush)
         print(f"{context_used_percentage}% of context used", file=file, flush=flush)
         print(f"{len(self.messages)} messages", end=end, file=file, flush=flush)
+        if not flush:
+            file.flush()

@@ -55,7 +55,7 @@ class SamplerSettings:
             actual_type = type(getattr(self, sampler_param))
             if actual_type != expected_type:
                 raise TypeError(
-                    f"wrong type for SamplerSettings parameter '{sampler_param}'" + \
+                    f"wrong type for SamplerSettings parameter '{sampler_param}'"
                     f" - expected {expected_type}, got {actual_type}"
                 )
     
