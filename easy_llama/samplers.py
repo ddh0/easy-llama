@@ -79,17 +79,26 @@ GreedyDecoding = SamplerSettings(
 # reflects llama.cpp
 DefaultSampling = SamplerSettings()
 
-# reflects llama.cpp before repeat_penalty changes
-OldDefaultSampling = SamplerSettings(
-    repeat_penalty = 1.1
-)
-
-# original distribution
+# unmodified probability distribution (i.e. what the model actually thinks)
 SimpleSampling = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
     min_p = 0.0,
     top_k = -1
+)
+
+# reflects old llama.cpp defaults
+ClassicSampling = SamplerSettings(
+    min_p=0.0,
+    repeat_penalty = 1.1
+)
+
+# halfway between DefaultSampling and SimpleSampling
+SemiSampling = SamplerSettings(
+    temp=0.9,
+    top_p=0.975,
+    min_p=0.025,
+    top_k=80
 )
 
 # for models with large vocabulary, which tend to run hot
@@ -98,27 +107,27 @@ TikTokenSampling = SamplerSettings(
     repeat_penalty=1.1
 )
 
-# use min_p as the only filter (weak)
+# use min_p as the only active sampler (more permissive)
 LowMinPSampling = SamplerSettings(
-    temp = MAX_TEMP,
+    temp = 1.0,
+    top_p = 1.0,
+    min_p = 0.05,
+    top_k = -1
+)
+
+# use min_p as the only active sampler (moderate)
+MinPSampling = SamplerSettings(
+    temp = 1.0,
     top_p = 1.0,
     min_p = 0.1,
     top_k = -1
 )
 
-# use min_p as the only filter (moderate)
-MinPSampling = SamplerSettings(
-    temp = MAX_TEMP,
+# use min_p as the only active sampler (more restrictive)
+StrictMinPSampling = SamplerSettings(
+    temp = 1.0,
     top_p = 1.0,
     min_p = 0.2,
-    top_k = -1
-)
-
-# use min_p as the only filter (strict)
-StrictMinPSampling = SamplerSettings(
-    temp = MAX_TEMP,
-    top_p = 1.0,
-    min_p = 0.5,
     top_k = -1
 )
 

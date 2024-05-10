@@ -673,7 +673,7 @@ class Model:
             )
         
         # if flush is False, then so far file is not flushed, but it should
-        # always be flused at the end of printing
+        # always be flushed at the end of printing
         if not flush:
             file.flush()
 
