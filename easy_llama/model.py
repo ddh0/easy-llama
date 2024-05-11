@@ -310,9 +310,10 @@ class Model:
             # nothing can be done
             return
         try:
-            # actually unload the model from memory
-            self.llama._model._llama_free_model(self.llama._model.model)
-            self.llama._model.model = None
+            if self.llama._model.model is not None:
+                # actually unload the model from memory
+                self.llama._model._llama_free_model(self.llama._model.model)
+                self.llama._model.model = None
         except AttributeError:
             # broken or already being destroyed by GC, abort
             return
