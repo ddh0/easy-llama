@@ -12,15 +12,14 @@ def wrap(
     format: dict[str, Union[str, list]]
 ) -> str:
     """Wrap a given string in any prompt format for single-turn completion"""
-    return (
-        format['system_prefix'] +
-        format['system_content'] +
-        format['system_postfix'] +
-        format['user_prefix'] +
-        prompt +
-        format['user_postfix'] +
+    return format['system_prefix'] + \
+        format['system_content'] + \
+        format['system_postfix'] + \
+        format['user_prefix'] + \
+        prompt + \
+        format['user_postfix'] + \
         format['bot_prefix']
-    )
+
 
 blank: dict[str, Union[str, list]] = {
     "system_prefix": "",
@@ -122,6 +121,11 @@ llama2chat: dict[str, Union[str, list]] = {
 }
 
 # https://github.com/ggerganov/llama.cpp/issues/6747#issuecomment-2065013606
+# for llama 3 instruct models, use the following string for `-p` in llama.cpp,
+# along with `-e` to escape newlines correctly
+#
+# '<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant called "Llama 3".<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhi<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n'
+#
 # TODO: better reference
 llama3: dict[str, Union[str, list]] = {
     "system_prefix": "<|start_header_id|>system<|end_header_id|>\n\n",

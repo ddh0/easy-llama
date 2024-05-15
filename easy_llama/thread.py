@@ -120,15 +120,19 @@ class Thread:
     def __repr__(self) -> str:
         repr_str = f"Thread({repr(self.model)}, {repr(self.format)}, "
         repr_str += f"{repr(self.sampler)})"
-        # system message is created from format, so not represented
-        if len(self.messages) <= 1:
+        # first system message is created from format, so not represented
+        if len(self.messages) == 0:
             return repr_str
         else:
+            i = 0
             for msg in self.messages:
-                if msg['role'] == 'user':
+                if msg['role'] == 'system' and i != 0:
+                    repr_str += "\nThread.add_message('system', " + repr(msg['content']) + ')'
+                elif msg['role'] == 'user':
                     repr_str += "\nThread.add_message('user', " + repr(msg['content']) + ')'
                 elif msg['role'] == 'bot':
                     repr_str += "\nThread.add_message('bot', " + repr(msg['content']) + ')'
+                i += 1
             return repr_str
     
     def __str__(self) -> str:
@@ -185,7 +189,7 @@ class Thread:
         """
         Return the total length of all messages in this thread, in tokens.
         
-        Equivalent to `len(Thread)`."""
+        Can also use `len(Thread)`."""
 
         return self.model.get_length(self.as_string())
 
@@ -213,38 +217,39 @@ class Thread:
         respecting the format and context length of this thread.
         """
 
-        messages = self.messages
-
-        context_len_budget = self.model.context_length
-        if len(messages) > 0:
-            sys_msg = messages[0]
-            sys_msg_str = (
-                sys_msg['prefix'] + sys_msg['content'] + sys_msg['postfix']
-            )
-            context_len_budget -= self.model.get_length(sys_msg_str)
-        else:
-            sys_msg_str = ''
-
         inf_str = ''
+        sys_msg_str = ''
+        # whether to treat the first message as necessary to keep
+        sys_msg_flag = False
+        context_len_budget = self.model.context_length
 
-        # Start at most recent message and work backwards up the history
-        # excluding system message. Once we exceed thread
-        # max_context_length, break without including that message
-        for message in reversed(messages[1:]):
-            context_len_budget -= self.model.get_length(
-                message['prefix'] + message['content'] + message['postfix']
-            )
+        # if at least 1 message is history
+        if len(self.messages) >= 1:
+            # if first message has system role
+            if self.messages[0]['role'] == 'system':
+                sys_msg_flag = True
+                sys_msg = self.messages[0]
+                sys_msg_str = (
+                    sys_msg['prefix'] + sys_msg['content'] + sys_msg['postfix']
+                )
+                context_len_budget -= self.model.get_length(sys_msg_str)
 
-            if context_len_budget <= 0:
-                break
-
+        if sys_msg_flag:
+            iterator = reversed(self.messages[1:])
+        else:
+            iterator = reversed(self.messages)
+        
+        for message in iterator:
             msg_str = (
                 message['prefix'] + message['content'] + message['postfix']
             )
-            
+            context_len_budget -= self.model.get_length(msg_str)
+            if context_len_budget <= 0:
+                break
             inf_str = msg_str + inf_str
 
-        inf_str = sys_msg_str + inf_str
+        if sys_msg_flag:
+            inf_str = sys_msg_str + inf_str
         inf_str += self.format['bot_prefix']
 
         return inf_str
@@ -350,7 +355,8 @@ class Thread:
         prompt: str,
         _dim_style: str,
         _user_style: str,
-        _bot_style: str
+        _bot_style: str,
+        _special_style: str
     ) -> tuple:
         """
         Recive input from the user, while handling multi-line input
@@ -430,32 +436,35 @@ class Thread:
                 
                 elif command.lower() in ['help', '/?', '?']:
                     print()
-                    print('reset / restart     -- Reset the thread to its original state')
-                    print('clear / cls         -- Clear the terminal')
-                    print('context / ctx       -- Get the context usage in tokens')
-                    print('print_stats / stats -- Get the context usage stats')
-                    print('sampler / settings  -- Update the sampler settings')
-                    print('string / str        -- Print the message history as a string')
-                    print('repr / save         -- Print the representation of the thread')
-                    print('remove / delete     -- Remove the last message')
-                    print('last / repeat       -- Repeat the last message')
-                    print('inference / inf     -- Print the inference string')
-                    print('reroll / swipe      -- Regenerate the last message')
-                    print('exit / quit         -- Exit the interactive chat (can also use ^C)')
-                    print('help / ?            -- Show this screen')
+                    print('reset | restart     -- Reset the thread to its original state')
+                    print('clear | cls         -- Clear the terminal')
+                    print('context | ctx       -- Get the context usage in tokens')
+                    print('print_stats | stats -- Get the context usage stats')
+                    print('sampler | settings  -- Update the sampler settings')
+                    print('string | str        -- Print the message history as a string')
+                    print('repr | save         -- Print the representation of the thread')
+                    print('remove | delete     -- Remove the last message')
+                    print('last | repeat       -- Repeat the last message')
+                    print('inference | inf     -- Print the inference string')
+                    print('reroll | swipe      -- Regenerate the last message')
+                    print('exit | quit         -- Exit the interactive chat (can also use ^C)')
+                    print('help | ?            -- Show this screen')
                     print()
                     print("TIP: type < at the prompt and press ENTER to prefix the bot's next message.")
                     print('     for example, type "Sure!" to bypass refusals')
+                    print()
+                    print("TIP: type !! at the prompt and press ENTER to insert a system message")
                     print()
 
                 else:
                     print(f'\n[unknown command]\n')
             
-            elif user_input == '<': # the next bot message will start with...
+            # prefix the bot's next message
+            elif user_input == '<':
 
                 print()
                 try:
-                    next_message_start = input(f'{_dim_style}  < ')
+                    next_message_start = input(f'{RESET_ALL}  < {_dim_style}')
 
                 except KeyboardInterrupt:
                     print(f'{RESET_ALL}\n')
@@ -464,25 +473,23 @@ class Thread:
                 else:
                     print()
                     return '', next_message_start
-            
-            elif user_input.endswith('<'):
 
+            # insert a system message
+            elif user_input == '!!':
                 print()
 
-                msg = user_input.removesuffix('<')
-                self.add_message("user", msg)
+                try:
+                    next_sys_msg = input(f'{RESET_ALL} !! {_special_style}')
                 
-                try:
-                    next_message_start = input(f'{_dim_style}  < ')
-
                 except KeyboardInterrupt:
                     print(f'{RESET_ALL}\n')
                     continue
-
+                
                 else:
                     print()
-                    return '', next_message_start
+                    return next_sys_msg, -1
 
+            # concatenate multi-line input
             else:
                 full_user_input += user_input
                 return full_user_input, None
@@ -538,7 +545,8 @@ class Thread:
                     prompt,
                     DIM_STYLE,
                     USER_STYLE,
-                    BOT_STYLE
+                    BOT_STYLE,
+                    SPECIAL_STYLE
                 )
             except KeyboardInterrupt:
                 print(f"{RESET_ALL}\n")
@@ -547,6 +555,11 @@ class Thread:
             # got 'exit' or 'quit' command
             if user_prompt is None and next_message_start is None:
                 break
+            
+            # insert a system message via `!!` prompt
+            if next_message_start == -1:
+                self.add_message('system', user_prompt)
+                continue
             
             if next_message_start is not None:
                 try:
