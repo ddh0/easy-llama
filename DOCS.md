@@ -193,9 +193,9 @@ The following attributes are available:
 - `.model` - The `ez.Model` instance used by this thread
 - `.sampler` - The `ez.SamplerSettings` object used in this thread
 
-## `Thread.create_message() -> dict[str, str]`
+## `Thread.create_message() -> Message
 
-Create a message using the format of this thread. If you are looking to create a message and also add it to the Thread's message history, see `Thread.add_message()`.
+Construct a message using the format of this thread. If you are looking to create a message and also add it to the Thread's message history, see `Thread.add_message()`.
 
 The following parameters are required:
 - `role: str` - The role of the message. Must be one of `'system'`, `'user'`, or `'bot'`. Case-insensitive.
@@ -238,6 +238,8 @@ Type `!` and press `ENTER` to enter a basic command prompt. For a list of comman
 
 Type `<` and press `ENTER` to prefix the bot's next message, for example with `Sure!`.
 
+Type `!!` at the prompt and press `ENTER` to insert a system message.
+
 The following parameters are optional:
 - `color: bool` - Whether to use colored text to differentiate user / bot. Defaults to `True`.
 - `header: str` - Header text to print at the start of the interaction. Defaults to `None`.
@@ -266,9 +268,43 @@ The following parameters are optional:
 - `file: _SupportsWriteAndFlush` - The file where text should be printed. Defaults to `sys.stdout`.
 - `flush: bool` - Whether to flush the stream after printing. Defaults to `True`.
 
+# `class ez.thread.Message`
+
+A dictionary representing a single message within a Thread
+
+Normally, there is no need to interface with this class directly. Just use the methods of `Thread` to manage messages.
+
+Works just like a normal `dict`, but adds new methods:
+
+- `.as_string` - Return the full message string
+- `.add_text_to_prefix` - Insert arbitrary text before or after the prefix of a message
+- `.add_text_to_postfix` - Insert arbitrary text before or after the postfix of a message
+
+Generally, messages have these keys:
+- `role` - The role of the speaker: 'system', 'user', or 'bot'
+- `prefix` - The text that prefixes the message content
+- `content` - The actual content of the message
+- `postfix` - The text that postfixes the message content
+
+## `Message.as_string() -> str`
+
+Return the full text of a message, including the prefix, content, and postfix.
+
+## `Message.add_text_to_prefix() -> None`
+
+Insert arbitrary text before or after the prefix of a message
+- `text: str`: The text to add
+- `position: str`: Whether to add the text before or after the prefix. Must be one of `'before'` or `'after'`. Defaults to `'after'`. Case-insensitive
+
+## `Message.add_text_to_postfix() -> None`
+
+Insert arbitrary text before or after the postfix of a message
+- `text: str`: The text to add
+- `position: str`: Whether to add the text before or after the postfix. Must be one of `'before'` or `'after'`. Defaults to `'after'`. Case-insensitive
+
 # `class ez.samplers.SamplerSettings`
 
-A SamplerSettings object specifies the sampling parameters that will be used to control text generation.
+A SamplerSettings object specifies the sampling parameters that will be used to control text generation. It is passed as an optional parameter to `Thread()`, `Model.generate()`, `Model.stream()`, and `Model.stream_print()`.
 
 ## `ez.samplers.SamplerSettings.__init__()`
 
@@ -289,12 +325,13 @@ The following parameters are optional. If not specified, values will default to 
 easy-llama comes with several built-in SamplerSettings objects that can be used out of the box for different purposes:
 - `ez.samplers.GreedyDecoding` - Most likely next token is always chosen (temperature = 0.0)
 - `ez.samplers.DefaultSampling` - Use `llama.cpp` default values for sampling (recommended for most cases)
-- `ez.samplers.OldDefaultSampling` - Reflects `llama.cpp` before repeat_penalty changes
+- `ez.samplers.ClassicSampling` - Reflects old `llama.cpp` defaults
 - `ez.samplers.SimpleSampling` - Original probability distribution
+- `ez.samplers.SemiSampling` - Halfway between DefaultSampling and SimpleSampling
 - `ez.samplers.TikTokenSampling` - Recommended for models with a large vocabulary, such as Llama 3 or Yi, which tend to run hot
-- `ez.samplers.LowMinPSampling` - Use Min-P as the only filter (weak)
-- `ez.samplers.MinPSampling` - Use Min-P as the only filter (moderate)
-- `ez.samplers.StrictMinPSampling` - Use Min-P as the only filter (strict)
+- `ez.samplers.LowMinPSampling` - Use Min-P as the only active sampler (weak)
+- `ez.samplers.MinPSampling` - Use Min-P as the only active sampler (moderate)
+- `ez.samplers.StrictMinPSampling` - Use Min-P as the only active sampler (strict)
 - `ez.samplers.ContrastiveSearch` - Use contrastive search with a moderate alpha value ([arXiv](https://arxiv.org/abs/2210.14140))
 - `ez.samplers.WarmContrastiveSearch` - Use contrastive search with a high alpha value ([arXiv](https://arxiv.org/abs/2210.14140))
 - `ez.samplers.RandomSampling` - Output completely random tokens from vocab (useless)
@@ -305,7 +342,7 @@ easy-llama comes with several built-in SamplerSettings objects that can be used 
 
 easy-llama comes with several built-in prompt formats that correspond to well-known language models or families of language models, such as Llama 3, Mistral Instruct, Vicuna, Guanaco, and many more. For a complete list of available formats, see [formats.py](easy_llama/formats.py).
 
-Formats have the type `dict[str, Union[str, list]]`, and they look like this:
+Formats are instances of `dict`, and they look like this:
 
 ```python
 # https://github.com/tatsu-lab/stanford_alpaca

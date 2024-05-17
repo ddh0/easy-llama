@@ -120,13 +120,13 @@ llama2chat: dict[str, Union[str, list]] = {
     "stops": ['[INST]', '[/INST]']
 }
 
-# https://github.com/ggerganov/llama.cpp/issues/6747#issuecomment-2065013606
+# https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
+#
 # for llama 3 instruct models, use the following string for `-p` in llama.cpp,
 # along with `-e` to escape newlines correctly
 #
 # '<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant called "Llama 3".<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhi<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n'
 #
-# TODO: better reference
 llama3: dict[str, Union[str, list]] = {
     "system_prefix": "<|start_header_id|>system<|end_header_id|>\n\n",
     "system_content": 'You are a helpful AI assistant called "Llama 3".',
@@ -200,6 +200,23 @@ vicuna_common: dict[str, Union[str, list]] = {
     "bot_content": "",
     "bot_postfix": "\n",
     "stops": ['USER:', 'ASSISTANT:']
+}
+
+# an unofficial format that is easily "picked up" by most models
+# change the tag attributes to suit your use case
+# note the lack of newlines - they are not necessary, and might
+# actually make it harder for the model to follow along
+markup = {
+    "system_prefix": '<message from="system">',
+    "system_content": '',
+    "system_postfix": '</message>',
+    "user_prefix": '<message from="user">',
+    "user_content": '',
+    "user_postfix": '</message>',
+    "bot_prefix": '<message from="bot">',
+    "bot_content": '',
+    "bot_postfix": '</message>',
+    "stops": ['</message>']
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b

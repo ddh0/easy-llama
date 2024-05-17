@@ -14,6 +14,101 @@ from typing    import Optional, Literal, Union
 from .formats import blank as formats_blank
 
 
+class Message(dict):
+    """
+    A dictionary representing a single message within a Thread
+
+    Works just like a normal `dict`, but adds new methods:
+    - `.as_string` - Return the full message string
+    - `.add_text_to_prefix` - Insert arbitrary text before or after the prefix of a message
+    - `.add_text_to_postfix` - Insert arbitrary text before or after the postfix of a message
+
+    Generally, messages have these keys:
+    - `role` -  The role of the speaker: 'system', 'user', or 'bot'
+    - `prefix` - The text that prefixes the message content
+    - `content` - The actual content of the message
+    - `postfix` - The text that postfixes the message content
+    """
+
+    def __repr__(self) -> str:
+        return \
+            f"Message([" \
+            f"('role', {repr(self['role'])}), " \
+            f"('prefix', {repr(self['prefix'])}), " \
+            f"('content', {repr(self['content'])}), " \
+            f"('postfix', {repr(self['postfix'])})])"
+
+    def as_string(self):
+        """Return the full message string"""
+        try:
+            return self['prefix'] + self['content'] + self['postfix']
+        except KeyError as e:
+            e.add_note(
+                "as_string: Message is missing one or more of the "
+                "required 'prefix', 'content', 'postfix' attributes - this is "
+                "unexpected"
+            )
+            raise e
+
+    def add_text_to_prefix(
+            self,
+            text: str,
+            position: Literal['before', 'after'] = 'after'
+        ) -> None:
+        """
+        Insert arbitrary text before or after the prefix of a message
+
+        - `text`: The text to add
+        - `position`:
+            Whether to add the text before or after the prefix. Must be one of
+            'before' or 'after'. Defaults to 'after'
+        """
+        assert position.lower() in ['before', 'after'], \
+            "add_text_to_prefix: position must be 'before' or 'after', " \
+            f"not {position}"
+        if position.lower() == 'before':
+            try:
+                self['prefix'] = text + self['prefix']
+            except KeyError as e:
+                e.add_note("add_text_to_prefix: message is missing 'prefix' attribute")
+                raise e
+        else:
+            try:
+                self['prefix'] = self['prefix'] + text
+            except KeyError as e:
+                e.add_note("add_text_to_prefix: message is missing 'prefix' attribute")
+                raise e
+
+    def add_text_to_postfix(
+            self,
+            text: str,
+            position: Literal['before', 'after'] = 'after'
+        ) -> None:
+        """
+        Insert arbitrary text before or after the postfix of a message
+
+        - `text`: The text to add
+        - `position`:
+            Whether to add the text before or after the postfix. Must be one of
+            'before' or 'after'. Defaults to 'after'
+        """
+        assert position.lower() in ['before', 'after'], \
+            "add_text_to_postfix: position must be 'before' or 'after', " \
+            f"not {position}"
+        if position.lower() == 'before':
+            try:
+                self['postfix'] = text + self['postfix']
+            except KeyError as e:
+                e.add_note("add_text_to_postfix: message is missing 'postfix' attribute")
+                raise e
+        else:
+            try:
+                self['postfix'] = self['postfix'] + text
+            except KeyError as e:
+                e.add_note("add_text_to_postfix: message is missing 'postfix' attribute")
+                raise e
+
+
 class Thread:
     """
     Provide functionality to facilitate easy interactions with a Model
@@ -44,7 +139,8 @@ class Thread:
         self,
         model: Model,
         format: dict[str, Union[str, list]],
-        sampler: SamplerSettings = DefaultSampling
+        sampler: SamplerSettings = DefaultSampling,
+        messages: Optional[list[Message]] = None
     ):
         """
         Given a Model and a format, construct a Thread instance.
@@ -52,8 +148,9 @@ class Thread:
         model: The Model to use for text generation
         format: The format specifying how messages should be structured (see ez.formats)
 
-        The following parameter is optional:
+        The following parameters are optional:
         - sampler: The SamplerSettings object used to control text generation
+        - messages: A list of ez.thread.Message objects to add to the Thread upon construction
         """
         
         assert isinstance(model, Model), \
@@ -87,12 +184,23 @@ class Thread:
                 'top_k'
             ]
         ), 'Thread: sampler is missing one or more required attributes'
+
+        self._messages: Optional[list[Message]] = messages
+        if self._messages is not None:
+            if not all(isinstance(msg, Message) for msg in self._messages):
+                raise TypeError(
+                    "Thread: one or more messages provided to __init__() is "
+                    "not an instance of ez.thread.Message"
+                )
         
+        # Thread.messages is never empty, unless `messages` param is explicity
+        # set to `[]` during construction
+
         self.model: Model = model
         self.format: dict[str, Union[str, list]] = format
-        self.messages: list[dict[str, str]] = [
+        self.messages: list[Message] = [
             self.create_message("system", self.format['system_content'])
-        ]
+        ] if self._messages is None else self._messages
         self.sampler: SamplerSettings = sampler
 
         if self.model.verbose:
@@ -118,22 +226,9 @@ class Thread:
     
 
     def __repr__(self) -> str:
-        repr_str = f"Thread({repr(self.model)}, {repr(self.format)}, "
-        repr_str += f"{repr(self.sampler)})"
-        # first system message is created from format, so not represented
-        if len(self.messages) == 0:
-            return repr_str
-        else:
-            i = 0
-            for msg in self.messages:
-                if msg['role'] == 'system' and i != 0:
-                    repr_str += "\nThread.add_message('system', " + repr(msg['content']) + ')'
-                elif msg['role'] == 'user':
-                    repr_str += "\nThread.add_message('user', " + repr(msg['content']) + ')'
-                elif msg['role'] == 'bot':
-                    repr_str += "\nThread.add_message('bot', " + repr(msg['content']) + ')'
-                i += 1
-            return repr_str
+        return \
+            f"Thread({repr(self.model)}, {repr(self.format)}, " + \
+            f"{repr(self.sampler)}, {repr(self.messages)})"
     
     def __str__(self) -> str:
         return self.as_string()
@@ -150,9 +245,9 @@ class Thread:
         self,
         role: Literal['system', 'user', 'bot'],
         content: str
-    ) -> dict[str, str]:
+    ) -> Message:
         """
-        Create a message using the format of this Thread
+        Construct a message using the format of this Thread
         """
 
         assert role.lower() in ['system', 'user', 'bot'], \
@@ -162,28 +257,34 @@ class Thread:
             f"create_message: content should be str, not {type(content)}"
 
         if role.lower() == 'system':
-            return {
-                "role": "system",
-                "prefix": self.format['system_prefix'],
-                "content": content,
-                "postfix": self.format['system_postfix']
-            }
+            return Message(
+                [
+                    ('role', 'system'),
+                    ('prefix', self.format['system_prefix']),
+                    ('content', content),
+                    ('postfix', self.format['system_postfix'])
+                ]
+            )
         
         elif role.lower() == 'user':
-            return {
-                "role": "user",
-                "prefix": self.format['user_prefix'],
-                "content": content,
-                "postfix": self.format['user_postfix']
-            }
+            return Message(
+                [
+                    ('role', 'user'),
+                    ('prefix', self.format['user_prefix']),
+                    ('content', content),
+                    ('postfix', self.format['user_postfix'])
+                ]
+            )
         
         elif role.lower() == 'bot':
-            return {
-                "role": "bot",
-                "prefix": self.format['bot_prefix'],
-                "content": content,
-                "postfix": self.format['bot_postfix']
-            }
+            return Message(
+                [
+                    ('role', 'bot'),
+                    ('prefix', self.format['bot_prefix']),
+                    ('content', content),
+                    ('postfix', self.format['bot_postfix'])
+                ]
+            )
     
     def len_messages(self) -> int:
         """
@@ -229,9 +330,7 @@ class Thread:
             if self.messages[0]['role'] == 'system':
                 sys_msg_flag = True
                 sys_msg = self.messages[0]
-                sys_msg_str = (
-                    sys_msg['prefix'] + sys_msg['content'] + sys_msg['postfix']
-                )
+                sys_msg_str = sys_msg.as_string()
                 context_len_budget -= self.model.get_length(sys_msg_str)
 
         if sys_msg_flag:
@@ -240,9 +339,7 @@ class Thread:
             iterator = reversed(self.messages)
         
         for message in iterator:
-            msg_str = (
-                message['prefix'] + message['content'] + message['postfix']
-            )
+            msg_str = message.as_string()
             context_len_budget -= self.model.get_length(msg_str)
             if context_len_budget <= 0:
                 break
@@ -516,6 +613,8 @@ class Thread:
         Type `<` and press `ENTER` to prefix the bot's next message, for
         example with `Sure!`.
 
+        Type `!!` at the prompt and press `ENTER` to insert a system message.
+
         The following parameters are optional:
         - color: Whether to use colored text to differentiate user / bot
         - header: Header text to print at the start of the interaction
@@ -524,14 +623,14 @@ class Thread:
         print()
 
         # fresh import of color codes in case `color` param has changed
-        from .utils import USER_STYLE, BOT_STYLE, DIM_STYLE, SPECIAL_STYLE
+        from .utils import SPECIAL_STYLE, USER_STYLE, BOT_STYLE, DIM_STYLE
 
         # disable color codes if explicitly disabled by `color` param
         if not color:
+            SPECIAL_STYLE = ''
             USER_STYLE = ''
             BOT_STYLE = ''
             DIM_STYLE = ''
-            SPECIAL_STYLE = ''
         
         if header is not None:
             print(f"{SPECIAL_STYLE}{header}{RESET_ALL}\n")
@@ -622,19 +721,17 @@ class Thread:
         Clear the list of messages, which resets the thread to its original
         state
         """
-        self.messages: list[dict[str, str]] = [
+        self.messages: list[Message] = [
             self.create_message("system", self.format['system_content'])
-        ]
+        ] if self._messages is not None else self._messages
     
     
     def as_string(self) -> str:
         """Return this thread's message history as a string"""
-        ret = ''
+        thread_string = ''
         for msg in self.messages:
-            ret += msg['prefix']
-            ret += msg['content']
-            ret += msg['postfix']
-        return ret
+            thread_string += msg.as_string()
+        return thread_string
 
     
     def print_stats(

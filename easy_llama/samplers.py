@@ -12,7 +12,9 @@ MAX_TEMP = float(maxsize)
 class SamplerSettings:
     """
     A SamplerSettings object specifies the sampling parameters that will be
-    used to control text generation
+    used to control text generation. It is passed as an optional parameter to
+    `Thread()`, `Model.generate()`, `Model.stream()`, and
+    `Model.stream_print()`.
     """
 
     ParamTypes: dict[str, type] = {
