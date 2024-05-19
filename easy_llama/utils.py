@@ -157,10 +157,10 @@ def cls() -> None:
     """Clear the terminal"""
     print("\033c\033[3J", end='', flush=True)
 
-# no longer used in this module, but left for others to use
-def get_timestamp_prefix_str() -> str:
+# not used by default, but useful as a feature of an AdvancedFormat
+def get_timestamp_str() -> str:
     # helpful: https://strftime.net
-    return strftime("[%Y, %b %e, %a %l:%M %p] ")
+    return strftime("%Y, %b %e, %a %l:%M %p")
 
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."

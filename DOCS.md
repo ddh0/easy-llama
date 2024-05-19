@@ -274,11 +274,9 @@ A dictionary representing a single message within a Thread
 
 Normally, there is no need to interface with this class directly. Just use the methods of `Thread` to manage messages.
 
-Works just like a normal `dict`, but adds new methods:
+Works just like a normal `dict`, but adds a new method:
 
 - `.as_string` - Return the full message string
-- `.add_text_to_prefix` - Insert arbitrary text before or after the prefix of a message
-- `.add_text_to_postfix` - Insert arbitrary text before or after the postfix of a message
 
 Generally, messages have these keys:
 - `role` - The role of the speaker: 'system', 'user', or 'bot'

@@ -10,6 +10,7 @@ from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from .utils    import RESET_ALL, cls, print_verbose, truncate
 from .samplers import SamplerSettings, DefaultSampling
 from typing    import Optional, Literal, Union
+from .formats  import AdvancedFormat
 
 from .formats import blank as formats_blank
 
@@ -18,16 +19,14 @@ class Message(dict):
     """
     A dictionary representing a single message within a Thread
 
-    Works just like a normal `dict`, but adds new methods:
+    Works just like a normal `dict`, but a new method:
     - `.as_string` - Return the full message string
-    - `.add_text_to_prefix` - Insert arbitrary text before or after the prefix of a message
-    - `.add_text_to_postfix` - Insert arbitrary text before or after the postfix of a message
 
     Generally, messages have these keys:
     - `role` -  The role of the speaker: 'system', 'user', or 'bot'
     - `prefix` - The text that prefixes the message content
     - `content` - The actual content of the message
-    - `postfix` - The text that postfixes the message content
+    - `suffix` - The text that suffixes the message content
     """
 
     def __repr__(self) -> str:
@@ -36,77 +35,19 @@ class Message(dict):
             f"('role', {repr(self['role'])}), " \
             f"('prefix', {repr(self['prefix'])}), " \
             f"('content', {repr(self['content'])}), " \
-            f"('postfix', {repr(self['postfix'])})])"
+            f"('suffix', {repr(self['suffix'])})])"
 
     def as_string(self):
         """Return the full message string"""
         try:
-            return self['prefix'] + self['content'] + self['postfix']
+            return self['prefix'] + self['content'] + self['suffix']
         except KeyError as e:
             e.add_note(
                 "as_string: Message is missing one or more of the "
-                "required 'prefix', 'content', 'postfix' attributes - this is "
+                "required 'prefix', 'content', 'suffix' attributes - this is "
                 "unexpected"
             )
             raise e
-
-    def add_text_to_prefix(
-            self,
-            text: str,
-            position: Literal['before', 'after'] = 'after'
-        ) -> None:
-        """
-        Insert arbitrary text before or after the prefix of a message
-
-        - `text`: The text to add
-        - `position`:
-            Whether to add the text before or after the prefix. Must be one of
-            'before' or 'after'. Defaults to 'after'
-        """
-        assert position.lower() in ['before', 'after'], \
-            "add_text_to_prefix: position must be 'before' or 'after', " \
-            f"not {position}"
-        if position.lower() == 'before':
-            try:
-                self['prefix'] = text + self['prefix']
-            except KeyError as e:
-                e.add_note("add_text_to_prefix: message is missing 'prefix' attribute")
-                raise e
-        else:
-            try:
-                self['prefix'] = self['prefix'] + text
-            except KeyError as e:
-                e.add_note("add_text_to_prefix: message is missing 'prefix' attribute")
-                raise e
-
-    def add_text_to_postfix(
-            self,
-            text: str,
-            position: Literal['before', 'after'] = 'after'
-        ) -> None:
-        """
-        Insert arbitrary text before or after the postfix of a message
-
-        - `text`: The text to add
-        - `position`:
-            Whether to add the text before or after the postfix. Must be one of
-            'before' or 'after'. Defaults to 'after'
-        """
-        assert position.lower() in ['before', 'after'], \
-            "add_text_to_postfix: position must be 'before' or 'after', " \
-            f"not {position}"
-        if position.lower() == 'before':
-            try:
-                self['postfix'] = text + self['postfix']
-            except KeyError as e:
-                e.add_note("add_text_to_postfix: message is missing 'postfix' attribute")
-                raise e
-        else:
-            try:
-                self['postfix'] = self['postfix'] + text
-            except KeyError as e:
-                e.add_note("add_text_to_postfix: message is missing 'postfix' attribute")
-                raise e
 
 
 class Thread:
@@ -138,9 +79,9 @@ class Thread:
     def __init__(
         self,
         model: Model,
-        format: dict[str, Union[str, list]],
+        format: Union[dict, AdvancedFormat],
         sampler: SamplerSettings = DefaultSampling,
-        messages: Optional[list[Message]] = None
+        messages: Optional[list[Message]] = None,
     ):
         """
         Given a Model and a format, construct a Thread instance.
@@ -159,8 +100,8 @@ class Thread:
         
         assert_model_is_loaded(model)
 
-        assert isinstance(format, dict), \
-            f"Thread: format should be dict, not {type(format)}"
+        assert isinstance(format, (dict, AdvancedFormat)), \
+            f"Thread: format should be dict or AdvancedFormat, not {type(format)}"
         
         if any(k not in format.keys() for k in formats_blank.keys()):
             raise KeyError(
@@ -197,7 +138,7 @@ class Thread:
         # set to `[]` during construction
 
         self.model: Model = model
-        self.format: dict[str, Union[str, list]] = format
+        self.format: Union[dict, AdvancedFormat] = format
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_content'])
         ] if self._messages is None else self._messages
@@ -208,13 +149,13 @@ class Thread:
             print_verbose(f"model                     == {self.model}")
             print_verbose(f"format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
             print_verbose(f"format['system_content']  == {truncate(repr(self.format['system_content']))}")
-            print_verbose(f"format['system_postfix']  == {truncate(repr(self.format['system_postfix']))}")
+            print_verbose(f"format['system_suffix']   == {truncate(repr(self.format['system_suffix']))}")
             print_verbose(f"format['user_prefix']     == {truncate(repr(self.format['user_prefix']))}")
             print_verbose(f"format['user_content']    == {truncate(repr(self.format['user_content']))}")
-            print_verbose(f"format['user_postfix']    == {truncate(repr(self.format['user_postfix']))}")
+            print_verbose(f"format['user_suffix']     == {truncate(repr(self.format['user_suffix']))}")
             print_verbose(f"format['bot_prefix']      == {truncate(repr(self.format['bot_prefix']))}")
             print_verbose(f"format['bot_content']     == {truncate(repr(self.format['bot_content']))}")
-            print_verbose(f"format['bot_postfix']     == {truncate(repr(self.format['bot_postfix']))}")
+            print_verbose(f"format['bot_suffix']      == {truncate(repr(self.format['bot_suffix']))}")
             print_verbose(f"format['stops']           == {truncate(repr(self.format['stops']))}")
             print_verbose(f"sampler.temp              == {self.sampler.temp}")
             print_verbose(f"sampler.top_p             == {self.sampler.top_p}")
@@ -262,7 +203,7 @@ class Thread:
                     ('role', 'system'),
                     ('prefix', self.format['system_prefix']),
                     ('content', content),
-                    ('postfix', self.format['system_postfix'])
+                    ('suffix', self.format['system_suffix'])
                 ]
             )
         
@@ -272,7 +213,7 @@ class Thread:
                     ('role', 'user'),
                     ('prefix', self.format['user_prefix']),
                     ('content', content),
-                    ('postfix', self.format['user_postfix'])
+                    ('suffix', self.format['user_suffix'])
                 ]
             )
         
@@ -282,7 +223,7 @@ class Thread:
                     ('role', 'bot'),
                     ('prefix', self.format['bot_prefix']),
                     ('content', content),
-                    ('postfix', self.format['bot_postfix'])
+                    ('suffix', self.format['bot_suffix'])
                 ]
             )
     
@@ -723,7 +664,7 @@ class Thread:
         """
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_content'])
-        ] if self._messages is not None else self._messages
+        ] if self._messages is None else self._messages
     
     
     def as_string(self) -> str:
