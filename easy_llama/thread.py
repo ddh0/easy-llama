@@ -19,7 +19,7 @@ class Message(dict):
     """
     A dictionary representing a single message within a Thread
 
-    Works just like a normal `dict`, but a new method:
+    Works just like a normal `dict`, but adds a new method:
     - `.as_string` - Return the full message string
 
     Generally, messages have these keys:
@@ -140,7 +140,7 @@ class Thread:
         self.model: Model = model
         self.format: Union[dict, AdvancedFormat] = format
         self.messages: list[Message] = [
-            self.create_message("system", self.format['system_content'])
+            self.create_message("system", self.format['system_prompt'])
         ] if self._messages is None else self._messages
         self.sampler: SamplerSettings = sampler
 
@@ -148,13 +148,11 @@ class Thread:
             print_verbose("new Thread instance with the following attributes:")
             print_verbose(f"model                     == {self.model}")
             print_verbose(f"format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
-            print_verbose(f"format['system_content']  == {truncate(repr(self.format['system_content']))}")
+            print_verbose(f"format['system_prompt']   == {truncate(repr(self.format['system_prompt']))}")
             print_verbose(f"format['system_suffix']   == {truncate(repr(self.format['system_suffix']))}")
             print_verbose(f"format['user_prefix']     == {truncate(repr(self.format['user_prefix']))}")
-            print_verbose(f"format['user_content']    == {truncate(repr(self.format['user_content']))}")
             print_verbose(f"format['user_suffix']     == {truncate(repr(self.format['user_suffix']))}")
             print_verbose(f"format['bot_prefix']      == {truncate(repr(self.format['bot_prefix']))}")
-            print_verbose(f"format['bot_content']     == {truncate(repr(self.format['bot_content']))}")
             print_verbose(f"format['bot_suffix']      == {truncate(repr(self.format['bot_suffix']))}")
             print_verbose(f"format['stops']           == {truncate(repr(self.format['stops']))}")
             print_verbose(f"sampler.temp              == {self.sampler.temp}")
@@ -167,9 +165,17 @@ class Thread:
     
 
     def __repr__(self) -> str:
-        return \
-            f"Thread({repr(self.model)}, {repr(self.format)}, " + \
-            f"{repr(self.sampler)}, {repr(self.messages)})"
+        # if only message in self.messages is system message
+        if len(self.messages) == 1 and self.messages[0]['role'] == 'system':
+            # do not represent it because it is constructed based on
+            # the format, which is already represented
+            repr_str = f"Thread({repr(self.model)}, {repr(self.format)}, " + \
+                       f"{repr(self.sampler)})"
+        else:
+            # represent all messages, potentially including a system message
+            repr_str = f"Thread({repr(self.model)}, {repr(self.format)}, " + \
+                       f"{repr(self.sampler)}, {repr(self.messages)})"
+        return repr_str
     
     def __str__(self) -> str:
         return self.as_string()
@@ -663,7 +669,7 @@ class Thread:
         state
         """
         self.messages: list[Message] = [
-            self.create_message("system", self.format['system_content'])
+            self.create_message("system", self.format['system_prompt'])
         ] if self._messages is None else self._messages
     
     
