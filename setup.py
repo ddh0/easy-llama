@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.28'
+__version__ = '0.1.29'
 
 from setuptools import setup
 

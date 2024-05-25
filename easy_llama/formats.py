@@ -16,8 +16,8 @@ class AdvancedFormat:
     def __getitem__(self, key: str) -> Any:
         if key in self.overrides:
             # return the result of the override function as though it
-            # were the value of the key - must be able to cast to string
-            return str(self.overrides[key]())
+            # were the value of the key
+            return self.overrides[key]()
         elif key in self._base_dict:
             return self._base_dict[key]
         else:

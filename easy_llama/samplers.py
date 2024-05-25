@@ -136,13 +136,13 @@ StrictMinPSampling = SamplerSettings(
 # https://arxiv.org/abs/2210.14140
 ContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.4
+    presence_penalty = 0.6
 )
 
 # https://arxiv.org/abs/2210.14140
 WarmContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.8
+    presence_penalty = 1.0
 )
 
 # outputs completely random tokens from vocab (useless)
