@@ -234,6 +234,8 @@ While text is being generated, press `^C` to interrupt the bot. Then you have th
 
 At the prompt, press `^C` to end the chat session.
 
+End your input with a backslash `\` for multi-line input.
+
 Type `!` and press `ENTER` to enter a basic command prompt. For a list of commands, type `help` at this prompt.
 
 Type `<` and press `ENTER` to prefix the bot's next message, for example with `Sure!`.

@@ -4,6 +4,7 @@ from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing convenience functions and GGUFReader"""
 
+import os
 import sys
 import numpy as np
 
@@ -155,6 +156,10 @@ def softmax(z: _ArrayLike) -> np.ndarray:
 
 def cls() -> None:
     """Clear the terminal"""
+    if os.name == 'nt':
+        os.system('cls')
+    else:
+        os.system('clear')
     print("\033c\033[3J", end='', flush=True)
 
 # not used by default, but useful as a feature of an AdvancedFormat

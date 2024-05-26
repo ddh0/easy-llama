@@ -6,12 +6,15 @@ from ._version import __version__, __llama_cpp_version__
 
 from typing import Callable, Union, Any
 
+from .utils import assert_type
+
 
 class AdvancedFormat:
 
     def __init__(self, base_dict: dict[str, Union[str, list]]):
-        self._base_dict = base_dict
-        self.overrides = {}
+        assert_type(base_dict, dict, 'base_dict', 'AdvancedFormat')
+        self._base_dict: dict[str, Union[str, list]] = base_dict
+        self.overrides: dict[str, Callable] = {}
     
     def __getitem__(self, key: str) -> Any:
         if key in self.overrides:
@@ -27,16 +30,22 @@ class AdvancedFormat:
             )
     
     def __repr__(self) -> str:
-        return f'<AdvancedFormat object with {len(self.keys())} keys, {len(self.overrides)} overridden>'
+        return f'AdvancedFormat({repr(self._get_literal_dict_())})'
     
-    def keys(self) -> set:
+    def _get_literal_dict_(self) -> dict[str, Union[str, list, Callable]]:
+        literal_dict: dict[str, Union[str, list, Callable]] = self._base_dict
+        for k in self.overrides:
+            literal_dict[k] = self.overrides[k]
+        return literal_dict
+    
+    def keys(self) -> set[str]:
         # set containing all keys from both base_dict and overrides
         return set(self._base_dict.keys()).union(set(self.overrides.keys()))
     
-    def values(self) -> list:
+    def values(self) -> list[Any]:
         return [self[key] for key in self.keys()]
     
-    def items(self) -> list[tuple]:
+    def items(self) -> list[tuple[str, Any]]:
         return [(key, self[key]) for key in self.keys()]
     
     def override(self, key: str, fn: Callable) -> None:
@@ -54,7 +63,7 @@ class AdvancedFormat:
 
 def wrap(
     prompt: str,
-    format: dict[str, Union[str, list]]
+    format: Union[dict[str, Union[str, list]], AdvancedFormat]
 ) -> str:
     """Wrap a given string in any prompt format for single-turn completion"""
     return format['system_prefix'] + \

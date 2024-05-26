@@ -31,11 +31,11 @@ class Message(dict):
 
     def __repr__(self) -> str:
         return \
-            f"Message([" \
-            f"('role', {repr(self['role'])}), " \
-            f"('prefix', {repr(self['prefix'])}), " \
-            f"('content', {repr(self['content'])}), " \
-            f"('suffix', {repr(self['suffix'])})])"
+            f"Message({{" \
+            f"'role': {repr(self['role'])}, " \
+            f"'prefix': {repr(self['prefix'])}, " \
+            f"'content': {repr(self['content'])}, " \
+            f"'suffix': {repr(self['suffix'])}}})"
 
     def as_string(self):
         """Return the full message string"""
@@ -176,10 +176,9 @@ class Thread:
             # the format, which is already represented
             return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
                    f"{repr(self.sampler)})"
-        else:
-            # represent all messages, potentially including a system message
-            return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
-                   f"{repr(self.sampler)}, {repr(self.messages)})"
+        # represent all messages, potentially including a system message
+        return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
+                f"{repr(self.sampler)}, {repr(self.messages)})"
     
     def __str__(self) -> str:
         return self.as_string()
@@ -559,6 +558,8 @@ class Thread:
         another message.
 
         At the prompt, press `^C` to end the chat session.
+
+        End your input with a backslash `\\` for multi-line input.
 
         Type `!` and press `ENTER` to enter a basic command prompt. For a list
         of  commands, type `help` at this prompt.
