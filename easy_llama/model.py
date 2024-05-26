@@ -11,6 +11,7 @@ from .utils import (
     _SupportsWriteAndFlush,
     print_warning,
     print_verbose,
+    assert_type,
     GGUFReader,
     softmax
 )
@@ -89,16 +90,19 @@ class Model:
             print_verbose(f"easy_llama package version: {__version__}")
             print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
 
-        assert isinstance(model_path, str), \
-            f"Model: model_path should be a string, not {type(model_path)}"
-        assert exists(model_path), \
-            f"Model: the given model_path '{model_path}' does not exist"
-        assert not isdir(model_path), \
-            f"Model: the given model_path '{model_path}' is a directory, not a GGUF file"
-        assert isinstance(context_length, (int, type(None))), \
-            f"Model: context_length should be int or None, not {type(context_length)}"
-        assert isinstance(flash_attn, bool), \
-            f"Model: flash_attn should be bool (True or False), not {type(flash_attn)}"
+        assert_type(model_path, str, 'model_path', 'Model')
+        if not exists(model_path):
+            raise FileNotFoundError(
+                f"Model: the given model_path '{model_path}' does not exist"
+            )
+        if isdir(model_path):
+            raise IsADirectoryError(
+                f"Model: the given model_path '{model_path}' is a directory, not a GGUF file"
+            )
+        assert_type(context_length, (int, type(None)), 'context_length', 'Model')
+        assert_type(flash_attn, bool, 'flash_attn', 'Model')
+        assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
+        assert_type(verbose, bool, 'verbose', 'Model')
         
         # save __init__ parameters for __repr__
         self._model_path = model_path
@@ -401,16 +405,13 @@ class Model:
         - stops: A list of strings and/or token IDs at which to end the generation early
         - sampler: The SamplerSettings object used to control text generation
         """
-
-        assert isinstance(prompt, (str, list)), \
-            f"generate: prompt should be string or list[int], not {type(prompt)}"
+        assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
-            assert all(isinstance(tok, int) for tok in prompt), \
-                "generate: some token in prompt is not an integer"
-        assert isinstance(stops, list), \
-            f"generate: parameter `stops` should be a list, not {type(stops)}"
-        assert all(isinstance(item, (str, int)) for item in stops), \
-            f"generate: some item in parameter `stops` is not a string or int"
+            for tok in prompt:
+                assert_type(tok, int, 'token', 'generate')
+        assert_type(stops, list, 'stops', 'generate')
+        for item in stops:
+            assert_type(item, (str, int), 'item', 'generate')
 
         if self.verbose:
             print_verbose(f'using the following sampler settings for Model.generate:')
@@ -484,15 +485,13 @@ class Model:
         - sampler: The SamplerSettings object used to control text generation
         """
 
-        assert isinstance(prompt, (str, list)), \
-            f"stream: prompt should be string or list[int], not {type(prompt)}"
+        assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):
-            assert all(isinstance(tok, int) for tok in prompt), \
-                "stream: some token in prompt is not an integer"
-        assert isinstance(stops, list), \
-            f"stream: parameter `stops` should be a list, not {type(stops)}"
-        assert all(isinstance(item, (str, int)) for item in stops), \
-            f"stream: some item in parameter `stops` is not a string or int"
+            for tok in prompt:
+                assert_type(tok, int, 'token', 'stream')
+        assert_type(stops, list, 'stops', 'stream')
+        for item in stops:
+            assert_type(item, (str, int), 'item', 'stream')
 
         if self.verbose:
             print_verbose(f'using the following sampler settings for Model.stream:')
@@ -621,12 +620,12 @@ class Model:
         normalized probabilities
         """
 
-        assert isinstance(prompt, str), \
-            f"next_candidates: prompt should be str, not {type(prompt)}"
-        assert isinstance(k, int), \
-            f"next_candidates: k should be int, not {type(k)}"
-        assert 0 < k <= len(self.tokens), \
-            f"next_candidates: k should be between 0 and {len(self.tokens)}"
+        assert_type(prompt, str, 'prompt', 'candidates')
+        assert_type(k, int, 'k', 'candidates')
+        if not 0 < k <= len(self.tokens):
+            raise ValueError(
+                f"candidates: k should be between 0 and {len(self.tokens)}"
+            )
 
         assert_model_is_loaded(self)
         prompt_tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))

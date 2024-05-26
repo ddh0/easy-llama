@@ -6,6 +6,8 @@ from ._version import __version__, __llama_cpp_version__
 
 from sys import maxsize
 
+from .utils import assert_type
+
 
 MAX_TEMP = float(maxsize)
 
@@ -53,25 +55,24 @@ class SamplerSettings:
         self.top_k             = top_k
 
         for sampler_param in SamplerSettings.ParamTypes:
-            expected_type = SamplerSettings.ParamTypes[sampler_param]
-            actual_type = type(getattr(self, sampler_param))
-            if actual_type != expected_type:
-                raise TypeError(
-                    f"wrong type for SamplerSettings parameter '{sampler_param}'"
-                    f" - expected {expected_type}, got {actual_type}"
-                )
+            assert_type(
+                getattr(self, sampler_param),
+                SamplerSettings.ParamTypes[sampler_param],
+                f'{sampler_param} parameter',
+                'SamplerSettings'
+            )
     
     def __repr__(self) -> str:
-        repr_str = 'SamplerSettings('
-        repr_str += f'max_len_tokens={self.max_len_tokens}, '
-        repr_str += f'temp={self.temp}, '
-        repr_str += f'top_p={self.top_p}, '
-        repr_str += f'min_p={self.min_p}, '
-        repr_str += f'frequency_penalty={self.frequency_penalty}, '
-        repr_str += f'presence_penalty={self.presence_penalty}, '
-        repr_str += f'repeat_penalty={self.repeat_penalty}, '
-        repr_str += f'top_k={self.top_k})'
-        return repr_str
+        return \
+            'SamplerSettings(' \
+            f'max_len_tokens={self.max_len_tokens}, ' \
+            f'temp={self.temp}, ' \
+            f'top_p={self.top_p}, ' \
+            f'min_p={self.min_p}, ' \
+            f'frequency_penalty={self.frequency_penalty}, ' \
+            f'presence_penalty={self.presence_penalty}, ' \
+            f'repeat_penalty={self.repeat_penalty}, ' \
+            f'top_k={self.top_k})'
 
 # most likely token is always chosen
 GreedyDecoding = SamplerSettings(

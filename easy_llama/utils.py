@@ -16,10 +16,10 @@ from colorama import Fore
 
 # color codes used in Thread.interact()
 RESET_ALL = Fore.RESET
-USER_STYLE = RESET_ALL + Fore.GREEN
-BOT_STYLE = RESET_ALL + Fore.CYAN
-DIM_STYLE = RESET_ALL + Fore.LIGHTBLACK_EX
-SPECIAL_STYLE = RESET_ALL + Fore.YELLOW
+USER_STYLE = Fore.RESET + Fore.GREEN
+BOT_STYLE = Fore.RESET + Fore.CYAN
+DIM_STYLE = Fore.RESET + Fore.LIGHTBLACK_EX
+SPECIAL_STYLE = Fore.RESET + Fore.YELLOW
 
 # for typing of softmax parameter `z`
 class _ArrayLike(Iterable):
@@ -173,3 +173,31 @@ def print_info(text: str) -> None:
 
 def print_warning(text: str) -> None:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)
+
+def assert_type(
+    something: Any,
+    expected_type: Any,
+    something_repr: str,
+    code_location: str,
+):
+    """
+    Ensure that `something` is an instance of `expected_type`
+
+    If `expected_type` is a tuple, ensure that `something` is an instance of
+    some item in the tuple
+
+    Raise TypeError otherwise, using `something_repr` and `code_location` to
+    make an informative exception message
+    """
+    if isinstance(something, expected_type):
+        return
+    else:
+        if not isinstance(expected_type, tuple):
+            raise TypeError(
+                f"{code_location}: {something_repr} should be an instance of "
+                f"{expected_type}, not {type(something)}"
+            )
+        raise TypeError(
+            f"{code_location}: {something_repr} should be one of "
+            f"{expected_type}, not {type(something)}"
+        )

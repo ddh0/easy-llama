@@ -7,7 +7,7 @@ from ._version import __version__, __llama_cpp_version__
 import sys
 
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
-from .utils    import RESET_ALL, cls, print_verbose, truncate
+from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type
 from .samplers import SamplerSettings, DefaultSampling
 from typing    import Optional, Literal, Union
 from .formats  import AdvancedFormat
@@ -94,26 +94,28 @@ class Thread:
         - messages: A list of ez.thread.Message objects to add to the Thread upon construction
         """
         
-        assert isinstance(model, Model), \
-            "Thread: model should be an " + \
-            f"instance of easy_llama.Model, not {type(model)}"
-        
+        assert_type(model, Model, 'model', 'Thread')
         assert_model_is_loaded(model)
-
-        assert isinstance(format, (dict, AdvancedFormat)), \
-            f"Thread: format should be dict or AdvancedFormat, not {type(format)}"
+        assert_type(format, (dict, AdvancedFormat), 'format', 'Thread')
         
-        if any(k not in format.keys() for k in formats_blank.keys()):
+        _format_keys = format.keys() # only read once
+
+        if 'system_prompt' not in _format_keys and 'system_content' in _format_keys:
+            raise KeyError(
+                "Thread: format uses deprecated 'system_content' key instead "
+                "of the expected 'system_prompt' key - please update your "
+                "code accordingly"
+            )
+
+        if any(k not in _format_keys for k in formats_blank.keys()):
             raise KeyError(
                 "Thread: format is missing one or more required keys, see " + \
                 "easy_llama.formats.blank for an example"
             )
-
-        assert isinstance(format['stops'], list), \
-            "Thread: format['stops'] should be list, not " + \
-            f"{type(format['stops'])}"
         
-        assert all(
+        assert_type(format['stops'], list, "format['stops']", 'Thread')
+        
+        if not all(
             hasattr(sampler, attr) for attr in [
                 'max_len_tokens',
                 'temp',
@@ -124,7 +126,10 @@ class Thread:
                 'repeat_penalty',
                 'top_k'
             ]
-        ), 'Thread: sampler is missing one or more required attributes'
+        ):
+            raise AttributeError(
+                'Thread: sampler is missing one or more required attributes'
+            )
 
         self._messages: Optional[list[Message]] = messages
         if self._messages is not None:
@@ -169,13 +174,12 @@ class Thread:
         if len(self.messages) == 1 and self.messages[0]['role'] == 'system':
             # do not represent it because it is constructed based on
             # the format, which is already represented
-            repr_str = f"Thread({repr(self.model)}, {repr(self.format)}, " + \
-                       f"{repr(self.sampler)})"
+            return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
+                   f"{repr(self.sampler)})"
         else:
             # represent all messages, potentially including a system message
-            repr_str = f"Thread({repr(self.model)}, {repr(self.format)}, " + \
-                       f"{repr(self.sampler)}, {repr(self.messages)})"
-        return repr_str
+            return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
+                   f"{repr(self.sampler)}, {repr(self.messages)})"
     
     def __str__(self) -> str:
         return self.as_string()
@@ -197,11 +201,13 @@ class Thread:
         Construct a message using the format of this Thread
         """
 
-        assert role.lower() in ['system', 'user', 'bot'], \
-            f"create_message: role should be 'system', 'user', or 'bot', not '{role.lower()}'"
+        if not role.lower() in ['system', 'user', 'bot']:
+            raise ValueError(
+                f"create_message: role should be 'system', 'user', or 'bot', "
+                f"not '{role.lower()}'"
+            )
 
-        assert isinstance(content, str), \
-            f"create_message: content should be str, not {type(content)}"
+        assert_type(content, str, 'content', 'create_message')
 
         if role.lower() == 'system':
             return Message(
