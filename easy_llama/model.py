@@ -121,12 +121,11 @@ class Model:
         # metadata to determine some parameters of the Llama instance
         # before it is created
         self.metadata = GGUFReader.load_metadata(self, model_path)
-        metadata_keys = self.metadata.keys() # only read once
 
         n_ctx_train = None
         rope_freq_base_train = None
 
-        for key in metadata_keys:
+        for key in self.metadata.keys():
             if key.endswith('.context_length'):
                 n_ctx_train = self.metadata[key]
             if key.endswith('.rope.freq_base'):
