@@ -19,7 +19,7 @@ class SamplerSettings:
     `Model.stream_print()`.
     """
 
-    ParamTypes: dict[str, type] = {
+    param_types: dict[str, type] = {
         'max_len_tokens':    int,
         'temp':              float,
         'top_p':             float,
@@ -54,10 +54,10 @@ class SamplerSettings:
         self.repeat_penalty    = repeat_penalty
         self.top_k             = top_k
 
-        for sampler_param in SamplerSettings.ParamTypes:
+        for sampler_param in SamplerSettings.param_types:
             assert_type(
                 getattr(self, sampler_param),
-                SamplerSettings.ParamTypes[sampler_param],
+                SamplerSettings.param_types[sampler_param],
                 f'{sampler_param} parameter',
                 'SamplerSettings'
             )

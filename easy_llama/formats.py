@@ -13,6 +13,13 @@ class AdvancedFormat:
 
     def __init__(self, base_dict: dict[str, Union[str, list]]):
         assert_type(base_dict, dict, 'base_dict', 'AdvancedFormat')
+        _base_dict_keys = base_dict.keys() # only read once
+        if 'system_prompt' not in _base_dict_keys and 'system_content' in _base_dict_keys:
+            raise KeyError(
+                "AdvancedFormat: base_dict uses deprecated 'system_content' "
+                "key instead of the expected 'system_prompt' key - please "
+                "update your code accordingly"
+            )
         self._base_dict: dict[str, Union[str, list]] = base_dict
         self.overrides: dict[str, Callable] = {}
     

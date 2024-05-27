@@ -31,11 +31,12 @@ class Message(dict):
 
     def __repr__(self) -> str:
         return \
-            f"Message({{" \
+            "Message({" \
             f"'role': {repr(self['role'])}, " \
             f"'prefix': {repr(self['prefix'])}, " \
             f"'content': {repr(self['content'])}, " \
-            f"'suffix': {repr(self['suffix'])}}})"
+            f"'suffix': {repr(self['suffix'])}" \
+            "})"
 
     def as_string(self):
         """Return the full message string"""
@@ -210,39 +211,40 @@ class Thread:
 
         if role.lower() == 'system':
             return Message(
-                [
-                    ('role', 'system'),
-                    ('prefix', self.format['system_prefix']),
-                    ('content', content),
-                    ('suffix', self.format['system_suffix'])
-                ]
+                {
+                    'role': 'system',
+                    'prefix': self.format['system_prefix'],
+                    'content': content,
+                    'suffix': self.format['system_suffix']
+                }
             )
         
         elif role.lower() == 'user':
             return Message(
-                [
-                    ('role', 'user'),
-                    ('prefix', self.format['user_prefix']),
-                    ('content', content),
-                    ('suffix', self.format['user_suffix'])
-                ]
+                {
+                    'role': 'user',
+                    'prefix': self.format['user_prefix'],
+                    'content': content,
+                    'suffix': self.format['user_suffix']
+                }
             )
         
         elif role.lower() == 'bot':
             return Message(
-                [
-                    ('role', 'bot'),
-                    ('prefix', self.format['bot_prefix']),
-                    ('content', content),
-                    ('suffix', self.format['bot_suffix'])
-                ]
+                {
+                    'role': 'bot',
+                    'prefix': self.format['bot_prefix'],
+                    'content': content,
+                    'suffix': self.format['bot_suffix']
+                }
             )
     
     def len_messages(self) -> int:
         """
         Return the total length of all messages in this thread, in tokens.
         
-        Can also use `len(Thread)`."""
+        Equivalent to `len(Thread)`.
+        """
 
         return self.model.get_length(self.as_string())
 

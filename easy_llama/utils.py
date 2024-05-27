@@ -8,7 +8,7 @@ import os
 import sys
 import numpy as np
 
-from typing   import Any, Iterable, TextIO
+from typing   import Any, Iterable, TextIO, Optional
 from time     import strftime
 from enum     import IntEnum
 from struct   import unpack
@@ -160,7 +160,7 @@ def cls() -> None:
         os.system('cls')
     else:
         os.system('clear')
-    print("\033c\033[3J", end='', flush=True)
+        print("\033c\033[3J", end='', flush=True)
 
 # not used by default, but useful as a feature of an AdvancedFormat
 def get_timestamp_str() -> str:
@@ -184,6 +184,7 @@ def assert_type(
     expected_type: Any,
     something_repr: str,
     code_location: str,
+    hint: Optional[str] = None
 ):
     """
     Ensure that `something` is an instance of `expected_type`
@@ -193,16 +194,24 @@ def assert_type(
 
     Raise TypeError otherwise, using `something_repr` and `code_location` to
     make an informative exception message
+
+    If specified, `hint` is added as a note to the exception
     """
     if isinstance(something, expected_type):
         return
     else:
         if not isinstance(expected_type, tuple):
-            raise TypeError(
+            exc = TypeError(
                 f"{code_location}: {something_repr} should be an instance of "
                 f"{expected_type}, not {type(something)}"
             )
-        raise TypeError(
+            if hint is not None:
+                exc.add_note(hint)
+            raise exc
+        exc = TypeError(
             f"{code_location}: {something_repr} should be one of "
             f"{expected_type}, not {type(something)}"
         )
+        if hint is not None:
+            exc.add_note(hint)
+        raise exc

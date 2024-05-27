@@ -97,7 +97,8 @@ class Model:
             )
         if isdir(model_path):
             raise IsADirectoryError(
-                f"Model: the given model_path '{model_path}' is a directory, not a GGUF file"
+                f"Model: the given model_path '{model_path}' is a directory, "
+                "not a GGUF file"
             )
         assert_type(context_length, (int, type(None)), 'context_length', 'Model')
         assert_type(flash_attn, bool, 'flash_attn', 'Model')
@@ -123,21 +124,18 @@ class Model:
         metadata_keys = self.metadata.keys() # only read once
 
         n_ctx_train = None
+        rope_freq_base_train = None
+
         for key in metadata_keys:
             if key.endswith('.context_length'):
                 n_ctx_train = self.metadata[key]
-                break
+            if key.endswith('.rope.freq_base'):
+                rope_freq_base_train = self.metadata[key]
 
         if n_ctx_train is None:
             raise KeyError(
                 "GGUF file does not specify a context length"
             )
-        
-        rope_freq_base_train = None
-        for key in metadata_keys:
-            if key.endswith('.rope.freq_base'):
-                rope_freq_base_train = self.metadata[key]
-                break
 
         if rope_freq_base_train is None and context_length is not None:
             if context_length > n_ctx_train:
@@ -165,7 +163,7 @@ class Model:
             rope_freq_base = (context_length/n_ctx_train)*rope_freq_base_train
             self.context_length = context_length
             
-            if self.verbose:
+            if verbose:
                 print_verbose(
                     'chosen context length is greater than native context '
                     f'length ({context_length} > {n_ctx_train}), '
@@ -190,28 +188,6 @@ class Model:
                     'loading model with 8x native context length or more, '
                     'expect SIGNIFICANT loss of quality'
                 )
-        
-        try:
-            self.tokens: list[str] = self.metadata['tokenizer.ggml.tokens']
-        except KeyError:
-            print_warning(
-                "could not set Model.tokens, defaulting to None"
-            )
-            self.tokens = None
-        try:
-            self.bos_token: int = self.metadata['tokenizer.ggml.bos_token_id']
-        except KeyError:
-            print_warning(
-                "could not set Model.bos_token, defaulting to None"
-            )
-            self.bos_token = None
-        try:
-            self.eos_token: int = self.metadata['tokenizer.ggml.eos_token_id']
-        except KeyError:
-            print_warning(
-                "could not set Model.eos_token, defaulting to None"
-            )
-            self.eos_token = None
 
         cpu_count = os_cpu_count()
 
@@ -251,10 +227,34 @@ class Model:
             #type_v=8,
             verbose=verbose
         )
+
+        # Llama.metadata does not include tokenizer.ggml.tokens for some reason
+        try:
+            self.tokens: list[str] = self.metadata['tokenizer.ggml.tokens']
+        except KeyError:
+            print_warning(
+                "could not set Model.tokens, defaulting to None"
+            )
+            self.tokens = None
         
         # once model is loaded, replace metadata (as read using internal class)
         # with metadata (as read using the more robust llama-cpp-python code) 
         self.metadata = self.llama.metadata
+
+        try:
+            self.bos_token: int = self.metadata['tokenizer.ggml.bos_token_id']
+        except KeyError:
+            print_warning(
+                "could not set Model.bos_token, defaulting to None"
+            )
+            self.bos_token = None
+        try:
+            self.eos_token: int = self.metadata['tokenizer.ggml.eos_token_id']
+        except KeyError:
+            print_warning(
+                "could not set Model.eos_token, defaulting to None"
+            )
+            self.eos_token = None
 
         # expose these values because they may be useful / informative
         self.n_ctx_train = n_ctx_train
@@ -331,7 +331,6 @@ class Model:
         text: str,
         overwrite: Optional[str] = None
     ) -> str:
-
         """
         Trim the given text to the context length of this model,
         leaving room for two extra tokens.
@@ -343,8 +342,9 @@ class Model:
         Does nothing if the text is equal to or shorter than
         (context_length - 2).
         """
-        assert_model_is_loaded(self)
+
         trim_length = self.context_length - 2
+        assert_model_is_loaded(self)
         tokens_list = self.llama.tokenize(
             text.encode("utf-8", errors="ignore")
         )
@@ -408,7 +408,13 @@ class Model:
         assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
             for tok in prompt:
-                assert_type(tok, int, 'token', 'generate')
+                assert_type(
+                    tok,
+                    int,
+                    'token',
+                    'generate',
+                    'Some item in the list of prompt tokens is not an integer'
+                )
         assert_type(stops, list, 'stops', 'generate')
         for item in stops:
             assert_type(item, (str, int), 'item', 'generate')
@@ -488,7 +494,13 @@ class Model:
         assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):
             for tok in prompt:
-                assert_type(tok, int, 'token', 'stream')
+                assert_type(
+                    tok,
+                    int,
+                    'token',
+                    'stream',
+                    'Some item in the list of prompt tokens is not an integer'
+                )
         assert_type(stops, list, 'stops', 'stream')
         for item in stops:
             assert_type(item, (str, int), 'item', 'stream')
