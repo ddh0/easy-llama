@@ -37,7 +37,7 @@ class AdvancedFormat:
             )
     
     def __repr__(self) -> str:
-        return f'AdvancedFormat({repr(self._get_literal_dict_())})'
+        return f'AdvancedFormat({self._get_literal_dict_()!r})'
     
     def _get_literal_dict_(self) -> dict[str, Union[str, list, Callable]]:
         literal_dict: dict[str, Union[str, list, Callable]] = self._base_dict

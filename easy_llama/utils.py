@@ -8,7 +8,7 @@ import os
 import sys
 import numpy as np
 
-from typing   import Any, Iterable, TextIO, Optional
+from typing   import Any, Iterable, TextIO, Optional, Union
 from time     import strftime
 from enum     import IntEnum
 from struct   import unpack
@@ -181,7 +181,7 @@ def print_warning(text: str) -> None:
 
 def assert_type(
     something: Any,
-    expected_type: Any,
+    expected_type: Union[type, tuple[type]],
     something_repr: str,
     code_location: str,
     hint: Optional[str] = None
@@ -190,7 +190,7 @@ def assert_type(
     Ensure that `something` is an instance of `expected_type`
 
     If `expected_type` is a tuple, ensure that `something` is an instance of
-    some item in the tuple
+    some type in the tuple
 
     Raise TypeError otherwise, using `something_repr` and `code_location` to
     make an informative exception message
@@ -199,19 +199,28 @@ def assert_type(
     """
     if isinstance(something, expected_type):
         return
-    else:
-        if not isinstance(expected_type, tuple):
-            exc = TypeError(
-                f"{code_location}: {something_repr} should be an instance of "
-                f"{expected_type}, not {type(something)}"
-            )
-            if hint is not None:
-                exc.add_note(hint)
-            raise exc
+    
+    type_something_repr = repr(type(something).__name__)
+
+    if not isinstance(expected_type, tuple):
+        expected_type_repr = repr(expected_type.__name__)
         exc = TypeError(
-            f"{code_location}: {something_repr} should be one of "
-            f"{expected_type}, not {type(something)}"
+            f"{code_location}: {something_repr} should be an instance of "
+            f"{expected_type_repr}, not {type_something_repr}"
         )
+
         if hint is not None:
             exc.add_note(hint)
+        
         raise exc
+    
+    expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
+    exc = TypeError(
+        f"{code_location}: {something_repr} should be one of "
+        f"{expected_type_repr}, not {type_something_repr}"
+    )
+
+    if hint is not None:
+        exc.add_note(hint)
+
+    raise exc

@@ -92,16 +92,16 @@ SimpleSampling = SamplerSettings(
 
 # reflects old llama.cpp defaults
 ClassicSampling = SamplerSettings(
-    min_p=0.0,
+    min_p = 0.0,
     repeat_penalty = 1.1
 )
 
 # halfway between DefaultSampling and SimpleSampling
 SemiSampling = SamplerSettings(
-    temp=0.9,
-    top_p=0.975,
-    min_p=0.025,
-    top_k=80
+    temp = 0.9,
+    top_p = 0.975,
+    min_p = 0.025,
+    top_k = 80
 )
 
 # for models with large vocabulary, which tend to run hot

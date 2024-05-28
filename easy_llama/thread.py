@@ -32,14 +32,14 @@ class Message(dict):
     def __repr__(self) -> str:
         return \
             "Message({" \
-            f"'role': {repr(self['role'])}, " \
-            f"'prefix': {repr(self['prefix'])}, " \
-            f"'content': {repr(self['content'])}, " \
-            f"'suffix': {repr(self['suffix'])}" \
+            f"'role': {self['role']!r}, " \
+            f"'prefix': {self['prefix']!r}, " \
+            f"'content': {self['content']!r}, " \
+            f"'suffix': {self['suffix']!r}" \
             "})"
 
     def as_string(self):
-        """Return the full message string"""
+        """Return the full message string (prefix + content + suffix)"""
         try:
             return self['prefix'] + self['content'] + self['suffix']
         except KeyError as e:
@@ -116,21 +116,15 @@ class Thread:
         
         assert_type(format['stops'], list, "format['stops']", 'Thread')
         
-        if not all(
-            hasattr(sampler, attr) for attr in [
-                'max_len_tokens',
-                'temp',
-                'top_p',
-                'min_p',
-                'frequency_penalty',
-                'presence_penalty',
-                'repeat_penalty',
-                'top_k'
-            ]
-        ):
-            raise AttributeError(
+        if not all(hasattr(sampler, attr) for attr in SamplerSettings.param_types):
+            exc = AttributeError(
                 'Thread: sampler is missing one or more required attributes'
             )
+            exc.add_note(
+                "Are you sure the specified sampler is really an instance of "
+                "ez.samplers.SamplerSettings?"
+            )
+            raise exc
 
         self._messages: Optional[list[Message]] = messages
         if self._messages is not None:
@@ -175,11 +169,11 @@ class Thread:
         if len(self.messages) == 1 and self.messages[0]['role'] == 'system':
             # do not represent it because it is constructed based on
             # the format, which is already represented
-            return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
-                   f"{repr(self.sampler)})"
+            return f"Thread({self.model!r}, {self.format!r}, " + \
+                   f"{self.sampler!r})"
         # represent all messages, potentially including a system message
-        return f"Thread({repr(self.model)}, {repr(self.format)}, " + \
-                f"{repr(self.sampler)}, {repr(self.messages)})"
+        return f"Thread({self.model!r}, {self.format!r}, " + \
+                f"{self.sampler!r}, {self.messages!r})"
     
     def __str__(self) -> str:
         return self.as_string()
@@ -204,7 +198,7 @@ class Thread:
         if not role.lower() in ['system', 'user', 'bot']:
             raise ValueError(
                 f"create_message: role should be 'system', 'user', or 'bot', "
-                f"not '{role.lower()}'"
+                f"not {role.lower()!r}"
             )
 
         assert_type(content, str, 'content', 'create_message')
@@ -674,8 +668,7 @@ class Thread:
 
     def reset(self) -> None:
         """
-        Clear the list of messages, which resets the thread to its original
-        state
+        Reset Thread.messages to its original state
         """
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_prompt'])
@@ -699,9 +692,10 @@ class Thread:
         """Print stats about the context usage in this thread"""
         thread_len_tokens = self.len_messages()
         max_ctx_len = self.model.context_length
-        context_used_percentage = round((thread_len_tokens/max_ctx_len)*100)
+        # ctx_used_pct may be > 100, see inference_str_from_messages for details
+        ctx_used_pct = round((thread_len_tokens/max_ctx_len)*100)
         print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file, flush=flush)
-        print(f"{context_used_percentage}% of context used", file=file, flush=flush)
+        print(f"{ctx_used_pct}% of context used", file=file, flush=flush)
         print(f"{len(self.messages)} messages", end=end, file=file, flush=flush)
         if not flush:
             file.flush()

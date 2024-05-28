@@ -277,7 +277,7 @@ class Model:
     
     def __repr__(self) -> str:
         return \
-            f"Model({repr(self._model_path)}, " + \
+            f"Model({self._model_path!r}, " + \
             f"context_length={self._context_length}, " + \
             f"n_gpu_layers={self._n_gpu_layers}, " + \
             f"offload_kqv={self._offload_kqv}, "+ \
@@ -648,7 +648,7 @@ class Model:
         # len(self.llama.scores[i]) == len(self.tokens)
         
         # normalize scores with softmax
-        # must normalize over all tokens in vocab, not just top k
+        # must normalize over all logits, not just top k
         if self.verbose:
             print_verbose(f'calculating softmax over {len(scores)} values')
         normalized_scores: list[np.floating] = list(softmax(scores))
