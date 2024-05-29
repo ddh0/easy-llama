@@ -32,7 +32,7 @@ class AdvancedFormat:
             return self._base_dict[key]
         else:
             raise KeyError(
-                f'AdvancedFormat: The specified key {repr(key)} was not found '
+                f'AdvancedFormat: The specified key {key!r} was not found '
                 'in self.overrides or self._base_dict'
             )
     

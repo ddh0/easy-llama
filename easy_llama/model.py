@@ -324,57 +324,6 @@ class Model:
             delattr(self, 'llama')
         if self.verbose:
             print_verbose('Model unloaded')
-    
-    def trim(
-        self,
-        text: str,
-        overwrite: Optional[str] = None
-    ) -> str:
-        """
-        Trim the given text to the context length of this model,
-        leaving room for two extra tokens.
-
-        Optionally overwrite the oldest tokens with the text given in the
-        `overwrite` parameter, which may be useful for keeping some
-        information in context.
-
-        Does nothing if the text is equal to or shorter than
-        (context_length - 2).
-        """
-
-        trim_length = self.context_length - 2
-        assert_model_is_loaded(self)
-        tokens_list = self.llama.tokenize(
-            text.encode("utf-8", errors="ignore")
-        )
-
-        if len(tokens_list) <= trim_length:
-            if overwrite is not None:
-                text[0 : len(overwrite)] = overwrite
-            return text
-
-        if len(tokens_list) > trim_length and overwrite is None:
-            # cut to trim_length
-            tokens_list = tokens_list[-trim_length:]
-            return self.llama.detokenize(tokens_list).decode(
-                "utf-8",
-                errors="ignore"
-            )
-
-        if len(tokens_list) > trim_length and overwrite is not None:
-            # cut to trim_length
-            tokens_list = tokens_list[-trim_length:]
-            overwrite_tokens = self.llama.tokenize(overwrite.encode(
-                "utf-8",
-                errors="ignore"
-                )
-            )
-            # overwrite oldest tokens
-            tokens_list[0 : len(overwrite_tokens)] = overwrite_tokens
-            return self.llama.detokenize(tokens_list).decode(
-                "utf-8",
-                errors="ignore"
-            )
 
     def get_length(self, text: str) -> int:
         """
@@ -410,13 +359,17 @@ class Model:
                 assert_type(
                     tok,
                     int,
-                    'token',
+                    'some item in the list of prompt tokens',
                     'generate',
-                    'Some item in the list of prompt tokens is not an integer'
                 )
         assert_type(stops, list, 'stops', 'generate')
         for item in stops:
-            assert_type(item, (str, int), 'item', 'generate')
+            assert_type(
+                item,
+                (str, int),
+                "some item in parameter 'stops'",
+                'generate'
+            )
 
         if self.verbose:
             print_verbose(f'using the following sampler settings for Model.generate:')
@@ -496,13 +449,17 @@ class Model:
                 assert_type(
                     tok,
                     int,
-                    'token',
-                    'stream',
-                    'Some item in the list of prompt tokens is not an integer'
+                    'some item in the list of prompt tokens',
+                    'stream'
                 )
         assert_type(stops, list, 'stops', 'stream')
         for item in stops:
-            assert_type(item, (str, int), 'item', 'stream')
+            assert_type(
+                item,
+                (str, int),
+                "some item in parameter 'stops'",
+                'stream'
+            )
 
         if self.verbose:
             print_verbose(f'using the following sampler settings for Model.stream:')
@@ -566,18 +523,9 @@ class Model:
         flush: bool = True
     ) -> str:
         """
-        Given a prompt, stream text as it is generated, and return the generated string.
-        The returned string does not include the `end` parameter.
-
-        `Model.stream_print(...)` is a shorthand for:
-        
-        ```
-        s = Model.stream(prompt, stops=stops, sampler=sampler)
-        for i in s:
-            tok = i['choices'][0]['text']
-            print(tok, end='', file=file, flush=flush)
-        print(end, end='', file=file, flush=True)
-        ```
+        Given a prompt, stream text to a file as it is generated, and return
+        the generated string. The returned string does not include the `end`
+        parameter.
 
         prompt: The text from which to generate
 
@@ -669,7 +617,6 @@ class Model:
         prompt: str,
         k: int,
         file: _SupportsWriteAndFlush = sys.stdout,
-        flush: bool = False
     ) -> None:
         """
         Like `Model.candidates()`, but print the values instead
@@ -678,15 +625,9 @@ class Model:
 
         for _tuple in self.candidates(prompt, k):
             print(
-                f"token {repr(_tuple[0])} has probability {_tuple[1]}",
+                f"token {_tuple[0]!r} has probability {_tuple[1]}",
                 file=file,
-                flush=flush
             )
-        
-        # if flush is False, then so far file is not flushed, but it should
-        # always be flushed at the end of printing
-        if not flush:
-            file.flush()
 
 
 def assert_model_is_loaded(model: Model) -> None:

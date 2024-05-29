@@ -71,16 +71,6 @@ Mistral.unload()
 Mistral.generate('The girl walked down')
 ```
 
-## `Model.trim() -> str`
-
-Trim the given text to the context length of the Model, leaving room for two extra tokens. Optionally overwrite the oldest tokens with the text given in the `overwrite` parameter, which may be useful for keeping some information in context. Return the trimmed text.
-
-The following parameter is required:
-- `text` - The text to trim
-
-The following parameter is optional:
-- `overwrite` - The text to overwrite the oldest tokens with
-
 ## `Model.get_length() -> int`
 
 Get the length of a given text in tokens according to this Model, including the appended BOS token.
@@ -118,17 +108,7 @@ The following parameters are optional:
 
 ## `Model.stream_print() -> str`
 
-Given a prompt, stream text as it is generated, and return the generated string. The returned string does not include the `end` parameter.
-
-`Model.stream_print(...)` is a shorthand for:
-
-```python
-s = Model.stream(prompt, stops=stops, sampler=sampler)
-for i in s:
-	tok = i['choices'][0]['text']
-	print(tok, end='', file=file, flush=flush)
-print(end, end='', file=file, flush=True)
-```
+Given a prompt, stream text to a file as it is generated, and return the generated string. The returned string does not include the `end` parameter.
 
 The following parameter is required:
 - `prompt: str` - The text from which to generate
@@ -147,7 +127,7 @@ Ingest the given text into the model's cache, to reduce latency of future genera
 The following parameter is required:
 - `text: str` - The text to ingest
 
-## `Model.candidates() -> list[tuple[str, np.float64]]`
+## `Model.candidates() -> list[tuple[str, np.floating]]`
 
 Given prompt `str` and k `int`, return a sorted list of the top k candidates for most likely next token, along with their normalized probabilities.
 
@@ -171,7 +151,6 @@ The following parameters are required:
 
 The following parameter is optional:
 - `file: _SupportsWriteAndFlush` - The file where text should be printed. Defaults to `sys.stdout`.
-- `flush: bool` - Whether to flush the stream after each line is printed. Defaults to `False`. The stream is always flushed at the end of the output.
 
 ### Example usage
 ```python
@@ -266,9 +245,7 @@ Print stats about the context usage in this thread. For example:
 ```
 
 The following parameters are optional:
-- `end: str` - A string to print after the stats. Defaults to `\n`.
 - `file: _SupportsWriteAndFlush` - The file where text should be printed. Defaults to `sys.stdout`.
-- `flush: bool` - Whether to flush the stream after printing. Defaults to `True`.
 
 # `class ez.thread.Message`
 
@@ -289,18 +266,6 @@ Generally, messages have these keys:
 ## `Message.as_string() -> str`
 
 Return the full text of a message, including the prefix, content, and postfix.
-
-## `Message.add_text_to_prefix() -> None`
-
-Insert arbitrary text before or after the prefix of a message
-- `text: str`: The text to add
-- `position: str`: Whether to add the text before or after the prefix. Must be one of `'before'` or `'after'`. Defaults to `'after'`. Case-insensitive
-
-## `Message.add_text_to_postfix() -> None`
-
-Insert arbitrary text before or after the postfix of a message
-- `text: str`: The text to add
-- `position: str`: Whether to add the text before or after the postfix. Must be one of `'before'` or `'after'`. Defaults to `'after'`. Case-insensitive
 
 # `class ez.samplers.SamplerSettings`
 
@@ -348,14 +313,12 @@ Formats are instances of `dict`, and they look like this:
 # https://github.com/tatsu-lab/stanford_alpaca
 alpaca: dict[str, Union[str, list]] = {
 	"system_prefix": "",
-	"system_content": "Below is an instruction that describes a task. Write a response that appropriately completes the request.",
-	"system_postfix": "\n\n",
+	"system_prompt": "Below is an instruction that describes a task. Write a response that appropriately completes the request.",
+	"system_suffix": "\n\n",
 	"user_prefix": "### Instruction:\n",
-	"user_content": "",
-	"user_postfix": "\n\n",
+	"user_suffix": "\n\n",
 	"bot_prefix": "### Response:\n",
-	"bot_content": "",
-	"bot_postfix": "\n\n",
+	"bot_suffix": "\n\n",
 	"stops": ['###', 'Instruction:', '\n\n\n']
 }
 ```

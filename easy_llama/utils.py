@@ -22,6 +22,9 @@ BOT_STYLE = Fore.RESET + Fore.CYAN
 DIM_STYLE = Fore.RESET + Fore.LIGHTBLACK_EX
 SPECIAL_STYLE = Fore.RESET + Fore.YELLOW
 
+class TypeAssertionFailedError(Exception):
+    """`assert_type()` failed"""
+
 # for typing of softmax parameter `z`
 class _ArrayLike(Iterable):
     pass
@@ -192,19 +195,20 @@ def assert_type(
     If `expected_type` is a tuple, ensure that `something` is an instance of
     some type in the tuple
 
-    Raise TypeError otherwise, using `something_repr` and `code_location` to
-    make an informative exception message
+    Raise `TypeAssertionFailedError` otherwise, using `something_repr` and
+    `code_location` to make an informative exception message
 
     If specified, `hint` is added as a note to the exception
     """
     if isinstance(something, expected_type):
         return
     
+    # represent `int` as 'int' instead of "<class 'int'>"
     type_something_repr = repr(type(something).__name__)
 
     if not isinstance(expected_type, tuple):
         expected_type_repr = repr(expected_type.__name__)
-        exc = TypeError(
+        exc = TypeAssertionFailedError(
             f"{code_location}: {something_repr} should be an instance of "
             f"{expected_type_repr}, not {type_something_repr}"
         )
@@ -214,8 +218,10 @@ def assert_type(
         
         raise exc
     
+    # represent `(int, list)` as "('int', 'list')" instead of
+    # "(<class 'int'>, <class 'list'>)"
     expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
-    exc = TypeError(
+    exc = TypeAssertionFailedError(
         f"{code_location}: {something_repr} should be one of "
         f"{expected_type_repr}, not {type_something_repr}"
     )

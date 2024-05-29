@@ -163,3 +163,18 @@ LowTempSampling = SamplerSettings(
 HighTempSampling = SamplerSettings(
     temp = 1.2
 )
+
+#
+# Samplers below this line are for specific models / model families
+#
+
+# https://huggingface.co/sophosympatheia/Midnight-Miqu-70B-v1.5
+MiquSampling = SamplerSettings(
+    temp = 1.0,
+    top_p = 1.0,
+    min_p = 0.12,
+    frequency_penalty = 0.0,
+    presence_penalty = 0.0,
+    repeat_penalty = 1.05,
+    top_k = -1
+)

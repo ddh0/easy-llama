@@ -22,7 +22,7 @@ class Message(dict):
     Works just like a normal `dict`, but adds a new method:
     - `.as_string` - Return the full message string
 
-    Generally, messages have these keys:
+    Messages should have these keys:
     - `role` -  The role of the speaker: 'system', 'user', or 'bot'
     - `prefix` - The text that prefixes the message content
     - `content` - The actual content of the message
@@ -40,15 +40,7 @@ class Message(dict):
 
     def as_string(self):
         """Return the full message string (prefix + content + suffix)"""
-        try:
-            return self['prefix'] + self['content'] + self['suffix']
-        except KeyError as e:
-            e.add_note(
-                "as_string: Message is missing one or more of the "
-                "required 'prefix', 'content', 'suffix' attributes - this is "
-                "unexpected"
-            )
-            raise e
+        return self['prefix'] + self['content'] + self['suffix']
 
 
 class Thread:
@@ -267,14 +259,23 @@ class Thread:
         """
 
         inf_str = ''
-        sys_msg_str = ''
-        # whether to treat the first message as necessary to keep
         sys_msg_flag = False
-        context_len_budget = self.model.context_length
 
-        # if at least 1 message is history
+        # bot_prefix is always appended at the end - account for that here
+        context_len_budget = (
+            self.model.context_length - self.model.get_length(self.format['bot_prefix'])
+        )
+
+        #
+        # NOTE:
+        # If sys_msg_flag is True:
+        #     - The first message in the history is a system message
+        #     - That message will always be kept in-context
+        #
+        # Otherwise, all messages are treated equally
+        #
+
         if len(self.messages) >= 1:
-            # if first message has system role
             if self.messages[0]['role'] == 'system':
                 sys_msg_flag = True
                 sys_msg = self.messages[0]
@@ -450,7 +451,7 @@ class Thread:
                     print(f"\n{self.as_string()}\n")
                 
                 elif command.lower() in ['repr', 'save', 'backup']:
-                    print(f"\n{repr(self)}\n")
+                    print(f"\n{self!r}\n")
                 
                 elif command.lower() in ['remove', 'rem', 'delete', 'del']:
                     print()
@@ -461,7 +462,9 @@ class Thread:
 
                 elif command.lower() in ['last', 'repeat']:
                     last_msg = self.messages[-1]
-                    if last_msg['role'] == 'user':
+                    if last_msg['role'] == 'system':
+                        print(f"\n{_special_style}{last_msg['content']}{RESET_ALL}\n")
+                    elif last_msg['role'] == 'user':
                         print(f"\n{_user_style}{last_msg['content']}{RESET_ALL}\n")
                     elif last_msg['role'] == 'bot':
                         print(f"\n{_bot_style}{last_msg['content']}{RESET_ALL}\n")
@@ -685,17 +688,13 @@ class Thread:
     
     def print_stats(
         self,
-        end: str = '\n',
         file: _SupportsWriteAndFlush = sys.stdout,
-        flush: bool = True
     ) -> None:
         """Print stats about the context usage in this thread"""
         thread_len_tokens = self.len_messages()
         max_ctx_len = self.model.context_length
         # ctx_used_pct may be > 100, see inference_str_from_messages for details
         ctx_used_pct = round((thread_len_tokens/max_ctx_len)*100)
-        print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file, flush=flush)
-        print(f"{ctx_used_pct}% of context used", file=file, flush=flush)
-        print(f"{len(self.messages)} messages", end=end, file=file, flush=flush)
-        if not flush:
-            file.flush()
+        print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file)
+        print(f"{ctx_used_pct}% of context used", file=file)
+        print(f"{len(self.messages)} messages", file=file)
