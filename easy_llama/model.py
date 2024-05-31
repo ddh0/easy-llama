@@ -117,6 +117,17 @@ class Model:
         if isinstance(context_length, int) and context_length <= 0:
             context_length = None
 
+        if sys.byteorder == 'big':
+            print_warning(
+                "host is big-endian, please ensure your GGUF file is also "
+                "big-endian"
+            )
+        else:
+            if verbose:
+                print_verbose(
+                    "host is little-endian"
+                )
+        
         self.metadata = QuickGGUFReader.load_metadata(model_path)
 
         n_ctx_train = None
@@ -320,12 +331,14 @@ class Model:
             # nothing can be done
             return
         try:
-            if self.llama._model.model is not None:
+            if self.llama._model.model is not None and self.llama._model._llama_free_model is not None:
                 # actually unload the model from memory
                 self.llama._model._llama_free_model(self.llama._model.model)
                 self.llama._model.model = None
-        except AttributeError:
+        except AttributeError as exc:
             # broken or already being destroyed by GC, abort
+            print("Ignoring AttributeError exception in Model.unload (abort):")
+            print(repr(exc))
             return
         if hasattr(self, 'llama'):
             delattr(self, 'llama')

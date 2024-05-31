@@ -147,22 +147,47 @@ class GGUFValueType(IntEnum):
             raise ValueError(f"Unknown type: {type(val)}")
 
 class QuickGGUFReader:
-    # Occasionally check to ensure this class is consistent with gguf
-
-    # format for struct.unpack() based on gguf value type
-    value_packing: dict = {
-        GGUFValueType.UINT8:   "<B",
-        GGUFValueType.INT8:    "<b",
-        GGUFValueType.UINT16:  "<H",
-        GGUFValueType.INT16:   "<h",
-        GGUFValueType.UINT32:  "<I",
-        GGUFValueType.INT32:   "<i",
-        GGUFValueType.FLOAT32: "<f",
-        GGUFValueType.UINT64:  "<Q",
-        GGUFValueType.INT64:   "<q",
-        GGUFValueType.FLOAT64: "<d",
-        GGUFValueType.BOOL:    "?"
-    }
+    # NOTE: Officially, there is no way to determine if a GGUF file is little
+    #       or big endian. The format specifcation directs us to assume that
+    #       a file is little endian in all cases unless additional info is
+    #       provided.
+    #
+    #       In addition to this, GGUF files cannot run on hosts with the
+    #       opposite endianness. And, at this point in the code, the model
+    #       is already loaded. Therefore, we can assume that the endianness
+    #       of the file is the same as the endianness of the host.
+    #
+    # ref: https://github.com/ggerganov/ggml/blob/master/docs/md
+    if sys.byteorder == 'little':
+        # LITTLE-endian format for struct.unpack() based on gguf value type
+        value_packing: dict = {
+            GGUFValueType.UINT8:   "<B",
+            GGUFValueType.INT8:    "<b",
+            GGUFValueType.UINT16:  "<H",
+            GGUFValueType.INT16:   "<h",
+            GGUFValueType.UINT32:  "<I",
+            GGUFValueType.INT32:   "<i",
+            GGUFValueType.FLOAT32: "<f",
+            GGUFValueType.UINT64:  "<Q",
+            GGUFValueType.INT64:   "<q",
+            GGUFValueType.FLOAT64: "<d",
+            GGUFValueType.BOOL:    "?"
+        }
+    else:
+        # BIG-endian format for struct.unpack() based on gguf value type
+        value_packing: dict = {
+            GGUFValueType.UINT8:   ">B",
+            GGUFValueType.INT8:    ">b",
+            GGUFValueType.UINT16:  ">H",
+            GGUFValueType.INT16:   ">h",
+            GGUFValueType.UINT32:  ">I",
+            GGUFValueType.INT32:   ">i",
+            GGUFValueType.FLOAT32: ">f",
+            GGUFValueType.UINT64:  ">Q",
+            GGUFValueType.INT64:   ">q",
+            GGUFValueType.FLOAT64: ">d",
+            GGUFValueType.BOOL:    "?"
+        }
 
     # length in bytes for each gguf value type
     value_lengths: dict = {
