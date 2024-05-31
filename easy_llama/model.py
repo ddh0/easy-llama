@@ -9,10 +9,10 @@ import numpy as np
 
 from .utils import (
     _SupportsWriteAndFlush,
+    QuickGGUFReader,
     print_warning,
     print_verbose,
     assert_type,
-    GGUFReader,
     softmax
 )
 
@@ -117,19 +117,16 @@ class Model:
         if isinstance(context_length, int) and context_length <= 0:
             context_length = None
 
-        # this does not use Llama.metadata because we want to use GGUF
-        # metadata to determine some parameters of the Llama instance
-        # before it is created
-        self.metadata = GGUFReader.load_metadata(self, model_path)
+        self.metadata = QuickGGUFReader.load_metadata(model_path)
 
         n_ctx_train = None
         rope_freq_base_train = None
 
         for key in self.metadata.keys():
             if key.endswith('.context_length'):
-                n_ctx_train = self.metadata[key]
+                n_ctx_train = int(self.metadata[key])
             if key.endswith('.rope.freq_base'):
-                rope_freq_base_train = self.metadata[key]
+                rope_freq_base_train = float(self.metadata[key])
 
         if n_ctx_train is None:
             raise KeyError(
@@ -227,7 +224,6 @@ class Model:
             verbose=verbose
         )
 
-        # Llama.metadata does not include tokenizer.ggml.tokens for some reason
         try:
             self.tokens: list[str] = self.metadata['tokenizer.ggml.tokens']
         except KeyError:
@@ -235,31 +231,16 @@ class Model:
                 "could not set Model.tokens, defaulting to None"
             )
             self.tokens = None
-        
-        # once model is loaded, replace metadata (as read using internal class)
-        # with metadata (as read using the more robust llama-cpp-python code) 
-        self.metadata = self.llama.metadata
 
-        try:
-            self.bos_token: int = self.metadata['tokenizer.ggml.bos_token_id']
-        except KeyError:
-            print_warning(
-                "could not set Model.bos_token, defaulting to None"
-            )
-            self.bos_token = None
-        try:
-            self.eos_token: int = self.metadata['tokenizer.ggml.eos_token_id']
-        except KeyError:
-            print_warning(
-                "could not set Model.eos_token, defaulting to None"
-            )
-            self.eos_token = None
+        self.bos_token_id: int = self.llama.token_bos()
+        self.eos_token_id: int = self.llama.token_eos()
+        self.nl_token_id:  int = self.llama.token_nl()
 
         # expose these values because they may be useful / informative
-        self.n_ctx_train = n_ctx_train
-        self.rope_freq_base_train = rope_freq_base_train
-        self.rope_freq_base = rope_freq_base
-        self.flash_attn = flash_attn
+        self.n_ctx_train: int            = n_ctx_train
+        self.rope_freq_base_train: float = rope_freq_base_train
+        self.rope_freq_base: float       = rope_freq_base
+        self.flash_attn: bool            = flash_attn
 
         if self.verbose:
             print_verbose("new Model instance with the following attributes:")

@@ -131,10 +131,10 @@ class Thread:
 
         self.model: Model = model
         self.format: Union[dict, AdvancedFormat] = format
+        self.sampler: SamplerSettings = sampler
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_prompt'])
         ] if self._messages is None else self._messages
-        self.sampler: SamplerSettings = sampler
 
         if self.model.verbose:
             print_verbose("new Thread instance with the following attributes:")
@@ -154,7 +154,6 @@ class Thread:
             print_verbose(f"sampler.presence_penalty  == {self.sampler.presence_penalty}")
             print_verbose(f"sampler.repeat_penalty    == {self.sampler.repeat_penalty}")
             print_verbose(f"sampler.top_k             == {self.sampler.top_k}")
-    
 
     def __repr__(self) -> str:
         # if only message in self.messages is system message
@@ -189,7 +188,7 @@ class Thread:
 
         if not role.lower() in ['system', 'user', 'bot']:
             raise ValueError(
-                f"create_message: role should be 'system', 'user', or 'bot', "
+                "create_message: role should be 'system', 'user', or 'bot', "
                 f"not {role.lower()!r}"
             )
 

@@ -6,12 +6,13 @@ from ._version import __version__, __llama_cpp_version__
 
 import os
 import sys
+import struct
 import numpy as np
 
 from typing   import Any, Iterable, TextIO, Optional, Union
+from io       import BufferedReader
 from time     import strftime
 from enum     import IntEnum
-from struct   import unpack
 from colorama import Fore
 
 
@@ -32,123 +33,6 @@ class _ArrayLike(Iterable):
 # for typing of Model.stream_print() parameter `file`
 class _SupportsWriteAndFlush(TextIO):
     pass
-
-class GGUFReader:
-    """
-    Peek at file header for GGUF metadata
-
-    Raise ValueError if file is not GGUF or is outdated
-
-    Credit to oobabooga for the parts of the code in this class
-
-    Format spec: https://github.com/philpax/ggml/blob/gguf-spec/docs/gguf.md
-    """
-
-    class GGUFValueType(IntEnum):
-        UINT8 = 0
-        INT8 = 1
-        UINT16 = 2
-        INT16 = 3
-        UINT32 = 4
-        INT32 = 5
-        FLOAT32 = 6
-        BOOL = 7
-        STRING = 8
-        ARRAY = 9
-        UINT64 = 10
-        INT64 = 11
-        FLOAT64 = 12
-
-    _simple_value_packing = {
-        GGUFValueType.UINT8: "<B",
-        GGUFValueType.INT8: "<b",
-        GGUFValueType.UINT16: "<H",
-        GGUFValueType.INT16: "<h",
-        GGUFValueType.UINT32: "<I",
-        GGUFValueType.INT32: "<i",
-        GGUFValueType.FLOAT32: "<f",
-        GGUFValueType.UINT64: "<Q",
-        GGUFValueType.INT64: "<q",
-        GGUFValueType.FLOAT64: "<d",
-        GGUFValueType.BOOL: "?",
-    }
-
-    value_type_info = {
-        GGUFValueType.UINT8: 1,
-        GGUFValueType.INT8: 1,
-        GGUFValueType.UINT16: 2,
-        GGUFValueType.INT16: 2,
-        GGUFValueType.UINT32: 4,
-        GGUFValueType.INT32: 4,
-        GGUFValueType.FLOAT32: 4,
-        GGUFValueType.UINT64: 8,
-        GGUFValueType.INT64: 8,
-        GGUFValueType.FLOAT64: 8,
-        GGUFValueType.BOOL: 1,
-    }
-
-    def get_single(self, value_type, file) -> Any:
-        if value_type == GGUFReader.GGUFValueType.STRING:
-            value_length = unpack("<Q", file.read(8))[0]
-            value = file.read(value_length)
-            value = value.decode("utf-8")
-        else:
-            type_str = GGUFReader._simple_value_packing.get(value_type)
-            bytes_length = GGUFReader.value_type_info.get(value_type)
-            value = unpack(type_str, file.read(bytes_length))[0]
-
-        return value
-
-    def load_metadata(self, fname) -> dict:
-        metadata = {}
-        with open(fname, "rb") as file:
-            GGUF_MAGIC = file.read(4)
-
-            if GGUF_MAGIC != b"GGUF":
-                raise ValueError(
-                    "your model file is not a valid GGUF file "
-                    f"(magic number mismatch, got {GGUF_MAGIC}, "
-                    "expected b'GGUF')"
-                )
-
-            GGUF_VERSION = unpack("<I", file.read(4))[0]
-
-            if GGUF_VERSION == 1:
-                raise ValueError(
-                    "your model file reports GGUF version 1, "
-                    "but only versions 2 and above are supported. "
-                    "re-convert your model or download a newer version"
-                )
-
-            # ti_data_count = struct.unpack("<Q", file.read(8))[0]
-            file.read(8)
-            kv_data_count = unpack("<Q", file.read(8))[0]
-
-            for _ in range(kv_data_count):
-                key_length = unpack("<Q", file.read(8))[0]
-                key = file.read(key_length)
-
-                value_type = GGUFReader.GGUFValueType(
-                    unpack("<I", file.read(4))[0]
-                )
-                if value_type == GGUFReader.GGUFValueType.ARRAY:
-                    ltype = GGUFReader.GGUFValueType(
-                        unpack("<I", file.read(4))[0]
-                    )
-                    length = unpack("<Q", file.read(8))[0]
-                    arr = [
-                        GGUFReader.get_single(
-                            self,
-                            ltype,
-                            file
-                        ) for _ in range(length)
-                    ]
-                    metadata[key.decode()] = arr
-                else:
-                    value = GGUFReader.get_single(self, value_type, file)
-                    metadata[key.decode()] = value
-
-        return metadata
 
 def softmax(z: _ArrayLike) -> np.ndarray:
     """
@@ -230,3 +114,176 @@ def assert_type(
         exc.add_note(hint)
 
     raise exc
+
+class GGUFValueType(IntEnum):
+    UINT8   = 0
+    INT8    = 1
+    UINT16  = 2
+    INT16   = 3
+    UINT32  = 4
+    INT32   = 5
+    FLOAT32 = 6
+    BOOL    = 7
+    STRING  = 8
+    ARRAY   = 9
+    UINT64  = 10
+    INT64   = 11
+    FLOAT64 = 12
+
+class QuickGGUFReader:
+    """
+    This class makes use of the local gguf package bundled with
+    llama-cpp-python, which includes the latest changes in llama.cpp
+    as of the last version bump
+
+    The old _LlamaModel.metadata() method did not return arrays.
+
+    Maintainence required should be minimal, as the official values from the
+    gguf package are used wherever possible
+    """
+
+    @staticmethod
+    def get_type(val: Any) -> GGUFValueType:
+        if isinstance(val, (str, bytes, bytearray)):
+            return GGUFValueType.STRING
+        elif isinstance(val, list):
+            return GGUFValueType.ARRAY
+        elif isinstance(val, float):
+            return GGUFValueType.FLOAT32
+        elif isinstance(val, bool):
+            return GGUFValueType.BOOL
+        elif isinstance(val, int):
+            return GGUFValueType.INT32
+        else:
+            raise ValueError(f"Unknown type: {type(val)}")
+
+    # format for struct.unpack() based on gguf value type
+    value_packing: dict = {
+        GGUFValueType.UINT8:   "<B",
+        GGUFValueType.INT8:    "<b",
+        GGUFValueType.UINT16:  "<H",
+        GGUFValueType.INT16:   "<h",
+        GGUFValueType.UINT32:  "<I",
+        GGUFValueType.INT32:   "<i",
+        GGUFValueType.FLOAT32: "<f",
+        GGUFValueType.UINT64:  "<Q",
+        GGUFValueType.INT64:   "<q",
+        GGUFValueType.FLOAT64: "<d",
+        GGUFValueType.BOOL:    "?"
+    }
+
+    # length in bytes for each gguf value type
+    value_lengths: dict = {
+        GGUFValueType.UINT8:   1,
+        GGUFValueType.INT8:    1,
+        GGUFValueType.UINT16:  2,
+        GGUFValueType.INT16:   2,
+        GGUFValueType.UINT32:  4,
+        GGUFValueType.INT32:   4,
+        GGUFValueType.FLOAT32: 4,
+        GGUFValueType.UINT64:  8,
+        GGUFValueType.INT64:   8,
+        GGUFValueType.FLOAT64: 8,
+        GGUFValueType.BOOL:    1
+    }
+
+    @staticmethod
+    def get_single(
+            value_type: GGUFValueType,
+            file: BufferedReader
+        ) -> Union[str, int, float, bool]:
+        """Read a single value from an open file"""
+
+        if value_type == GGUFValueType.STRING:
+            value_length = struct.unpack(
+                QuickGGUFReader.value_packing.get(GGUFValueType.UINT64),
+                file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT64))
+            )[0]
+            value = file.read(value_length)
+            value = value.decode("utf-8")
+        else:
+            type_str = QuickGGUFReader.value_packing.get(value_type)
+            bytes_length = QuickGGUFReader.value_lengths.get(value_type)
+            value = struct.unpack(type_str, file.read(bytes_length))[0]
+
+        return value
+    
+    @staticmethod
+    def load_metadata(
+            fn: Union[os.PathLike[str], str]
+        ) -> dict[str, Union[str, int, float, bool, list]]:
+        """
+        Given a path to a GGUF file, peek at its header for metadata
+
+        Return a dictionary where all keys are strings and values can be
+        strins, ints, floats, bools, or lists
+        """
+
+        metadata: dict[str, Union[str, int, float, bool, list]] = {}
+        with open(fn, "rb") as file:
+            GGUF_MAGIC = file.read(4)
+
+            if GGUF_MAGIC != b"GGUF":
+                raise ValueError(
+                    "your model file is not a valid GGUF file "
+                    f"(magic number mismatch, got {GGUF_MAGIC}, "
+                    "expected b'GGUF')"
+                )
+
+            GGUF_VERSION = struct.unpack(
+                QuickGGUFReader.value_packing.get(GGUFValueType.UINT32),
+                file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT32))
+            )[0]
+
+            if GGUF_VERSION == 1:
+                raise ValueError(
+                    "your model file reports GGUF version 1, "
+                    "but only versions 2 and above are supported. "
+                    "re-convert your model or download a newer version"
+                )
+
+            ti_data_count = struct.unpack(
+                QuickGGUFReader.value_packing.get(GGUFValueType.UINT64),
+                file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT64))
+            )[0]
+            kv_data_count = struct.unpack(
+                QuickGGUFReader.value_packing.get(GGUFValueType.UINT64),
+                file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT64))
+            )[0]
+
+            for _ in range(kv_data_count):
+                key_length = struct.unpack(
+                    QuickGGUFReader.value_packing.get(GGUFValueType.UINT64),
+                    file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT64))
+                )[0]
+                key = file.read(key_length)
+
+                value_type = GGUFValueType(
+                    struct.unpack(
+                        QuickGGUFReader.value_packing.get(GGUFValueType.UINT32),
+                        file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT32))
+                    )[0]
+                )
+                if value_type == GGUFValueType.ARRAY:
+                    ltype = GGUFValueType(
+                        struct.unpack(
+                            QuickGGUFReader.value_packing.get(GGUFValueType.UINT32),
+                            file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT32))
+                        )[0]
+                    )
+                    length = struct.unpack(
+                        QuickGGUFReader.value_packing.get(GGUFValueType.UINT64),
+                        file.read(QuickGGUFReader.value_lengths.get(GGUFValueType.UINT64))
+                    )[0]
+                    array = [
+                        QuickGGUFReader.get_single(
+                            ltype,
+                            file
+                        ) for _ in range(length)
+                    ]
+                    metadata[key.decode()] = array
+                else:
+                    value = QuickGGUFReader.get_single(value_type, file)
+                    metadata[key.decode()] = value
+
+        return metadata
