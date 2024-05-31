@@ -243,32 +243,53 @@ class Model:
             )
             self.vocab = None
         try:
-            self.bos_token: int = self.metadata['tokenizer.ggml.bos_token_id']
+            self.bos_token = int(self.metadata['tokenizer.ggml.bos_token_id'])
         except KeyError:
-            self.bos_token: int = self.llama.token_bos()
+            self.bos_token = int(self.llama.token_bos())
+            if self.bos_token < 0:
+                self.bos_token = None
+            if self.bos_token is None:
+                print_warning(
+                    "Model.bos_token is not set"
+                )
         try:
-            self.eos_token: int = self.metadata['tokenizer.ggml.eos_token_id']
+            self.eos_token = int(self.metadata['tokenizer.ggml.eos_token_id'])
         except KeyError:
-            self.bos_token: int = self.llama.token_eos()
+            self.eos_token = int(self.llama.token_eos())
+            if self.eos_token < 0:
+                self.eos_token = None
+            if self.eos_token is None:
+                print_warning(
+                    "Model.eos_token is not set"
+                )
 
         # These special tokens are optional
-        self.nl_token:     Optional[int] = self.llama._model.token_nl()
-        if self.nl_token is None and self.verbose:
+        # if a negative value is returned as a token, it is not defined
+        self.nl_token  = int(self.llama._model.token_nl())
+        if self.nl_token < 0:
+            self.nl_token = None
+        if self.nl_token is None and verbose:
             print_verbose(
                 "Model.nl_token is not set"
             )
-        self.prefix_token: Optional[int] = self.llama._model.token_prefix()
-        if self.prefix_token is None and self.verbose:
+        self.prefix_token = int(self.llama._model.token_prefix())
+        if self.prefix_token < 0:
+            self.prefix_token = None
+        if self.prefix_token is None and verbose:
             print_verbose(
                 "Model.prefix_token is not set"
             )
-        self.middle_token: Optional[int] = self.llama._model.token_middle()
-        if self.middle_token is None and self.verbose:
+        self.middle_token = int(self.llama._model.token_middle())
+        if self.middle_token < 0:
+            self.middle_token = None
+        if self.middle_token is None and verbose:
             print_verbose(
                 "Model.middle_token is not set"
             )
-        self.eot_token:    Optional[int] = self.llama._model.token_eot()
-        if self.eot_token is None and self.verbose:
+        self.eot_token = int(self.llama._model.token_eot())
+        if self.eot_token < 0:
+            self.eot_token = None
+        if self.eot_token is None and verbose:
             print_verbose(
                 "Model.eot_token is not set"
             )
