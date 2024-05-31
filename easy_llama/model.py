@@ -60,7 +60,7 @@ class Model:
     - `.n_ctx_train` - The native context length of the model
     - `.rope_freq_base` - The model's loaded RoPE frequency base
     - `.rope_freq_base_train` - The model's native RoPE frequency base
-    - `.tokens` - A list of all the tokens in the model's tokenizer
+    - `.vocab` - A list of all the tokens in the model's vocabulary
     - `.verbose` - Whether the model was loaded with `verbose=True`
     """
 
@@ -225,16 +225,42 @@ class Model:
         )
 
         try:
-            self.tokens: list[str] = self.metadata['tokenizer.ggml.tokens']
+            self.vocab: list[str] = self.metadata['tokenizer.ggml.tokens']
         except KeyError:
             print_warning(
-                "could not set Model.tokens, defaulting to None"
+                "could not set Model.vocab, defaulting to None"
             )
-            self.tokens = None
+            self.vocab = None
+        try:
+            self.bos_token: int = self.metadata['tokenizer.ggml.bos_token_id']
+        except KeyError:
+            self.bos_token: int = self.llama.token_bos()
+        try:
+            self.eos_token: int = self.metadata['tokenizer.ggml.eos_token_id']
+        except KeyError:
+            self.bos_token: int = self.llama.token_eos()
 
-        self.bos_token_id: int = self.llama.token_bos()
-        self.eos_token_id: int = self.llama.token_eos()
-        self.nl_token_id:  int = self.llama.token_nl()
+        # These special tokens are optional
+        self.nl_token:     Optional[int] = self.llama._model.token_nl()
+        if self.nl_token is None and self.verbose:
+            print_verbose(
+                "Model.nl_token is not set"
+            )
+        self.prefix_token: Optional[int] = self.llama._model.token_prefix()
+        if self.prefix_token is None and self.verbose:
+            print_verbose(
+                "Model.prefix_token is not set"
+            )
+        self.middle_token: Optional[int] = self.llama._model.token_middle()
+        if self.middle_token is None and self.verbose:
+            print_verbose(
+                "Model.middle_token is not set"
+            )
+        self.eot_token:    Optional[int] = self.llama._model.token_eot()
+        if self.eot_token is None and self.verbose:
+            print_verbose(
+                "Model.eot_token is not set"
+            )
 
         # expose these values because they may be useful / informative
         self.n_ctx_train: int            = n_ctx_train
@@ -562,9 +588,9 @@ class Model:
 
         assert_type(prompt, str, 'prompt', 'candidates')
         assert_type(k, int, 'k', 'candidates')
-        if not 0 < k <= len(self.tokens):
+        if not 0 < k <= len(self.vocab):
             raise ValueError(
-                f"candidates: k should be between 0 and {len(self.tokens)}"
+                f"candidates: k should be between 0 and {len(self.vocab)}"
             )
 
         assert_model_is_loaded(self)
@@ -574,7 +600,7 @@ class Model:
         scores = self.llama.scores[len(prompt_tokens) - 1]
 
         # len(self.llama.scores) == self.context_length
-        # len(self.llama.scores[i]) == len(self.tokens)
+        # len(self.llama.scores[i]) == len(self.vocab)
         
         # normalize scores with softmax
         # must normalize over all logits, not just top k
@@ -585,7 +611,7 @@ class Model:
         # construct the final list
         i = 0
         token_probs_list: list[tuple[str, np.floating]] = []
-        for tok_str in self.tokens:
+        for tok_str in self.vocab:
             token_probs_list.append((tok_str, normalized_scores[i]))
             i += 1
 

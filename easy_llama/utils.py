@@ -116,6 +116,7 @@ def assert_type(
     raise exc
 
 class GGUFValueType(IntEnum):
+    # Occasionally check to ensure this class is consistent with gguf
     UINT8   = 0
     INT8    = 1
     UINT16  = 2
@@ -130,20 +131,8 @@ class GGUFValueType(IntEnum):
     INT64   = 11
     FLOAT64 = 12
 
-class QuickGGUFReader:
-    """
-    This class makes use of the local gguf package bundled with
-    llama-cpp-python, which includes the latest changes in llama.cpp
-    as of the last version bump
-
-    The old _LlamaModel.metadata() method did not return arrays.
-
-    Maintainence required should be minimal, as the official values from the
-    gguf package are used wherever possible
-    """
-
     @staticmethod
-    def get_type(val: Any) -> GGUFValueType:
+    def get_type(val: Any):
         if isinstance(val, (str, bytes, bytearray)):
             return GGUFValueType.STRING
         elif isinstance(val, list):
@@ -156,6 +145,9 @@ class QuickGGUFReader:
             return GGUFValueType.INT32
         else:
             raise ValueError(f"Unknown type: {type(val)}")
+
+class QuickGGUFReader:
+    # Occasionally check to ensure this class is consistent with gguf
 
     # format for struct.unpack() based on gguf value type
     value_packing: dict = {
@@ -215,8 +207,8 @@ class QuickGGUFReader:
         """
         Given a path to a GGUF file, peek at its header for metadata
 
-        Return a dictionary where all keys are strings and values can be
-        strins, ints, floats, bools, or lists
+        Return a dictionary where all keys are strings, and values can be
+        strings, ints, floats, bools, or lists
         """
 
         metadata: dict[str, Union[str, int, float, bool, list]] = {}

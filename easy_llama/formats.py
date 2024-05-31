@@ -5,7 +5,6 @@ from ._version import __version__, __llama_cpp_version__
 """Submodule containing various prompt formats used by models"""
 
 from typing import Callable, Union, Any
-
 from .utils import assert_type
 
 

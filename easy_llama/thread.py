@@ -261,8 +261,8 @@ class Thread:
         sys_msg_flag = False
 
         # bot_prefix is always appended at the end - account for that here
-        context_len_budget = (
-            self.model.context_length - self.model.get_length(self.format['bot_prefix'])
+        context_len_budget = self.model.context_length - self.model.get_length(
+            self.format['bot_prefix']
         )
 
         #
@@ -279,7 +279,7 @@ class Thread:
                 sys_msg_flag = True
                 sys_msg = self.messages[0]
                 sys_msg_str = sys_msg.as_string()
-                context_len_budget -= self.model.get_length(sys_msg_str)
+                context_len_budget -= (self.model.get_length(sys_msg_str) - 1)
 
         if sys_msg_flag:
             iterator = reversed(self.messages[1:])
@@ -288,7 +288,7 @@ class Thread:
         
         for message in iterator:
             msg_str = message.as_string()
-            context_len_budget -= self.model.get_length(msg_str)
+            context_len_budget -= (self.model.get_length(msg_str) - 1)
             if context_len_budget <= 0:
                 break
             inf_str = msg_str + inf_str
