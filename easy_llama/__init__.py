@@ -9,9 +9,11 @@ For documentation, see:
 https://github.com/ddh0/easy-llama/blob/main/DOCS.md
 """
 
-from . import formats
 from . import samplers
+from . import formats
+from . import thread
 from . import utils
+from . import model
 
-from .model  import Model
-from .thread import Thread
+from model  import Model
+from thread import Thread
