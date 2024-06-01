@@ -15,5 +15,5 @@ from . import thread
 from . import utils
 from . import model
 
-from model  import Model
-from thread import Thread
+from .model  import Model
+from .thread import Thread
