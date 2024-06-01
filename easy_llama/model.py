@@ -93,11 +93,11 @@ class Model:
         assert_type(model_path, str, 'model_path', 'Model')
         if not exists(model_path):
             raise FileNotFoundError(
-                f"Model: the given model_path '{model_path}' does not exist"
+                f"Model: the given model_path {model_path!r} does not exist"
             )
         if isdir(model_path):
             raise IsADirectoryError(
-                f"Model: the given model_path '{model_path}' is a directory, "
+                f"Model: the given model_path {model_path!r} is a directory, "
                 "not a GGUF file"
             )
         assert_type(context_length, (int, type(None)), 'context_length', 'Model')
@@ -372,12 +372,14 @@ class Model:
         including the appended BOS token.
         """
         assert_model_is_loaded(self)
-        return len(self.llama.tokenize(
-            text.encode(
-                "utf-8",
-                errors="ignore"
+        return len(
+            self.llama.tokenize(
+                text.encode(
+                    "utf-8",
+                    errors="ignore"
                 )
-            ))
+            )
+        )
 
     def generate(
         self,
