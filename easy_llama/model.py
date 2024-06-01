@@ -86,6 +86,7 @@ class Model:
         - verbose: Whether to print additional backend information
         """
 
+        assert_type(verbose, bool, 'verbose', 'Model')
         if verbose:
             print_verbose(f"easy_llama package version: {__version__}")
             print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
@@ -101,9 +102,9 @@ class Model:
                 "not a GGUF file"
             )
         assert_type(context_length, (int, type(None)), 'context_length', 'Model')
-        assert_type(flash_attn, bool, 'flash_attn', 'Model')
         assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
-        assert_type(verbose, bool, 'verbose', 'Model')
+        assert_type(offload_kqv, bool, 'offload_kqv', 'Model')
+        assert_type(flash_attn, bool, 'flash_attn', 'Model')
         
         # save __init__ parameters for __repr__
         self._model_path = model_path
@@ -238,19 +239,18 @@ class Model:
         try:
             self.vocab: list[str] = self.metadata['tokenizer.ggml.tokens']
         except KeyError:
+            self.vocab = None
             print_warning(
                 "could not set Model.vocab, defaulting to None"
             )
-            self.vocab = None
         try:
             self.bos_token = int(self.metadata['tokenizer.ggml.bos_token_id'])
         except KeyError:
             self.bos_token = int(self.llama.token_bos())
             if self.bos_token < 0:
                 self.bos_token = None
-            if self.bos_token is None:
                 print_warning(
-                    "Model.bos_token is not set"
+                    "could not set Model.bos_token, defaulting to None"
                 )
         try:
             self.eos_token = int(self.metadata['tokenizer.ggml.eos_token_id'])
@@ -258,9 +258,8 @@ class Model:
             self.eos_token = int(self.llama.token_eos())
             if self.eos_token < 0:
                 self.eos_token = None
-            if self.eos_token is None:
                 print_warning(
-                    "Model.eos_token is not set"
+                    "could not set Model.eos_token, defaulting to None"
                 )
 
         # These special tokens are optional
@@ -268,39 +267,39 @@ class Model:
         self.nl_token  = int(self.llama._model.token_nl())
         if self.nl_token < 0:
             self.nl_token = None
-        if self.nl_token is None and verbose:
-            print_verbose(
-                "Model.nl_token is not set"
-            )
+            if verbose:
+                print_verbose(
+                    "could not set Model.nl_token, defaulting to None"
+                )
         self.prefix_token = int(self.llama._model.token_prefix())
         if self.prefix_token < 0:
             self.prefix_token = None
-        if self.prefix_token is None and verbose:
-            print_verbose(
-                "Model.prefix_token is not set"
-            )
+            if verbose:
+                print_verbose(
+                    "could not set Model.prefix_token, defaulting to None"
+                )
         self.middle_token = int(self.llama._model.token_middle())
         if self.middle_token < 0:
             self.middle_token = None
-        if self.middle_token is None and verbose:
-            print_verbose(
-                "Model.middle_token is not set"
-            )
+            if verbose:
+                print_verbose(
+                    "could not set Model.middle_token, defaulting to None"
+                )
         self.eot_token = int(self.llama._model.token_eot())
         if self.eot_token < 0:
             self.eot_token = None
-        if self.eot_token is None and verbose:
-            print_verbose(
-                "Model.eot_token is not set"
-            )
+            if verbose:
+                print_verbose(
+                    "could not set Model.eot_token, defaulting to None"
+                )
 
         # expose these values because they may be useful / informative
-        self.n_ctx_train: int            = n_ctx_train
+        self.n_ctx_train: int = n_ctx_train
         self.rope_freq_base_train: float = rope_freq_base_train
-        self.rope_freq_base: float       = rope_freq_base
-        self.flash_attn: bool            = flash_attn
+        self.rope_freq_base: float = rope_freq_base
+        self.flash_attn: bool = flash_attn
 
-        if self.verbose:
+        if verbose:
             print_verbose("new Model instance with the following attributes:")
             print_verbose(f"model: {model_path}")
             print_verbose(f"param: n_gpu_layers         == {n_gpu_layers}")
@@ -425,31 +424,14 @@ class Model:
             print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
             print_verbose(f'top_k             == {sampler.top_k}')
 
-        # if any stop item is a token ID (int)
-        if any(isinstance(stop, int) for stop in stops):
-            # stop_strs is a list of all stopping strings
-            stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
-            # stop_token_ids is a list of all stop token IDs
-            stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
+        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stopping_criteria = None
+        if stop_token_ids is not []:
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
-            assert_model_is_loaded(self)
-            return self.llama.create_completion(
-                prompt,
-                max_tokens=sampler.max_len_tokens,
-                temperature=sampler.temp,
-                top_p=sampler.top_p,
-                min_p=sampler.min_p,
-                frequency_penalty=sampler.frequency_penalty,
-                presence_penalty=sampler.presence_penalty,
-                repeat_penalty=sampler.repeat_penalty,
-                top_k=sampler.top_k,
-                stop=stop_strs,
-                stopping_criteria=stopping_criteria
-            )['choices'][0]['text']
 
-        # if stop items are only strings
         assert_model_is_loaded(self)
         return self.llama.create_completion(
             prompt,
@@ -461,7 +443,8 @@ class Model:
             presence_penalty=sampler.presence_penalty,
             repeat_penalty=sampler.repeat_penalty,
             top_k=sampler.top_k,
-            stop=stops
+            stop=stop_strs,
+            stopping_criteria=stopping_criteria
         )['choices'][0]['text']
     
 
@@ -515,31 +498,14 @@ class Model:
             print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
             print_verbose(f'top_k             == {sampler.top_k}')
         
-        # if any stop item is a token ID (int)
-        if any(isinstance(stop, int) for stop in stops):
-            # stop_strs is a list of all stopping strings
-            stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
-            # stop_token_ids is a list of all stop token IDs
-            stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
+        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stopping_criteria = None
+        if stop_token_ids is not []:
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
-            assert_model_is_loaded(self)
-            return self.llama.create_completion(
-                prompt,
-                max_tokens=sampler.max_len_tokens,
-                temperature=sampler.temp,
-                top_p=sampler.top_p,
-                min_p=sampler.min_p,
-                frequency_penalty=sampler.frequency_penalty,
-                presence_penalty=sampler.presence_penalty,
-                repeat_penalty=sampler.repeat_penalty,
-                top_k=sampler.top_k,
-                stream=True,
-                stop=stop_strs,
-                stopping_criteria=stopping_criteria
-            )
-
+        
         assert_model_is_loaded(self)
         return self.llama.create_completion(
             prompt,
@@ -552,7 +518,8 @@ class Model:
             repeat_penalty=sampler.repeat_penalty,
             top_k=sampler.top_k,
             stream=True,
-            stop=stops
+            stop=stop_strs,
+            stopping_criteria=stopping_criteria
         )
 
 

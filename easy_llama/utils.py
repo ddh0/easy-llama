@@ -131,12 +131,6 @@ class GGUFValueType(IntEnum):
     INT64   = 11
     FLOAT64 = 12
 
-def gguf_unpack(value_type: GGUFValueType, file: BufferedReader):
-    return struct.unpack(
-        QuickGGUFReader.value_packing.get(value_type),
-        file.read(QuickGGUFReader.value_lengths.get(value_type))
-    )[0]
-
 class QuickGGUFReader:
     # NOTE: Officially, there is no way to determine if a GGUF file is little
     #       or big endian. The format specifcation directs us to assume that
@@ -196,6 +190,13 @@ class QuickGGUFReader:
     }
 
     @staticmethod
+    def unpack(value_type: GGUFValueType, file: BufferedReader):
+        return struct.unpack(
+            QuickGGUFReader.value_packing.get(value_type),
+            file.read(QuickGGUFReader.value_lengths.get(value_type))
+        )[0]
+
+    @staticmethod
     def get_single(
             value_type: GGUFValueType,
             file: BufferedReader
@@ -203,11 +204,11 @@ class QuickGGUFReader:
         """Read a single value from an open file"""
 
         if value_type == GGUFValueType.STRING:
-            value_length = gguf_unpack(GGUFValueType.UINT64, file=file)
+            value_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
             value = file.read(value_length)
             value = value.decode("utf-8")
         else:
-            value = gguf_unpack(value_type, file=file)
+            value = QuickGGUFReader.unpack(value_type, file=file)
         return value
     
     @staticmethod
@@ -232,7 +233,7 @@ class QuickGGUFReader:
                     "expected b'GGUF')"
                 )
             
-            GGUF_VERSION = gguf_unpack(GGUFValueType.UINT32, file=file)
+            GGUF_VERSION = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
 
             if GGUF_VERSION == 1:
                 raise ValueError(
@@ -242,20 +243,20 @@ class QuickGGUFReader:
                 )
             
             # number of tensors in file - not used here
-            ti_data_count = gguf_unpack(GGUFValueType.UINT64, file=file)
-            kv_data_count = gguf_unpack(GGUFValueType.UINT64, file=file)
+            ti_data_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            kv_data_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
 
             for _ in range(kv_data_count):
-                key_length = gguf_unpack(GGUFValueType.UINT64, file=file)
+                key_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
                 key = file.read(key_length)
                 value_type = GGUFValueType(
-                    gguf_unpack(GGUFValueType.UINT32, file=file)
+                    QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
                 )
                 if value_type == GGUFValueType.ARRAY:
                     ltype = GGUFValueType(
-                        gguf_unpack(GGUFValueType.UINT32, file=file)
+                        QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
                     )
-                    length = gguf_unpack(GGUFValueType.UINT64, file=file)
+                    length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
                     array = [
                         QuickGGUFReader.get_single(
                             ltype,
