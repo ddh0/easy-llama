@@ -581,12 +581,15 @@ class Model:
     def candidates(
         self,
         prompt: str,
-        k: int
+        k: int,
+        temp: Optional[float] = None
     ) -> list[tuple[str, np.floating]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
         top k candidates for most likely next token, along with their
-        normalized probabilities
+        normalized probabilities.
+
+        Optionally apply temperature `temp` to the probabilities.
         """
 
         assert_type(prompt, str, 'prompt', 'candidates')
@@ -609,7 +612,7 @@ class Model:
         # must normalize over all logits, not just top k
         if self.verbose:
             print_verbose(f'calculating softmax over {len(scores)} values')
-        normalized_scores: list[np.floating] = list(softmax(scores))
+        normalized_scores: list[np.floating] = list(softmax(z=scores, T=temp))
 
         # construct the final list
         i = 0
@@ -626,6 +629,7 @@ class Model:
         self,
         prompt: str,
         k: int,
+        temp: Optional[float] = None,
         file: _SupportsWriteAndFlush = sys.stdout,
     ) -> None:
         """
@@ -633,7 +637,7 @@ class Model:
         of returning them
         """
 
-        for _tuple in self.candidates(prompt, k):
+        for _tuple in self.candidates(prompt, k, temp):
             print(
                 f"token {_tuple[0]!r} has probability {_tuple[1]}",
                 file=file,

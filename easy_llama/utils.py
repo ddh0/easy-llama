@@ -34,12 +34,19 @@ class _ArrayLike(Iterable):
 class _SupportsWriteAndFlush(TextIO):
     pass
 
-def softmax(z: _ArrayLike) -> np.ndarray:
+def softmax(z: _ArrayLike, T: Optional[float] = None) -> np.ndarray:
     """
-    Compute softmax over values in z, where z is array-like
+    Compute softmax over values in z, where z is array-like.
+    Also apply temperature T, if specified.
     """
-    e_z = np.exp(z - np.max(z))
-    return e_z / e_z.sum()
+    if T in [None, 1.0, 1]:
+        e_z = np.exp(z - np.max(z))
+        return e_z / e_z.sum()
+    if T in [0, 0.0]:
+        raise ZeroDivisionError(
+            "softmax: temperature value T cannot be 0"
+        )
+    return np.exp(np.divide(z,T)) / np.sum(np.exp(np.divide(z,T)), axis=0)
 
 def cls() -> None:
     """Clear the terminal"""
@@ -89,30 +96,22 @@ def assert_type(
     
     # represent `int` as 'int' instead of "<class 'int'>"
     type_something_repr = repr(type(something).__name__)
-
     if not isinstance(expected_type, tuple):
         expected_type_repr = repr(expected_type.__name__)
         exc = TypeAssertionFailedError(
             f"{code_location}: {something_repr} should be an instance of "
             f"{expected_type_repr}, not {type_something_repr}"
         )
-
-        if hint is not None:
-            exc.add_note(hint)
-        
-        raise exc
-    
-    # represent `(int, list)` as "('int', 'list')" instead of
-    # "(<class 'int'>, <class 'list'>)"
-    expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
-    exc = TypeAssertionFailedError(
-        f"{code_location}: {something_repr} should be one of "
-        f"{expected_type_repr}, not {type_something_repr}"
-    )
-
+    else:
+        # represent `(int, list)` as "('int', 'list')" instead of
+        # "(<class 'int'>, <class 'list'>)"
+        expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
+        exc = TypeAssertionFailedError(
+            f"{code_location}: {something_repr} should be one of "
+            f"{expected_type_repr}, not {type_something_repr}"
+        )
     if hint is not None:
         exc.add_note(hint)
-
     raise exc
 
 class GGUFValueType(IntEnum):
@@ -132,47 +131,30 @@ class GGUFValueType(IntEnum):
     FLOAT64 = 12
 
 class QuickGGUFReader:
-    # NOTE: Officially, there is no way to determine if a GGUF file is little
-    #       or big endian. The format specifcation directs us to assume that
-    #       a file is little endian in all cases unless additional info is
-    #       provided.
-    #
-    #       In addition to this, GGUF files cannot run on hosts with the
-    #       opposite endianness. And, at this point in the code, the model
-    #       is already loaded. Therefore, we can assume that the endianness
-    #       of the file is the same as the endianness of the host.
-    #
-    # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
-    if sys.byteorder == 'little':
-        # LITTLE-endian format for struct.unpack() based on gguf value type
-        value_packing: dict = {
-            GGUFValueType.UINT8:   "<B",
-            GGUFValueType.INT8:    "<b",
-            GGUFValueType.UINT16:  "<H",
-            GGUFValueType.INT16:   "<h",
-            GGUFValueType.UINT32:  "<I",
-            GGUFValueType.INT32:   "<i",
-            GGUFValueType.FLOAT32: "<f",
-            GGUFValueType.UINT64:  "<Q",
-            GGUFValueType.INT64:   "<q",
-            GGUFValueType.FLOAT64: "<d",
-            GGUFValueType.BOOL:    "?"
-        }
-    else:
-        # BIG-endian format for struct.unpack() based on gguf value type
-        value_packing: dict = {
-            GGUFValueType.UINT8:   ">B",
-            GGUFValueType.INT8:    ">b",
-            GGUFValueType.UINT16:  ">H",
-            GGUFValueType.INT16:   ">h",
-            GGUFValueType.UINT32:  ">I",
-            GGUFValueType.INT32:   ">i",
-            GGUFValueType.FLOAT32: ">f",
-            GGUFValueType.UINT64:  ">Q",
-            GGUFValueType.INT64:   ">q",
-            GGUFValueType.FLOAT64: ">d",
-            GGUFValueType.BOOL:    "?"
-        }
+
+    # the GGUF format versions that this class supports
+    SUPPORTED_GGUF_VERSIONS = [2, 3]
+
+    # GGUF only supports execution on little or big endian machines
+    if sys.byteorder not in ['little', 'big']:
+        raise ValueError(
+            "host is not little or big endian - GGUF is unsupported"
+        )
+    
+    # arguments for struct.unpack() based on gguf value type
+    value_packing: dict = {
+        GGUFValueType.UINT8:   "=B",
+        GGUFValueType.INT8:    "=b",
+        GGUFValueType.UINT16:  "=H",
+        GGUFValueType.INT16:   "=h",
+        GGUFValueType.UINT32:  "=I",
+        GGUFValueType.INT32:   "=i",
+        GGUFValueType.FLOAT32: "=f",
+        GGUFValueType.UINT64:  "=Q",
+        GGUFValueType.INT64:   "=q",
+        GGUFValueType.FLOAT64: "=d",
+        GGUFValueType.BOOL:    "?"
+    }
 
     # length in bytes for each gguf value type
     value_lengths: dict = {
@@ -202,10 +184,10 @@ class QuickGGUFReader:
             file: BufferedReader
         ) -> Union[str, int, float, bool]:
         """Read a single value from an open file"""
-
         if value_type == GGUFValueType.STRING:
-            value_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-            value = file.read(value_length)
+            string_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            value = file.read(string_length)
+            # officially, strings that cannot be decoded into utf-8 are invalid
             value = value.decode("utf-8")
         else:
             value = QuickGGUFReader.unpack(value_type, file=file)
@@ -224,48 +206,66 @@ class QuickGGUFReader:
 
         metadata: dict[str, Union[str, int, float, bool, list]] = {}
         with open(fn, "rb") as file:
-            GGUF_MAGIC = file.read(4)
+            magic = file.read(4)
 
-            if GGUF_MAGIC != b"GGUF":
+            if magic != b"GGUF":
                 raise ValueError(
                     "your model file is not a valid GGUF file "
-                    f"(magic number mismatch, got {GGUF_MAGIC}, "
+                    f"(magic number mismatch, got {magic}, "
                     "expected b'GGUF')"
                 )
             
-            GGUF_VERSION = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
+            version = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
 
-            if GGUF_VERSION == 1:
+            if version not in QuickGGUFReader.SUPPORTED_GGUF_VERSIONS:
                 raise ValueError(
-                    "your model file reports GGUF version 1, "
-                    "but only versions 2 and above are supported. "
-                    "re-convert your model or download a newer version"
+                    f"your model file reports GGUF version {version}, but "
+                    f"only versions {QuickGGUFReader.SUPPORTED_GGUF_VERSIONS} "
+                    "are supported. re-convert your model or download a newer "
+                    "version"
                 )
             
-            # number of tensors in file - not used here
-            ti_data_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-            kv_data_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            tensor_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            if version == 3:
+                metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            elif version == 2:
+                metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
 
-            for _ in range(kv_data_count):
-                key_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            for _ in range(metadata_kv_count):
+                if version == 3:
+                    key_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+                elif version == 2:
+                    key_length = 0
+                    while key_length == 0:
+                        # seek until next key is found
+                        key_length = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
+                    file.read(4) # 4 byte offset for GGUFv2
                 key = file.read(key_length)
                 value_type = GGUFValueType(
                     QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
                 )
                 if value_type == GGUFValueType.ARRAY:
-                    ltype = GGUFValueType(
+                    array_value_type = GGUFValueType(
                         QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
                     )
-                    length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+                    # array_length is the number of items in the array
+                    if version == 3:
+                        array_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+                    elif version == 2:
+                        array_length = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
+                        file.read(4) # 4 byte offset for GGUFv2
                     array = [
                         QuickGGUFReader.get_single(
-                            ltype,
+                            array_value_type,
                             file
-                        ) for _ in range(length)
+                        ) for _ in range(array_length)
                     ]
                     metadata[key.decode()] = array
                 else:
-                    value = QuickGGUFReader.get_single(value_type, file)
+                    value = QuickGGUFReader.get_single(
+                        value_type,
+                        file
+                    )
                     metadata[key.decode()] = value
 
         return metadata
