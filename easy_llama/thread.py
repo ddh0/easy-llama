@@ -37,8 +37,11 @@ class Message(dict):
             f"'content': {self['content']!r}, " \
             f"'suffix': {self['suffix']!r}" \
             "})"
+    
+    def __len__(self) -> int:
+        return len(self.as_string())
 
-    def as_string(self):
+    def as_string(self) -> str:
         """Return the full message string (prefix + content + suffix)"""
         return self['prefix'] + self['content'] + self['suffix']
 
@@ -255,6 +258,11 @@ class Thread:
         """
         Using the list of messages, construct a string suitable for inference,
         respecting the format and context length of this thread.
+
+        If the length of all messages is greater than the model's context
+        length, the oldest messages will not be part of the returned string. If
+        the first message in the history is a system message, it will be kept
+        in-context.
         """
 
         inf_str = ''
@@ -274,12 +282,14 @@ class Thread:
         # Otherwise, all messages are treated equally
         #
 
-        if len(self.messages) >= 1:
-            if self.messages[0]['role'] == 'system':
-                sys_msg_flag = True
-                sys_msg = self.messages[0]
-                sys_msg_str = sys_msg.as_string()
-                context_len_budget -= (self.model.get_length(sys_msg_str) - 1)
+        if len(self.messages) == 0:
+            return self.format['bot_prefix']
+        
+        elif self.messages[0]['role'] == 'system':
+            sys_msg_flag = True
+            sys_msg = self.messages[0]
+            sys_msg_str = sys_msg.as_string()
+            context_len_budget -= (self.model.get_length(sys_msg_str) - 1)
 
         if sys_msg_flag:
             iterator = reversed(self.messages[1:])

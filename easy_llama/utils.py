@@ -34,19 +34,58 @@ class _ArrayLike(Iterable):
 class _SupportsWriteAndFlush(TextIO):
     pass
 
-def softmax(z: _ArrayLike, T: Optional[float] = None) -> np.ndarray:
+high_precision_dtype = None
+
+dtypes = [
+    'float96',
+    'float80',
+    'float64',
+    'float32',
+    'float16'
+]
+
+# find the highest available numpy precision on this machine
+for dt in dtypes:
+    if hasattr(np, dt):
+        high_precision_dtype: type = getattr(np, dt)
+        break
+
+def softmax(
+    z: _ArrayLike,
+    T: Optional[float] = None,
+    dtype: Optional[type] = None
+) -> np.ndarray:
     """
     Compute softmax over values in z, where z is array-like.
     Also apply temperature T, if specified.
+
+    If `dtype` is not specified, the highest available numpy precision will be
+    used.
     """
+    if dtype is None:
+        assert high_precision_dtype is not None
+        _dtype = high_precision_dtype
+    else:
+        assert_type(
+            dtype,
+            type,
+            'dtype',
+            'softmax',
+            'dtype should be a numpy floating type, such as `np.float16`'
+        )
+        _dtype = dtype
+    
+    _z = np.asarray(z, dtype=_dtype)
     if T in [None, 1.0, 1]:
-        e_z = np.exp(z - np.max(z))
-        return e_z / e_z.sum()
+        # simple formula with no temperature
+        e_z = np.exp(_z - np.max(_z), dtype=_dtype)
+        return e_z / np.sum(e_z, axis=0, dtype=_dtype)
     if T in [0, 0.0]:
         raise ZeroDivisionError(
             "softmax: temperature value T cannot be 0"
         )
-    return np.exp(np.divide(z,T)) / np.sum(np.exp(np.divide(z,T)), axis=0)
+    e_z = np.exp(np.divide(_z,T, dtype=_dtype), dtype=_dtype)
+    return e_z / np.sum(e_z, axis=0, dtype=_dtype)
 
 def cls() -> None:
     """Clear the terminal"""
@@ -72,6 +111,17 @@ def print_info(text: str) -> None:
 
 def print_warning(text: str) -> None:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)
+
+def _print_debug(
+        obj: object,
+        prefix: str='\t',
+        file: _SupportsWriteAndFlush = sys.stderr
+) -> None:
+    print(f"{prefix}{repr(obj)=}", file=file)
+    print(f"{prefix}{id(obj)=}", file=file)
+    print(f"{prefix}{hex(id(obj))=}", file=file)
+    print(f"{prefix}{sys.getsizeof(obj)=}", file=file)
+    file.flush()
 
 def assert_type(
     something: Any,

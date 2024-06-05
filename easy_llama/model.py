@@ -4,6 +4,7 @@ from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing the Model class to work with language models"""
 
+import os
 import sys
 import numpy as np
 
@@ -12,6 +13,7 @@ from .utils import (
     QuickGGUFReader,
     print_warning,
     print_verbose,
+    _print_debug,
     assert_type,
     softmax
 )
@@ -123,12 +125,17 @@ class Model:
                 "host is big-endian, please ensure your GGUF file is also "
                 "big-endian"
             )
-        else:
+        elif sys.byteorder == 'little':
             if verbose:
                 print_verbose(
                     "host is little-endian"
                 )
+        else:
+            print_warning(
+                f"unexpected value for sys.byteorder: {sys.byteorder!r}"
+            )
         
+        self._model_file_size_bytes = os.stat(model_path).st_size
         self.metadata = QuickGGUFReader.load_metadata(model_path)
 
         n_ctx_train = None
@@ -238,14 +245,14 @@ class Model:
 
         try:
             self.vocab: list[str] = self.metadata['tokenizer.ggml.tokens']
-        except KeyError:
+        except (KeyError, TypeError, ValueError):
             self.vocab = None
             print_warning(
                 "could not set Model.vocab, defaulting to None"
             )
         try:
             self.bos_token = int(self.metadata['tokenizer.ggml.bos_token_id'])
-        except KeyError:
+        except (KeyError, TypeError, ValueError):
             self.bos_token = int(self.llama.token_bos())
             if self.bos_token < 0:
                 self.bos_token = None
@@ -254,7 +261,7 @@ class Model:
                 )
         try:
             self.eos_token = int(self.metadata['tokenizer.ggml.eos_token_id'])
-        except KeyError:
+        except (KeyError, TypeError, ValueError):
             self.eos_token = int(self.llama.token_eos())
             if self.eos_token < 0:
                 self.eos_token = None
@@ -271,6 +278,13 @@ class Model:
                 print_verbose(
                     "could not set Model.nl_token, defaulting to None"
                 )
+        self.eot_token = int(self.llama._model.token_eot())
+        if self.eot_token < 0:
+            self.eot_token = None
+            if verbose:
+                print_verbose(
+                    "could not set Model.eot_token, defaulting to None"
+                )
         self.prefix_token = int(self.llama._model.token_prefix())
         if self.prefix_token < 0:
             self.prefix_token = None
@@ -285,12 +299,12 @@ class Model:
                 print_verbose(
                     "could not set Model.middle_token, defaulting to None"
                 )
-        self.eot_token = int(self.llama._model.token_eot())
-        if self.eot_token < 0:
-            self.eot_token = None
+        self.suffix_token = int(self.llama._model.token_suffix())
+        if self.suffix_token < 0:
+            self.suffix_token = None
             if verbose:
                 print_verbose(
-                    "could not set Model.eot_token, defaulting to None"
+                    "could not set Model.suffix_token, defaulting to None"
                 )
 
         # expose these values because they may be useful / informative
@@ -298,6 +312,7 @@ class Model:
         self.rope_freq_base_train: float = rope_freq_base_train
         self.rope_freq_base: float = rope_freq_base
         self.flash_attn: bool = flash_attn
+        self.n_vocab: int = len(self.vocab)
 
         if verbose:
             print_verbose("new Model instance with the following attributes:")
@@ -321,7 +336,10 @@ class Model:
             f"offload_kqv={self._offload_kqv}, "+ \
             f"flash_attn={self._flash_attn}, " + \
             f"verbose={self._verbose})"
-
+    
+    def __sizeof__(self) -> int:
+        return self._model_file_size_bytes
+    
     def __del__(self):
         self.unload()
     
@@ -341,6 +359,17 @@ class Model:
         `Model(...)` is a shorthand for `Model.generate(...)`
         """
         return self.generate(prompt, stops, sampler)
+    
+    def _print_debug(self) -> None:
+        assert_model_is_loaded(self)
+        print("Model         object:")
+        _print_debug(self)
+        print("Llama         object:")
+        _print_debug(self.llama)
+        print("_LlamaModel   object:")
+        _print_debug(self.llama._model)
+        print("llama_model_p object:")
+        _print_debug(self.llama._model.model)
 
     def unload(self):
         """
@@ -351,7 +380,8 @@ class Model:
             # nothing can be done
             return
         try:
-            if self.llama._model.model is not None and self.llama._model._llama_free_model is not None:
+            if self.llama._model.model is not None and \
+                self.llama._model._llama_free_model is not None:
                 # actually unload the model from memory
                 self.llama._model._llama_free_model(self.llama._model.model)
                 self.llama._model.model = None
@@ -612,7 +642,9 @@ class Model:
         # must normalize over all logits, not just top k
         if self.verbose:
             print_verbose(f'calculating softmax over {len(scores)} values')
-        normalized_scores: list[np.floating] = list(softmax(z=scores, T=temp))
+        normalized_scores: list[np.floating] = list(
+            softmax(z=scores, T=temp, dtype=None)
+        )
 
         # construct the final list
         i = 0
@@ -647,23 +679,31 @@ class Model:
 def assert_model_is_loaded(model: Model) -> None:
     """
     Ensure the Model is fully constructed, such that
-    `Model.llama._model.model is not None` is guaranteed to be `True`
+    `model.llama._model.model is not None` is guaranteed to be `True`
 
     Raise ModelUnloadedException otherwise
     """
-    if not hasattr(model, 'llama'):
-        raise ModelUnloadedException(
-            "easy_llama.Model instance has no attribute 'llama'"
-        )
-    if not hasattr(model.llama, '_model'):
-        raise ModelUnloadedException(
-            "llama_cpp.Llama instance has no attribute '_model'"
-        )
-    if not hasattr(model.llama._model, 'model'):
-        raise ModelUnloadedException(
-            "llama_cpp._internals._LlamaModel instance has no attribute 'model'"
-        )
-    if model.llama._model.model is None:
-        raise ModelUnloadedException(
-            "llama_cpp._internals._LlamaModel.model is None"
-        )
+    try:
+        if model.llama._model.model is not None:
+            return
+    except (NameError, AttributeError):
+        if model is None:
+            raise ModelUnloadedException(
+                "model is None"
+            )
+        if not hasattr(model, 'llama'):
+            raise ModelUnloadedException(
+                "model has no attribute 'llama'"
+            )
+        if not hasattr(model.llama, '_model'):
+            raise ModelUnloadedException(
+                "llama_cpp.Llama instance has no attribute '_model'"
+            )
+        if not hasattr(model.llama._model, 'model'):
+            raise ModelUnloadedException(
+                "llama_cpp._internals._LlamaModel instance has no attribute 'model'"
+            )
+        if model.llama._model.model is None:
+            raise ModelUnloadedException(
+                "llama_cpp._internals._LlamaModel.model is None"
+            )

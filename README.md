@@ -147,18 +147,16 @@ Have a great day and happy coding (or web-browsing)!
 
 In most cases, the best way to install easy-llama is through pip.
 
-You will need `cmake` to install easy-llama. It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
+You will need `cmake` to install easy-llama (except for CPU only). It is probably available in your preferred package manager, such as `apt`, `brew`, `yum`, etc. Or you can install it [from source](https://cmake.org/download/).
 
 Select your backend from the list below to see your installation instructions. If you run into issues with the installation, please see the [llama-cpp-python installation instructions](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#installation) for a more detailed guide. If you're still having trouble, feel free to [open an issue](https://github.com/ddh0/easy-llama/issues/new/).
-
-Note that in these instructions, the variable `LLAMA_FAST` is enabled. This should provide a small speedup without causing issues ([ref](https://github.com/ggerganov/llama.cpp/blob/7bd4ffb78062587e4012a1c24186223f09b1bc70/Makefile#L134)). However, if you run into issues with installation, it is suggested to retry without this variable set.
 
 <details>
 <summary>CPU only</summary>
 
 ```
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python
+pip install --no-cache-dir llama-cpp-python
 pip install --upgrade easy-llama
 ```
 
@@ -168,7 +166,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_CUDA=1 -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_CUDA=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -178,7 +176,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_METAL=1 -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_METAL=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -188,7 +186,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_HIPBLAS=1 -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_HIPBLAS=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -198,7 +196,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_VULKAN=1 -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_VULKAN=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -208,7 +206,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_CLBLAST=1 -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_CLBLAST=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -218,7 +216,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_BLAS=1 -DLLAMA_BLAS_VENDOR=OpenBLAS -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_BLAS=1 -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -228,7 +226,7 @@ pip install --upgrade easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_KOMPUTE=on -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_KOMPUTE=on" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -239,7 +237,7 @@ pip install --upgrade easy-llama
 ```bash
 pip uninstall llama-cpp-python -y
 source /opt/intel/oneapi/setvars.sh
-CMAKE_ARGS="-DLLAMA_SYCL=on -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx -DLLAMA_FAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DLLAMA_SYCL=on -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade easy-llama
 ```
 
@@ -253,7 +251,7 @@ You will need `cmake`. It is probably available in your preferred package manage
 
 > [!NOTE]
 >
-> You will need to modify the `CMAKE_ARGS` variable according to your backend. The arguments shown below are for CUDA support. If you're not using CUDA, select your backend above to see the correct `CMAKE_ARGS`. Also note that the variable `LLAMA_FAST` is enabled. This should provide a small speedup without causing issues ([ref](https://github.com/ggerganov/llama.cpp/blob/7bd4ffb78062587e4012a1c24186223f09b1bc70/Makefile#L134)). However, if you run into issues with installation, it is suggested to retry without this variable set.
+> You will need to modify the `CMAKE_ARGS` variable according to your backend. The arguments shown below are for CUDA support. If you're not using CUDA, select your backend above to see the correct `CMAKE_ARGS`.
 
 To install easy-llama from source, copy and paste the following commands into your terminal:
 
@@ -267,7 +265,7 @@ rm -rf ./llama.cpp
 git clone https://github.com/ggerganov/llama.cpp
 cd -
 git clone https://github.com/ddh0/easy-llama
-CMAKE_ARGS="-DLLAMA_CUDA=1 -DLLAMA_FAST=1" pip install -e ./llama-cpp-python
+CMAKE_ARGS="-DLLAMA_CUDA=1" pip install -e ./llama-cpp-python
 pip install -e ./easy-llama
 ```
 
