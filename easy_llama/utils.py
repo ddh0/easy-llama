@@ -9,11 +9,13 @@ import sys
 import struct
 import numpy as np
 
-from typing   import Any, Iterable, TextIO, Optional, Union
+from typing   import Iterable, TextIO, Optional, Union
 from io       import BufferedReader
 from time     import strftime
 from enum     import IntEnum
 from colorama import Fore
+
+NoneType: type = type(None)
 
 
 # color codes used in Thread.interact()
@@ -53,14 +55,14 @@ for dt in dtypes:
 def softmax(
     z: _ArrayLike,
     T: Optional[float] = None,
-    dtype: Optional[type] = None
+    dtype: Optional[np.dtype] = None
 ) -> np.ndarray:
     """
     Compute softmax over values in z, where z is array-like.
     Also apply temperature T, if specified.
 
     If `dtype` is not specified, the highest available numpy precision will be
-    used.
+    used (up to `np.float96`).
     """
     if dtype is None:
         assert high_precision_dtype is not None
@@ -117,6 +119,7 @@ def _print_debug(
         prefix: str='\t',
         file: _SupportsWriteAndFlush = sys.stderr
 ) -> None:
+    print(f"{prefix}{type(obj)=}", file=file)
     print(f"{prefix}{repr(obj)=}", file=file)
     print(f"{prefix}{id(obj)=}", file=file)
     print(f"{prefix}{hex(id(obj))=}", file=file)
@@ -124,43 +127,44 @@ def _print_debug(
     file.flush()
 
 def assert_type(
-    something: Any,
+    obj: object,
     expected_type: Union[type, tuple[type]],
-    something_repr: str,
+    obj_repr: str,
     code_location: str,
     hint: Optional[str] = None
 ):
     """
-    Ensure that `something` is an instance of `expected_type`
+    Ensure that `obj` is an instance of `expected_type`
 
-    If `expected_type` is a tuple, ensure that `something` is an instance of
+    If `expected_type` is a tuple, ensure that `obj` is an instance of
     some type in the tuple
 
-    Raise `TypeAssertionFailedError` otherwise, using `something_repr` and
+    Raise `TypeAssertionFailedError` otherwise, using `obj_repr` and
     `code_location` to make an informative exception message
 
     If specified, `hint` is added as a note to the exception
     """
-    if isinstance(something, expected_type):
+    if isinstance(obj, expected_type):
         return
     
-    # represent `int` as 'int' instead of "<class 'int'>"
-    type_something_repr = repr(type(something).__name__)
+    obj_type_repr = repr(type(obj).__name__)
+
     if not isinstance(expected_type, tuple):
+        # represent `int` as 'int' instead of "<class 'int'>"
         expected_type_repr = repr(expected_type.__name__)
         exc = TypeAssertionFailedError(
-            f"{code_location}: {something_repr} should be an instance of "
-            f"{expected_type_repr}, not {type_something_repr}"
+            f"{code_location}: {obj_repr} should be an instance of "
+            f"{expected_type_repr}, not {obj_type_repr}"
         )
     else:
         # represent `(int, list)` as "('int', 'list')" instead of
         # "(<class 'int'>, <class 'list'>)"
         expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
         exc = TypeAssertionFailedError(
-            f"{code_location}: {something_repr} should be one of "
-            f"{expected_type_repr}, not {type_something_repr}"
+            f"{code_location}: {obj_repr} should be one of "
+            f"{expected_type_repr}, not {obj_type_repr}"
         )
-    if hint is not None:
+    if isinstance(hint, str):
         exc.add_note(hint)
     raise exc
 

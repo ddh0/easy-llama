@@ -6,6 +6,7 @@ from ._version import __version__, __llama_cpp_version__
 
 import os
 import sys
+import heapq
 import numpy as np
 
 from .utils import (
@@ -15,24 +16,20 @@ from .utils import (
     print_verbose,
     _print_debug,
     assert_type,
+    NoneType,
     softmax
 )
 
 from .samplers import SamplerSettings, DefaultSampling
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional, Union
-from os.path   import isdir, exists
-from heapq     import nlargest
-
-from os import cpu_count as os_cpu_count
 
 
 class ModelUnloadedException(Exception):
-    """Exception raised when trying to use a Model that has been unloaded"""
+    """Exception raised when trying to use a model that has been unloaded"""
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
-        self.add_note('Are you trying to use a Model that has been unloaded?')
 
 class Model:
     """
@@ -94,16 +91,16 @@ class Model:
             print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
 
         assert_type(model_path, str, 'model_path', 'Model')
-        if not exists(model_path):
+        if not os.path.exists(model_path):
             raise FileNotFoundError(
                 f"Model: the given model_path {model_path!r} does not exist"
             )
-        if isdir(model_path):
+        if os.path.isdir(model_path):
             raise IsADirectoryError(
                 f"Model: the given model_path {model_path!r} is a directory, "
                 "not a GGUF file"
             )
-        assert_type(context_length, (int, type(None)), 'context_length', 'Model')
+        assert_type(context_length, (int, NoneType), 'context_length', 'Model')
         assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
         assert_type(offload_kqv, bool, 'offload_kqv', 'Model')
         assert_type(flash_attn, bool, 'flash_attn', 'Model')
@@ -134,18 +131,24 @@ class Model:
             print_warning(
                 f"unexpected value for sys.byteorder: {sys.byteorder!r}"
             )
+            print_warning(
+                "expected 'little' for little-endian or 'big' for big-endian"
+            )
         
         self._model_file_size_bytes = os.stat(model_path).st_size
         self.metadata = QuickGGUFReader.load_metadata(model_path)
 
         n_ctx_train = None
         rope_freq_base_train = None
+        n_layer = None
 
         for key in self.metadata.keys():
             if key.endswith('.context_length'):
                 n_ctx_train = int(self.metadata[key])
             if key.endswith('.rope.freq_base'):
                 rope_freq_base_train = float(self.metadata[key])
+            if key.endswith('.block_count'):
+                n_layer = int(self.metadata[key])
 
         if n_ctx_train is None:
             raise KeyError(
@@ -186,29 +189,36 @@ class Model:
                     f'{rope_freq_base_train} to {rope_freq_base}'
                 )
 
-            if 2 <= context_length/n_ctx_train < 4:
+            if 1 < context_length/n_ctx_train < 2:
                 print_warning(
-                    'loading model with 2x native context length or more, '
+                    'loading model with up to 2x native context length, '
                     'expect small loss of quality'
                 )
             
-            elif 4 <= context_length/n_ctx_train < 8:
+            elif 2 <= context_length/n_ctx_train < 4:
                 print_warning(
-                    'loading model with 4x native context length or more, '
+                    'loading model with up to 4x native context length, '
                     'expect moderate loss of quality'
                 )
 
-            elif context_length/n_ctx_train >= 8:
+            elif context_length/n_ctx_train >= 4:
                 print_warning(
-                    'loading model with 8x native context length or more, '
+                    'loading model with 4x native context length or greater, '
                     'expect SIGNIFICANT loss of quality'
                 )
 
-        cpu_count = os_cpu_count()
+        cpu_count = os.cpu_count() # only read once
 
-        # these values for n_threads and n_threads_batch are
-        # known to be optimal for most systems
-        n_batch = 512 # can this be optimized?
+        if n_layer is not None and (n_gpu_layers >= n_layer or n_gpu_layers < 0):
+            # if model is fully offloaded
+            n_batch = 1024
+        else:
+            # if model is not fully offloaded
+            n_batch = 512
+        
+        # these values for n_threads and n_threads_batch are known to
+        # be optimal unless the host system has an unbalanced amount of
+        # P-cores and E-cores
         n_threads = max(cpu_count//2, 1)
         n_threads_batch = cpu_count
 
@@ -271,19 +281,19 @@ class Model:
 
         # These special tokens are optional
         # if a negative value is returned as a token, it is not defined
-        self.nl_token  = int(self.llama._model.token_nl())
-        if self.nl_token < 0:
-            self.nl_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.nl_token, defaulting to None"
-                )
         self.eot_token = int(self.llama._model.token_eot())
         if self.eot_token < 0:
             self.eot_token = None
             if verbose:
                 print_verbose(
                     "could not set Model.eot_token, defaulting to None"
+                )
+        self.nl_token  = int(self.llama._model.token_nl())
+        if self.nl_token < 0:
+            self.nl_token = None
+            if verbose:
+                print_verbose(
+                    "could not set Model.nl_token, defaulting to None"
                 )
         self.prefix_token = int(self.llama._model.token_prefix())
         if self.prefix_token < 0:
@@ -308,25 +318,44 @@ class Model:
                 )
 
         # expose these values because they may be useful / informative
+        self.filename = os.path.basename(model_path)
         self.n_ctx_train: int = n_ctx_train
         self.rope_freq_base_train: float = rope_freq_base_train
         self.rope_freq_base: float = rope_freq_base
         self.flash_attn: bool = flash_attn
         self.n_vocab: int = len(self.vocab)
+        self.n_layer: int = n_layer
 
         if verbose:
             print_verbose("new Model instance with the following attributes:")
-            print_verbose(f"model: {model_path}")
-            print_verbose(f"param: n_gpu_layers         == {n_gpu_layers}")
-            print_verbose(f"param: offload_kqv          == {offload_kqv}")
-            print_verbose(f"param: flash_attn           == {flash_attn}")
-            print_verbose(f"param: n_batch              == {n_batch}")
-            print_verbose(f"param: n_threads            == {n_threads}")
-            print_verbose(f"param: n_threads_batch      == {n_threads_batch}")
-            print_verbose(f" gguf: n_ctx_train          == {n_ctx_train}")
-            print_verbose(f"param: self.context_length  == {self.context_length}")
-            print_verbose(f" gguf: rope_freq_base_train == {rope_freq_base_train}")
-            print_verbose(f"param: rope_freq_base       == {rope_freq_base}")
+            print_verbose(f"filename             == {self.filename}")
+            print_verbose(f"n_gpu_layers         == {n_gpu_layers}")
+            if n_layer is not None:
+                print_verbose(f"n_layer              == {self.n_layer}")
+            print_verbose(f"offload_kqv          == {offload_kqv}")
+            print_verbose(f"flash_attn           == {flash_attn}")
+            print_verbose(f"n_batch              == {n_batch}")
+            print_verbose(f"n_threads            == {n_threads}")
+            print_verbose(f"n_threads_batch      == {n_threads_batch}")
+            print_verbose(f"n_ctx_train          == {n_ctx_train}")
+            print_verbose(f"context_length       == {self.context_length}")
+            print_verbose(f"rope_freq_base_train == {rope_freq_base_train}")
+            print_verbose(f"rope_freq_base       == {rope_freq_base}")
+            print_verbose(f"n_vocab              == {self.n_vocab}")
+            if self.bos_token is not None:
+                print_verbose(f"self.bos_token       == {self.bos_token}")
+            if self.eos_token is not None:
+                print_verbose(f"self.eos_token       == {self.eos_token}")
+            if self.eot_token is not None:
+                print_verbose(f"self.eot_token       == {self.eot_token}")
+            if self.nl_token is not None:
+                print_verbose(f"self.nl_token        == {self.nl_token}")
+            if self.prefix_token is not None:
+                print_verbose(f"self.prefix_token    == {self.prefix_token}")
+            if self.middle_token is not None:
+                print_verbose(f"self.middle_token    == {self.middle_token}")
+            if self.suffix_token is not None:
+                print_verbose(f"self.suffix_token    == {self.suffix_token}")
     
     def __repr__(self) -> str:
         return \
@@ -361,15 +390,23 @@ class Model:
         return self.generate(prompt, stops, sampler)
     
     def _print_debug(self) -> None:
-        assert_model_is_loaded(self)
-        print("Model         object:")
+        try:
+            assert_model_is_loaded(self)
+        except ModelUnloadedException as failed_assertion:
+            exc = ModelUnloadedException(
+                "_print_debug(): Cannot debug a model that is not fully loaded"
+            )
+            raise exc from failed_assertion
+        print("Model: ------------------------------------------------------")
         _print_debug(self)
-        print("Llama         object:")
+        print("Llama: ------------------------------------------------------")
         _print_debug(self.llama)
-        print("_LlamaModel   object:")
+        print("_LlamaModel: ------------------------------------------------")
         _print_debug(self.llama._model)
-        print("llama_model_p object:")
+        print("llama_model_p: ----------------------------------------------")
         _print_debug(self.llama._model.model)
+        print("llama_free_model: ----------------------------------------------")
+        _print_debug(self.llama._model._llama_free_model)
 
     def unload(self):
         """
@@ -622,8 +659,12 @@ class Model:
         Optionally apply temperature `temp` to the probabilities.
         """
 
+        # TODO: this functions uses 7GB of memory
+        # maybe switch from lists to numpy arrays?
+
         assert_type(prompt, str, 'prompt', 'candidates')
         assert_type(k, int, 'k', 'candidates')
+        assert_type(temp, (float, NoneType), 'temp', 'candidates')
         if not 0 < k <= len(self.vocab):
             raise ValueError(
                 f"candidates: k should be between 0 and {len(self.vocab)}"
@@ -654,7 +695,7 @@ class Model:
             i += 1
 
         # return token_probs_list, sorted by probability, only top k
-        return nlargest(k, token_probs_list, key=lambda x:x[1])
+        return heapq.nlargest(k, token_probs_list, key=lambda x:x[1])
 
 
     def print_candidates(
@@ -678,7 +719,7 @@ class Model:
 
 def assert_model_is_loaded(model: Model) -> None:
     """
-    Ensure the Model is fully constructed, such that
+    Ensure the model is fully constructed, such that
     `model.llama._model.model is not None` is guaranteed to be `True`
 
     Raise ModelUnloadedException otherwise
@@ -688,22 +729,29 @@ def assert_model_is_loaded(model: Model) -> None:
             return
     except (NameError, AttributeError):
         if model is None:
-            raise ModelUnloadedException(
+            exc = ModelUnloadedException(
                 "model is None"
             )
-        if not hasattr(model, 'llama'):
-            raise ModelUnloadedException(
+        elif not hasattr(model, 'llama'):
+            exc = ModelUnloadedException(
                 "model has no attribute 'llama'"
             )
-        if not hasattr(model.llama, '_model'):
-            raise ModelUnloadedException(
+        elif not hasattr(model.llama, '_model'):
+            exc = ModelUnloadedException(
                 "llama_cpp.Llama instance has no attribute '_model'"
             )
-        if not hasattr(model.llama._model, 'model'):
-            raise ModelUnloadedException(
+        elif not hasattr(model.llama._model, 'model'):
+            exc = ModelUnloadedException(
                 "llama_cpp._internals._LlamaModel instance has no attribute 'model'"
             )
-        if model.llama._model.model is None:
-            raise ModelUnloadedException(
+        elif model.llama._model.model is None:
+            exc = ModelUnloadedException(
                 "llama_cpp._internals._LlamaModel.model is None"
             )
+        else:
+            # likely unreachable
+            exc = ModelUnloadedException(
+                "model is not loaded"
+            )
+        exc.add_note('Are you trying to use a model that has been unloaded?')
+        raise exc from None
