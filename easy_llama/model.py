@@ -394,18 +394,33 @@ class Model:
             assert_model_is_loaded(self)
         except ModelUnloadedException as failed_assertion:
             exc = ModelUnloadedException(
-                "_print_debug(): Cannot debug a model that is not fully loaded"
+                "_print_debug: Cannot debug a model that is not fully loaded"
             )
             raise exc from failed_assertion
-        print("Model: ------------------------------------------------------")
+        print(
+            "Model: ---------------------------------------------------------",
+            file=sys.stderr
+        )
         _print_debug(self)
-        print("Llama: ------------------------------------------------------")
+        print(
+            "Llama: ---------------------------------------------------------",
+            file=sys.stderr
+        )
         _print_debug(self.llama)
-        print("_LlamaModel: ------------------------------------------------")
+        print(
+            "_LlamaModel: ---------------------------------------------------",
+            file=sys.stderr
+        )
         _print_debug(self.llama._model)
-        print("llama_model_p: ----------------------------------------------")
+        print(
+            "llama_model_p: -------------------------------------------------",
+            file=sys.stderr
+        )
         _print_debug(self.llama._model.model)
-        print("llama_free_model: ----------------------------------------------")
+        print(
+            "llama_free_model: ----------------------------------------------",
+            file=sys.stderr
+        )
         _print_debug(self.llama._model._llama_free_model)
 
     def unload(self):
@@ -424,8 +439,10 @@ class Model:
                 self.llama._model.model = None
         except AttributeError as exc:
             # broken or already being destroyed by GC, abort
-            print("Ignoring AttributeError exception in Model.unload (abort):")
-            print(repr(exc))
+            print(
+                f"unload: Ignoring AttributeError exception: {repr(exc)}",
+                file=sys.stderr
+            )
             return
         if hasattr(self, 'llama'):
             delattr(self, 'llama')

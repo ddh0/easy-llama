@@ -129,7 +129,7 @@ def _print_debug(
 def assert_type(
     obj: object,
     expected_type: Union[type, tuple[type]],
-    obj_repr: str,
+    obj_name: str,
     code_location: str,
     hint: Optional[str] = None
 ):
@@ -139,7 +139,7 @@ def assert_type(
     If `expected_type` is a tuple, ensure that `obj` is an instance of
     some type in the tuple
 
-    Raise `TypeAssertionFailedError` otherwise, using `obj_repr` and
+    Raise `TypeAssertionFailedError` otherwise, using `obj_name` and
     `code_location` to make an informative exception message
 
     If specified, `hint` is added as a note to the exception
@@ -153,7 +153,7 @@ def assert_type(
         # represent `int` as 'int' instead of "<class 'int'>"
         expected_type_repr = repr(expected_type.__name__)
         exc = TypeAssertionFailedError(
-            f"{code_location}: {obj_repr} should be an instance of "
+            f"{code_location}: {obj_name} should be an instance of "
             f"{expected_type_repr}, not {obj_type_repr}"
         )
     else:
@@ -161,7 +161,7 @@ def assert_type(
         # "(<class 'int'>, <class 'list'>)"
         expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
         exc = TypeAssertionFailedError(
-            f"{code_location}: {obj_repr} should be one of "
+            f"{code_location}: {obj_name} should be one of "
             f"{expected_type_repr}, not {obj_type_repr}"
         )
     if isinstance(hint, str):

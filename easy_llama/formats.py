@@ -14,7 +14,7 @@ class AdvancedFormat:
         assert_type(base_dict, dict, 'base_dict', 'AdvancedFormat')
         _base_dict_keys = base_dict.keys() # only read once
         if 'system_prompt' not in _base_dict_keys and 'system_content' in _base_dict_keys:
-            raise KeyError(
+            raise ValueError(
                 "AdvancedFormat: base_dict uses deprecated 'system_content' "
                 "key instead of the expected 'system_prompt' key - please "
                 "update your code accordingly"
