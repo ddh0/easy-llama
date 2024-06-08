@@ -269,6 +269,8 @@ CMAKE_ARGS="-DLLAMA_CUDA=1" pip install -e ./llama-cpp-python
 pip install -e ./easy-llama
 ```
 
+Note that installations from source are bleeding-edge, and as such are inherently **unstable**. You may run into unexpected issues during installation or inference, which is why installing from pip is recommended in most cases.
+
 ## Acknowledgments
 easy-llama stands on the shoulders of giants. Thank you to [Andrei Betlen](https://github.com/abetlen) for [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), and to [Georgi Gerganov](https://github.com/ggerganov) for [llama.cpp](https://github.com/ggerganov/llama.cpp) and [GGML](https://github.com/ggerganov/ggml). Thank you to all who have made contributions to these projects.
 
