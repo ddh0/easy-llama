@@ -649,7 +649,7 @@ class Model:
         return res
 
 
-    def ingest(self, text: str) -> None:
+    def ingest(self, text: Union[str, list[int]]) -> None:
         """
         Ingest the given text into the model's cache
         """
