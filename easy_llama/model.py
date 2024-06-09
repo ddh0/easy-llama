@@ -16,13 +16,13 @@ from .utils import (
     print_verbose,
     _print_debug,
     assert_type,
-    NoneType,
     softmax
 )
 
 from .samplers import SamplerSettings, DefaultSampling
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional, Union
+from types     import NoneType
 
 
 class ModelUnloadedException(Exception):

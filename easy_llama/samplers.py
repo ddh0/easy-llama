@@ -4,7 +4,9 @@ from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing SamplerSettings class and some preset samplers"""
 
-from sys import maxsize
+from typing import Optional
+from types  import NoneType
+from sys    import maxsize
 
 from .utils import assert_type
 
@@ -17,42 +19,54 @@ class SamplerSettings:
     used to control text generation. It is passed as an optional parameter to
     `Thread()`, `Model.generate()`, `Model.stream()`, and
     `Model.stream_print()`.
+
+    See the docstring for `SamplerSettings.__init__` for more info
     """
 
-    param_types: dict[str, type] = {
-        'max_len_tokens':    int,
-        'temp':              float,
-        'top_p':             float,
-        'min_p':             float,
-        'frequency_penalty': float,
-        'presence_penalty':  float,
-        'repeat_penalty':    float,
-        'top_k':             int
+    param_types: dict[str, tuple[type]] = {
+        'max_len_tokens'    : (int, NoneType),
+        'temp'              : (float, NoneType),
+        'top_p'             : (float, NoneType),
+        'min_p'             : (float, NoneType),
+        'frequency_penalty' : (float, NoneType),
+        'presence_penalty'  : (float, NoneType),
+        'repeat_penalty'    : (float, NoneType),
+        'top_k'             : (int, NoneType)
     }
 
     def __init__(
         self,
-        max_len_tokens:    int   = -1,
-        temp:              float = 0.8,
-        top_p:             float = 0.95,
-        min_p:             float = 0.05,
-        frequency_penalty: float = 0.0,
-        presence_penalty:  float = 0.0,
-        repeat_penalty:    float = 1.0,
-        top_k:             int   = 40
+        max_len_tokens:    Optional[int]   = -1,
+        temp:              Optional[float] = 0.8,
+        top_p:             Optional[float] = 0.95,
+        min_p:             Optional[float] = 0.05,
+        frequency_penalty: Optional[float] = 0.0,
+        presence_penalty:  Optional[float] = 0.0,
+        repeat_penalty:    Optional[float] = 1.0,
+        top_k:             Optional[int]   = 40
     ):
         """
         Construct a new SamplerSettings instance
+
+        If a sampler parameter is unspecified, the default value from llama.cpp
+        is used. If all samplers are unspecified, the behaviour is equivalent
+        to `DefaultSampling`.
+
+        If a sampler parameter is explicitly set to `None`, it will be disabled.
+        When all samplers are disabled, the behaviour is equivalent to the preset
+        `SimpleSampling` (which is the unmodified probability distribution).
+
+        For greedy decoding, see the preset `GreedyDecoding`.
         """
 
-        self.max_len_tokens    = max_len_tokens
-        self.temp              = temp
-        self.top_p             = top_p
-        self.min_p             = min_p
-        self.frequency_penalty = frequency_penalty
-        self.presence_penalty  = presence_penalty
-        self.repeat_penalty    = repeat_penalty
-        self.top_k             = top_k
+        self.max_len_tokens    = max_len_tokens if max_len_tokens is not None else -1
+        self.temp              = temp if temp is not None else 1.0
+        self.top_p             = top_p if top_p is not None else 1.0
+        self.min_p             = min_p if min_p is not None else 0.0
+        self.frequency_penalty = frequency_penalty if frequency_penalty is not None else 0.0
+        self.presence_penalty  = presence_penalty if presence_penalty is not None else 0.0
+        self.repeat_penalty    = repeat_penalty if repeat_penalty is not None else 1.0
+        self.top_k             = top_k if top_k is not None else -1
 
         for sampler_param in SamplerSettings.param_types:
             assert_type(
@@ -169,7 +183,7 @@ HighTempSampling = SamplerSettings(
 #
 
 # https://huggingface.co/sophosympatheia/Midnight-Miqu-70B-v1.5
-MiquSampling = SamplerSettings(
+MidnightMiqu = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
     min_p = 0.12,

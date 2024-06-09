@@ -15,8 +15,6 @@ from time     import strftime
 from enum     import IntEnum
 from colorama import Fore
 
-NoneType: type = type(None)
-
 
 # color codes used in Thread.interact()
 RESET_ALL = Fore.RESET
@@ -197,32 +195,32 @@ class QuickGGUFReader:
     
     # arguments for struct.unpack() based on gguf value type
     value_packing: dict = {
-        GGUFValueType.UINT8:   "=B",
-        GGUFValueType.INT8:    "=b",
-        GGUFValueType.UINT16:  "=H",
-        GGUFValueType.INT16:   "=h",
-        GGUFValueType.UINT32:  "=I",
-        GGUFValueType.INT32:   "=i",
-        GGUFValueType.FLOAT32: "=f",
-        GGUFValueType.UINT64:  "=Q",
-        GGUFValueType.INT64:   "=q",
-        GGUFValueType.FLOAT64: "=d",
-        GGUFValueType.BOOL:    "?"
+        GGUFValueType.UINT8   : "=B",
+        GGUFValueType.INT8    : "=b",
+        GGUFValueType.UINT16  : "=H",
+        GGUFValueType.INT16   : "=h",
+        GGUFValueType.UINT32  : "=I",
+        GGUFValueType.INT32   : "=i",
+        GGUFValueType.FLOAT32 : "=f",
+        GGUFValueType.UINT64  : "=Q",
+        GGUFValueType.INT64   : "=q",
+        GGUFValueType.FLOAT64 : "=d",
+        GGUFValueType.BOOL    : "?"
     }
 
     # length in bytes for each gguf value type
     value_lengths: dict = {
-        GGUFValueType.UINT8:   1,
-        GGUFValueType.INT8:    1,
-        GGUFValueType.UINT16:  2,
-        GGUFValueType.INT16:   2,
-        GGUFValueType.UINT32:  4,
-        GGUFValueType.INT32:   4,
-        GGUFValueType.FLOAT32: 4,
-        GGUFValueType.UINT64:  8,
-        GGUFValueType.INT64:   8,
-        GGUFValueType.FLOAT64: 8,
-        GGUFValueType.BOOL:    1
+        GGUFValueType.UINT8   : 1,
+        GGUFValueType.INT8    : 1,
+        GGUFValueType.UINT16  : 2,
+        GGUFValueType.INT16   : 2,
+        GGUFValueType.UINT32  : 4,
+        GGUFValueType.INT32   : 4,
+        GGUFValueType.FLOAT32 : 4,
+        GGUFValueType.UINT64  : 8,
+        GGUFValueType.INT64   : 8,
+        GGUFValueType.FLOAT64 : 8,
+        GGUFValueType.BOOL    : 1
     }
 
     @staticmethod
