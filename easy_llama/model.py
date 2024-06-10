@@ -129,9 +129,7 @@ class Model:
                 )
         else:
             print_warning(
-                f"unexpected value for sys.byteorder: {sys.byteorder!r}"
-            )
-            print_warning(
+                f"unexpected value for sys.byteorder: {sys.byteorder!r}, "
                 "expected 'little' for little-endian or 'big' for big-endian"
             )
         
@@ -235,20 +233,18 @@ class Model:
         self.llama: Llama = Llama(
             model_path=model_path,
             n_ctx=self.context_length,
-            n_gpu_layers=n_gpu_layers,
-            use_mmap=True,
-            use_mlock=False,
-            logits_all=False,
-            n_batch=n_batch,
-            n_threads=n_threads,
-            n_threads_batch=n_threads_batch,
-            rope_freq_base=rope_freq_base,
-            mul_mat_q=True,
-            offload_kqv=offload_kqv,
-            flash_attn=flash_attn,
-            # KV cache quantization
-            # use 1 for F16 (default), 8 for q8_0, 2 for q4_0, 3 for q4_1
-            #type_k=8,
+            n_gpu_layers=n_gpu_layers,         # KV cache quantization is
+            use_mmap=True,                     # controlled by the `type_k`
+            use_mlock=False,                   # and `type_v` parameters.
+            logits_all=False,                  # not all combinations are
+            n_batch=n_batch,                   # supported.
+            n_threads=n_threads,               #
+            n_threads_batch=n_threads_batch,   # use `1` for f16 (default)
+            rope_freq_base=rope_freq_base,     # use `8` for q8_0
+            mul_mat_q=True,                    # use `7` for q5_1
+            offload_kqv=offload_kqv,           # use `6` for q5_0
+            flash_attn=flash_attn,             # use `3` for q4_1
+            #type_k=8,                         # use `2` for q4_0
             #type_v=8,
             verbose=verbose
         )
@@ -318,7 +314,7 @@ class Model:
                 )
 
         # expose these values because they may be useful / informative
-        self.filename = os.path.basename(model_path)
+        self.filename: str = os.path.basename(model_path)
         self.n_ctx_train: int = n_ctx_train
         self.rope_freq_base_train: float = rope_freq_base_train
         self.rope_freq_base: float = rope_freq_base
@@ -744,31 +740,32 @@ def assert_model_is_loaded(model: Model) -> None:
     try:
         if model.llama._model.model is not None:
             return
-    except (NameError, AttributeError):
-        if model is None:
-            exc = ModelUnloadedException(
-                "model is None"
-            )
-        elif not hasattr(model, 'llama'):
-            exc = ModelUnloadedException(
-                "model has no attribute 'llama'"
-            )
-        elif not hasattr(model.llama, '_model'):
-            exc = ModelUnloadedException(
-                "llama_cpp.Llama instance has no attribute '_model'"
-            )
-        elif not hasattr(model.llama._model, 'model'):
-            exc = ModelUnloadedException(
-                "llama_cpp._internals._LlamaModel instance has no attribute 'model'"
-            )
-        elif model.llama._model.model is None:
-            exc = ModelUnloadedException(
-                "llama_cpp._internals._LlamaModel.model is None"
-            )
-        else:
-            # likely unreachable
-            exc = ModelUnloadedException(
-                "model is not loaded"
-            )
-        exc.add_note('Are you trying to use a model that has been unloaded?')
-        raise exc from None
+    except AttributeError:
+        pass
+
+    if model is None:
+        exc = ModelUnloadedException(
+            "model is None"
+        )
+    elif not hasattr(model, 'llama'):
+        exc = ModelUnloadedException(
+            "model has no attribute 'llama'"
+        )
+    elif not hasattr(model.llama, '_model'):
+        exc = ModelUnloadedException(
+            "llama_cpp.Llama instance has no attribute '_model'"
+        )
+    elif not hasattr(model.llama._model, 'model'):
+        exc = ModelUnloadedException(
+            "llama_cpp._internals._LlamaModel instance has no attribute 'model'"
+        )
+    elif model.llama._model.model is None:
+        exc = ModelUnloadedException(
+            "llama_cpp._internals._LlamaModel.model is None"
+        )
+    else:
+        exc = ModelUnloadedException(     # likely unreachable
+            "model is not loaded"
+        )
+    exc.add_note('Are you trying to use a model that has been unloaded?')
+    raise exc
