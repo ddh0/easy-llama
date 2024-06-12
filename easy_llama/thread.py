@@ -601,7 +601,9 @@ class Thread:
         while True:
 
             if hook is not None:
+                print(DIM_STYLE, end='', flush=True)
                 hook(self)
+                print(RESET_ALL, end='', flush=True)
 
             prompt = f"{RESET_ALL}  > {USER_STYLE}"
             
