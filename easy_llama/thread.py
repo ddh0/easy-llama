@@ -8,8 +8,8 @@ import sys
 
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type
+from typing    import Optional, Literal, Union, Callable
 from .samplers import SamplerSettings, DefaultSampling
-from typing    import Optional, Literal, Union
 from .formats  import AdvancedFormat
 
 from .formats import blank as formats_blank
@@ -556,7 +556,8 @@ class Thread:
         self,
         color: bool = True,
         header: Optional[str] = None,
-        stream: bool = True
+        stream: bool = True,
+        hook: Optional[Callable] = None
     ) -> None:
         """
         Start an interactive chat session using this Thread.
@@ -598,6 +599,9 @@ class Thread:
             print(f"{SPECIAL_STYLE}{header}{RESET_ALL}\n")
         
         while True:
+
+            if hook is not None:
+                hook(self)
 
             prompt = f"{RESET_ALL}  > {USER_STYLE}"
             
