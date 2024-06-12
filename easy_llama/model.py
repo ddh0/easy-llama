@@ -444,6 +444,25 @@ class Model:
             delattr(self, 'llama')
         if self.verbose:
             print_verbose('Model unloaded')
+    
+    def reload(
+        self,
+        context_length: Optional[int] = None,
+        n_gpu_layers: Optional[int] = None,
+        offload_kqv: Optional[bool] = None,
+        flash_attn: Optional[bool] = None,
+        verbose: Optional[bool] = None
+    ):
+        self.unload()
+        self.__init__(
+            model_path=self._model_path,
+            context_length=context_length or self._context_length,
+            n_gpu_layers=n_gpu_layers or self._n_gpu_layers,
+            offload_kqv=offload_kqv or self._offload_kqv,
+            flash_attn=flash_attn or self._flash_attn,
+            verbose=verbose or self._verbose
+        )
+        assert_model_is_loaded(self)
 
     def get_length(self, text: str) -> int:
         """
