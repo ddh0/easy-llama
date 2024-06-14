@@ -453,6 +453,11 @@ class Model:
         flash_attn: Optional[bool] = None,
         verbose: Optional[bool] = None
     ):
+        """
+        Reload the model
+
+        Any parameters unspecified will be unchanged
+        """
         self.unload()
         self.__init__(
             model_path=self._model_path,
