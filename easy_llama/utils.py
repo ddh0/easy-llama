@@ -22,6 +22,7 @@ USER_STYLE = Fore.RESET + Fore.GREEN
 BOT_STYLE = Fore.RESET + Fore.CYAN
 DIM_STYLE = Fore.RESET + Fore.LIGHTBLACK_EX
 SPECIAL_STYLE = Fore.RESET + Fore.YELLOW
+ERROR_STYLE = Fore.RESET + Fore.LIGHTRED_EX
 
 class TypeAssertionFailedError(Exception):
     """`assert_type()` failed"""
