@@ -434,11 +434,12 @@ class Model:
                 self.llama._model._llama_free_model(self.llama._model.model)
                 self.llama._model.model = None
         except AttributeError as exc:
-            # broken or already being destroyed by GC, abort
-            print(
-                f"unload: Ignoring AttributeError exception: {repr(exc)}",
-                file=sys.stderr
-            )
+            # broken or already being destroyed by GC
+            if self.verbose:
+                print(
+                    f"unload: Ignoring AttributeError exception: {str(exc)}",
+                    file=sys.stderr
+                )
         # sometimes, for some reason, multiple `del` statements are necessary
         # to actually unload the model
         while hasattr(self, 'llama'):
