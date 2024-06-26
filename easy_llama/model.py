@@ -439,8 +439,9 @@ class Model:
                 f"unload: Ignoring AttributeError exception: {repr(exc)}",
                 file=sys.stderr
             )
-            return
-        if hasattr(self, 'llama'):
+        # sometimes, for some reason, multiple `del` statements are necessary
+        # to actually unload the model
+        while hasattr(self, 'llama'):
             delattr(self, 'llama')
         if self.verbose:
             print_verbose('Model unloaded')
