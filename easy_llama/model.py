@@ -413,37 +413,19 @@ class Model:
             file=sys.stderr
         )
         _print_debug(self.llama._model.model)
-        print(
-            "llama_free_model: ----------------------------------------------",
-            file=sys.stderr
-        )
-        _print_debug(self.llama._model._llama_free_model)
 
     def unload(self):
         """
         Unload the model from memory
         """
-        # ref: llama_cpp._internals._LlamaModel.__del__()
         if not hasattr(self, 'llama'):
-            # nothing can be done
             return
-        try:
-            if self.llama._model.model is not None and \
-                self.llama._model._llama_free_model is not None:
-                # actually unload the model from memory
-                self.llama._model._llama_free_model(self.llama._model.model)
-                self.llama._model.model = None
-        except AttributeError as exc:
-            # broken or already being destroyed by GC
-            if self.verbose:
-                print(
-                    f"unload: Ignoring AttributeError exception: {str(exc)}",
-                    file=sys.stderr
-                )
-        # sometimes, for some reason, multiple `del` statements are necessary
-        # to actually unload the model
+        
+        self.llama.close()
+
         while hasattr(self, 'llama'):
             delattr(self, 'llama')
+
         if self.verbose:
             print_verbose('Model unloaded')
     
