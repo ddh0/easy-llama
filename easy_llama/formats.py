@@ -211,6 +211,20 @@ phi3: dict[str, Union[str, list]] = {
     "stops": []
 }
 
+
+# https://huggingface.co/google/gemma-2-27b-it
+# https://ai.google.dev/gemma/docs/model_card_2
+gemma2: dict[str, Union[str, list]] = {
+    "system_prefix": "",
+    "system_prompt": "",   # Does not officially support system prompt
+    "system_suffix": "",
+    "user_prefix": "<start_of_turn>user\n",
+    "user_suffix": "<end_of_turn>\n",
+    "bot_prefix": "<start_of_turn>model\n",
+    "bot_suffix": "<end_of_turn>\n",
+    "stops": ["<end_of_turn>"]
+}
+
 # this is the official vicuna. it is often butchered in various ways,
 # most commonly by adding line breaks
 # https://github.com/flu0r1ne/FastChat/blob/main/docs/vicuna_weights_version.md
