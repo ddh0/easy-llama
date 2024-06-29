@@ -139,6 +139,8 @@ class Model:
         n_ctx_train = None
         rope_freq_base_train = None
         n_layer = None
+        ctx_scale = None
+        ctx_quality_hint = None
 
         for key in self.metadata.keys():
             if key.endswith('.context_length'):
@@ -153,59 +155,59 @@ class Model:
                 "GGUF file does not specify a context length"
             )
 
-        if rope_freq_base_train is None and context_length is not None:
-            if context_length > n_ctx_train:
-                raise ValueError(
-                    'unable to load model with greater than native '
-                    f'context length ({context_length} > {n_ctx_train}) '
-                    'because model does not specify freq_base. '
-                    f'try again with `context_length={n_ctx_train}`'
-                )
+        if rope_freq_base_train is None and context_length is not None and context_length > n_ctx_train:
+            raise ValueError(
+                'unable to load model with greater than native '
+                f'context length ({context_length} > {n_ctx_train}) '
+                'because model does not specify freq_base. '
+                f'try again with `context_length={n_ctx_train}`'
+            )
 
-        if rope_freq_base_train is None or context_length is None or \
-            context_length <= n_ctx_train:
+        if rope_freq_base_train is None or context_length is None or context_length <= n_ctx_train:
             # no need to do context scaling, load model normally
 
             if context_length is None:
                 self.context_length = n_ctx_train
+                ctx_scale = 1.0
             else:
                 self.context_length = context_length
+                ctx_scale = context_length/n_ctx_train
             rope_freq_base = rope_freq_base_train
+            ctx_quality_hint = 'native'
 
         elif context_length > n_ctx_train:
             # multiply rope_freq_base according to requested context length
             # because context length > n_ctx_train and rope freq base is known
 
-            rope_freq_base = (context_length/n_ctx_train)*rope_freq_base_train
             self.context_length = context_length
+            ctx_scale = context_length/n_ctx_train
+
+            # traditional formula:
+            #   rope_freq_base = ctx_scale*rope_freq_base_train
+            # experimental formula A:
+            #   rope_freq_base = (ctx_scale**2)*rope_freq_base_train
+            # experimental formula B:
+            #   rope_freq_base = (ctx_scale**(2**(1/4)))*rope_freq_base_train
+
+            rope_freq_base = (ctx_scale**(2**(1/4)))*rope_freq_base_train
             
-            if verbose:
-                print_verbose(
-                    'chosen context length is greater than native context '
-                    f'length ({context_length} > {n_ctx_train}), '
-                    'rope_freq_base will be changed from '
-                    f'{rope_freq_base_train} to {rope_freq_base}'
-                )
-
-            if 1 < context_length/n_ctx_train < 2:
-                print_warning(
-                    'loading model with up to 2x native context length, '
-                    'expect small loss of quality'
-                )
+            if 1 <= ctx_scale < 1.5:
+                ctx_quality_hint = 'great'
+            elif 1.5 <= ctx_scale < 2:
+                ctx_quality_hint = 'good'
+            elif 2 <= ctx_scale < 4:
+                ctx_quality_hint = 'fair'
+            elif 4 <= ctx_scale < 8:
+                ctx_quality_hint = 'poor'
+            else: # x8 or more
+                ctx_quality_hint = 'abysmal'
             
-            elif 2 <= context_length/n_ctx_train < 4:
+            if ctx_scale >= 2: # anything below 'good'
                 print_warning(
-                    'loading model with up to 4x native context length, '
-                    'expect moderate loss of quality'
+                    f"context scale is x{ctx_scale} ({ctx_quality_hint})"
                 )
 
-            elif context_length/n_ctx_train >= 4:
-                print_warning(
-                    'loading model with 4x native context length or greater, '
-                    'expect SIGNIFICANT loss of quality'
-                )
-
-        cpu_count = os.cpu_count() # only read once
+        cpu_count = int(os.cpu_count()) # only read once
 
         if n_layer is not None and (n_gpu_layers >= n_layer or n_gpu_layers < 0):
             # if model is fully offloaded
@@ -321,6 +323,7 @@ class Model:
         self.flash_attn: bool = flash_attn
         self.n_vocab: int = len(self.vocab)
         self.n_layer: int = n_layer
+        self.ctx_scale: float = ctx_scale
 
         if verbose:
             print_verbose("new Model instance with the following attributes:")
@@ -337,7 +340,9 @@ class Model:
             print_verbose(f"context_length       == {self.context_length}")
             print_verbose(f"rope_freq_base_train == {rope_freq_base_train}")
             print_verbose(f"rope_freq_base       == {rope_freq_base}")
-            print_verbose(f"n_vocab              == {self.n_vocab}")
+            print_verbose(f"ctx_scale            == {ctx_scale} ({ctx_quality_hint})")
+            if self.n_vocab is not None:
+                print_verbose(f"n_vocab              == {self.n_vocab}")
             if self.bos_token is not None:
                 print_verbose(f"self.bos_token       == {self.bos_token}")
             if self.eos_token is not None:
@@ -445,11 +450,11 @@ class Model:
         self.unload()
         self.__init__(
             model_path=self._model_path,
-            context_length=context_length or self._context_length,
-            n_gpu_layers=n_gpu_layers or self._n_gpu_layers,
-            offload_kqv=offload_kqv or self._offload_kqv,
-            flash_attn=flash_attn or self._flash_attn,
-            verbose=verbose or self._verbose
+            context_length=self._context_length if context_length is None else context_length,
+            n_gpu_layers=self._n_gpu_layers if n_gpu_layers is None else n_gpu_layers,
+            offload_kqv=self._offload_kqv if offload_kqv is None else offload_kqv,
+            flash_attn=self._flash_attn if flash_attn is None else flash_attn,
+            verbose=self._verbose if verbose is None else verbose,
         )
         assert_model_is_loaded(self)
 

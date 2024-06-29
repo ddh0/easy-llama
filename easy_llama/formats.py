@@ -211,7 +211,6 @@ phi3: dict[str, Union[str, list]] = {
     "stops": []
 }
 
-
 # https://huggingface.co/google/gemma-2-27b-it
 # https://ai.google.dev/gemma/docs/model_card_2
 gemma2: dict[str, Union[str, list]] = {
