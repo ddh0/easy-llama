@@ -157,7 +157,7 @@ class Model:
         
         rope_freq_base = self._calculate_rope_freq_base(
             n_ctx_train,
-            context_length,
+            context_length or n_ctx_train,
             rope_freq_base_train
         )
 
