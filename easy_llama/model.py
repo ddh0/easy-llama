@@ -154,14 +154,12 @@ class Model:
             raise KeyError(
                 "GGUF file does not specify a context length"
             )
-
-        if rope_freq_base_train is None and context_length is not None and context_length > n_ctx_train:
-            raise ValueError(
-                'unable to load model with greater than native '
-                f'context length ({context_length} > {n_ctx_train}) '
-                'because model does not specify freq_base. '
-                f'try again with `context_length={n_ctx_train}`'
-            )
+        
+        rope_freq_base = self._calculate_rope_freq_base(
+            n_ctx_train,
+            context_length,
+            rope_freq_base_train
+        )
 
         if rope_freq_base_train is None or context_length is None or context_length <= n_ctx_train:
             # no need to do context scaling, load model normally
@@ -172,7 +170,6 @@ class Model:
             else:
                 self.context_length = context_length
                 ctx_scale = context_length/n_ctx_train
-            rope_freq_base = rope_freq_base_train
             ctx_quality_hint = 'native'
 
         elif context_length > n_ctx_train:
@@ -182,15 +179,6 @@ class Model:
             self.context_length = context_length
             ctx_scale = context_length/n_ctx_train
 
-            # traditional formula:
-            #   rope_freq_base = ctx_scale*rope_freq_base_train
-            # experimental formula A:
-            #   rope_freq_base = (ctx_scale**2)*rope_freq_base_train
-            # experimental formula B:
-            #   rope_freq_base = (ctx_scale**(2**(1/4)))*rope_freq_base_train
-
-            rope_freq_base = (ctx_scale**(2**(1/4)))*rope_freq_base_train
-            
             if 1 <= ctx_scale < 1.5:
                 ctx_quality_hint = 'great'
             elif 1.5 <= ctx_scale < 2:
@@ -314,7 +302,21 @@ class Model:
                 print_verbose(
                     "could not set Model.suffix_token, defaulting to None"
                 )
-
+        self.cls_token = int(self.llama._model.token_cls())
+        if self.cls_token < 0:
+            self.cls_token = None
+            if verbose:
+                print_verbose(
+                    "could not set Model.cls_token, defaulting to None"
+                )
+        self.sep_token = int(self.llama._model.token_sep())
+        if self.sep_token < 0:
+            self.sep_token = None
+            if verbose:
+                print_verbose(
+                    "could not set Model.sep_token, defaulting to None"
+                )
+        
         # expose these values because they may be useful / informative
         self.filename: str = os.path.basename(model_path)
         self.n_ctx_train: int = n_ctx_train
@@ -357,6 +359,47 @@ class Model:
                 print_verbose(f"self.middle_token    == {self.middle_token}")
             if self.suffix_token is not None:
                 print_verbose(f"self.suffix_token    == {self.suffix_token}")
+            if self.cls_token is not None:
+                print_verbose(f"self.cls_token       == {self.cls_token}")
+            if self.sep_token is not None:
+                print_verbose(f"self.sep_token       == {self.sep_token}")
+    
+    def _calculate_rope_freq_base(
+            n_ctx_train: int,
+            n_ctx_load: int,
+            rope_freq_base_train: float
+        ) -> float:
+        """
+        Returns the rope_freq_base value at which model should be loaded
+        """
+        assert_type(n_ctx_train, int, 'n_ctx_train', '_calculate_rope_freq_base')
+        assert_type(n_ctx_load, int, 'n_ctx_load', '_calculate_rope_freq_base')
+        assert_type(rope_freq_base_train, (float, NoneType),
+                    'rope_freq_base_train', '_calculate_rope_freq_base')
+
+        if n_ctx_load <= n_ctx_train:
+            if rope_freq_base_train is None:
+                return 0.0
+            else:
+                return rope_freq_base_train
+        
+        if rope_freq_base_train in [0.0, None]:
+            raise ValueError(
+                'unable to load model with greater than native '
+                f'context length ({n_ctx_load} > {n_ctx_train}) '
+                'because model does not specify rope_freq_base. '
+                f'try again with context_length <= {n_ctx_train}'
+            )
+        
+        return ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
+
+        # traditional formula:
+        #   return ctx_scale*rope_freq_base_train
+        # experimental formula A:
+        #   return (ctx_scale**2)*rope_freq_base_train
+        # experimental formula B:
+        #   return (ctx_scale**(2**(1/4)))*rope_freq_base_train
+
     
     def __repr__(self) -> str:
         return \

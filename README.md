@@ -154,7 +154,7 @@ Select your backend from the list below to see your installation instructions. I
 <details>
 <summary>CPU only</summary>
 
-```
+```bash
 pip uninstall llama-cpp-python -y
 pip install --no-cache-dir llama-cpp-python
 pip install --upgrade --no-cache-dir easy-llama
@@ -166,7 +166,7 @@ pip install --upgrade --no-cache-dir easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_CUDA=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DGGML_CUDA=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade --no-cache-dir easy-llama
 ```
 
@@ -176,7 +176,7 @@ pip install --upgrade --no-cache-dir easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_METAL=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DGGML_METAL=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade --no-cache-dir easy-llama
 ```
 
@@ -186,7 +186,7 @@ pip install --upgrade --no-cache-dir easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_HIPBLAS=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DGGML_HIPBLAS=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade --no-cache-dir easy-llama
 ```
 
@@ -196,17 +196,7 @@ pip install --upgrade --no-cache-dir easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_VULKAN=1" pip install --no-cache-dir llama-cpp-python 
-pip install --upgrade --no-cache-dir easy-llama
-```
-
-</details>
-<details>
-<summary>CLBlast</summary>
-
-```bash
-pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_CLBLAST=1" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DGGML_VULKAN=1" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade --no-cache-dir easy-llama
 ```
 
@@ -216,17 +206,7 @@ pip install --upgrade --no-cache-dir easy-llama
 
 ```bash
 pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_BLAS=1 -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install --no-cache-dir llama-cpp-python 
-pip install --upgrade --no-cache-dir easy-llama
-```
-
-</details>
-<details>
-<summary>Kompute</summary>
-
-```bash
-pip uninstall llama-cpp-python -y
-CMAKE_ARGS="-DLLAMA_KOMPUTE=on" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DGGML_BLAS=1 -DGGML_BLAS_VENDOR=OpenBLAS" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade --no-cache-dir easy-llama
 ```
 
@@ -237,7 +217,7 @@ pip install --upgrade --no-cache-dir easy-llama
 ```bash
 pip uninstall llama-cpp-python -y
 source /opt/intel/oneapi/setvars.sh
-CMAKE_ARGS="-DLLAMA_SYCL=on -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx" pip install --no-cache-dir llama-cpp-python 
+CMAKE_ARGS="-DGGML_SYCL=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx" pip install --no-cache-dir llama-cpp-python 
 pip install --upgrade --no-cache-dir easy-llama
 ```
 
@@ -265,7 +245,7 @@ rm -rf ./llama.cpp
 git clone https://github.com/ggerganov/llama.cpp
 cd -
 git clone https://github.com/ddh0/easy-llama
-CMAKE_ARGS="-DLLAMA_CUDA=1" pip install -e ./llama-cpp-python
+CMAKE_ARGS="-DGGML_CUDA=1" pip install -e ./llama-cpp-python
 pip install -e ./easy-llama
 ```
 

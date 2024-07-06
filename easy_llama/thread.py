@@ -9,7 +9,7 @@ import sys
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type
 from typing    import Optional, Literal, Union, Callable
-from .samplers import SamplerSettings, DefaultSampling
+from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
 
 from .formats import blank as formats_blank
@@ -76,7 +76,7 @@ class Thread:
         self,
         model: Model,
         format: Union[dict, AdvancedFormat],
-        sampler: SamplerSettings = DefaultSampling,
+        sampler: SamplerSettings = SamplerSettings(),
         messages: Optional[list[Message]] = None,
     ):
         """
@@ -112,14 +112,12 @@ class Thread:
         assert_type(format['stops'], list, "format['stops']", 'Thread')
         
         if not all(hasattr(sampler, attr) for attr in SamplerSettings.param_types):
-            exc = AttributeError(
+            raise AttributeError(
                 'Thread: sampler is missing one or more required attributes'
-            )
-            exc.add_note(
+            ).add_note(
                 "Are you sure the specified sampler is really an instance of "
                 "ez.samplers.SamplerSettings?"
             )
-            raise exc
 
         self._messages: Optional[list[Message]] = messages
         if self._messages is not None:
