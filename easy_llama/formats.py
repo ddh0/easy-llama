@@ -201,9 +201,9 @@ alpaca: dict[str, Union[str, list]] = {
 
 # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
 phi3: dict[str, Union[str, list]] = {
-    "system_prefix": "",
-    "system_prompt": "", # does not officially support system prompt
-    "system_suffix": "",
+    "system_prefix": "<|system|>\n",
+    "system_prompt": "",
+    "system_suffix": "<|end|>\n",
     "user_prefix": "<|user|>\n",
     "user_suffix": "<|end|>\n",
     "bot_prefix": "<|assistant|>\n",
