@@ -145,9 +145,9 @@ class Model:
         for key in self.metadata.keys():
             if key.endswith('.context_length'):
                 n_ctx_train = int(self.metadata[key])
-            if key.endswith('.rope.freq_base'):
+            elif key.endswith('.rope.freq_base'):
                 rope_freq_base_train = float(self.metadata[key])
-            if key.endswith('.block_count'):
+            elif key.endswith('.block_count'):
                 n_layer = int(self.metadata[key])
 
         if n_ctx_train is None:
@@ -179,7 +179,7 @@ class Model:
             self.context_length = context_length
             ctx_scale = context_length/n_ctx_train
 
-            if 1 <= ctx_scale < 1.5:
+            if 1 < ctx_scale < 1.5:
                 ctx_quality_hint = 'great'
             elif 1.5 <= ctx_scale < 2:
                 ctx_quality_hint = 'good'
@@ -368,7 +368,7 @@ class Model:
     def _calculate_rope_freq_base(
             n_ctx_train: int,
             n_ctx_load: int,
-            rope_freq_base_train: float
+            rope_freq_base_train: Union[float, None]
         ) -> float:
         """
         Returns the rope_freq_base value at which model should be loaded
