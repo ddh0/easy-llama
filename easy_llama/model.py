@@ -364,6 +364,7 @@ class Model:
             if self.sep_token is not None:
                 print_verbose(f"self.sep_token       == {self.sep_token}")
     
+    @staticmethod
     def _calculate_rope_freq_base(
             n_ctx_train: int,
             n_ctx_load: int,
