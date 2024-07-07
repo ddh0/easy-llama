@@ -205,7 +205,7 @@ class Model:
             n_batch = 512
         
         # these values for n_threads and n_threads_batch are known to
-        # be optimal unless the host system has an unbalanced amount of
+        # be optimal unless the host system has an unequal amount of
         # P-cores and E-cores
         n_threads = max(cpu_count//2, 1)
         n_threads_batch = cpu_count
@@ -325,6 +325,7 @@ class Model:
         self.flash_attn: bool = flash_attn
         self.n_vocab: int = len(self.vocab)
         self.n_layer: int = n_layer
+        self.n_gpu_layers: int = n_gpu_layers 
         self.ctx_scale: float = ctx_scale
 
         if verbose:
@@ -468,15 +469,20 @@ class Model:
         Unload the model from memory
         """
         if not hasattr(self, 'llama'):
+            if self.verbose:
+                print_verbose('model already unloaded')
             return
         
+        if self.verbose:
+            print_verbose('unloading model...')
+
         self.llama.close()
 
         while hasattr(self, 'llama'):
             delattr(self, 'llama')
 
         if self.verbose:
-            print_verbose('Model unloaded')
+            print_verbose('model unloaded')
     
     def reload(
         self,
@@ -735,9 +741,9 @@ class Model:
         assert_type(prompt, str, 'prompt', 'candidates')
         assert_type(k, int, 'k', 'candidates')
         assert_type(temp, (float, NoneType), 'temp', 'candidates')
-        if not 0 < k <= len(self.vocab):
+        if not 1 <= k <= len(self.vocab):
             raise ValueError(
-                f"candidates: k should be between 0 and {len(self.vocab)}"
+                f"candidates: k should be between 1 and {len(self.vocab)} inclusive"
             )
 
         assert_model_is_loaded(self)
@@ -759,7 +765,7 @@ class Model:
 
         # construct the final list
         i = 0
-        token_probs_list: list[tuple[str, np.floating]] = []
+        token_probs_list: list[tuple[str, np.floating]] = list()
         for tok_str in self.vocab:
             token_probs_list.append((tok_str, normalized_scores[i]))
             i += 1

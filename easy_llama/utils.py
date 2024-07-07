@@ -24,7 +24,7 @@ DIM_STYLE = Fore.RESET + Fore.LIGHTBLACK_EX
 SPECIAL_STYLE = Fore.RESET + Fore.YELLOW
 ERROR_STYLE = Fore.RESET + Fore.LIGHTRED_EX
 
-class TypeAssertionFailedError(Exception):
+class TypeAssertionError(Exception):
     """`assert_type()` failed"""
 
 # for typing of softmax parameter `z`
@@ -85,7 +85,7 @@ def softmax(
         raise ZeroDivisionError(
             "softmax: temperature value T cannot be 0"
         )
-    e_z = np.exp(np.divide(_z,T, dtype=_dtype), dtype=_dtype)
+    e_z = np.exp(np.divide(_z, T, dtype=_dtype), dtype=_dtype)
     return e_z / np.sum(e_z, axis=0, dtype=_dtype)
 
 def cls() -> None:
@@ -138,7 +138,7 @@ def assert_type(
     If `expected_type` is a tuple, ensure that `obj` is an instance of
     some type in the tuple
 
-    Raise `TypeAssertionFailedError` otherwise, using `obj_name` and
+    Raise `TypeAssertionError` otherwise, using `obj_name` and
     `code_location` to make an informative exception message
 
     If specified, `hint` is added as a note to the exception
@@ -151,7 +151,7 @@ def assert_type(
     if not isinstance(expected_type, tuple):
         # represent `int` as 'int' instead of "<class 'int'>"
         expected_type_repr = repr(expected_type.__name__)
-        exc = TypeAssertionFailedError(
+        exc = TypeAssertionError(
             f"{code_location}: {obj_name} should be an instance of "
             f"{expected_type_repr}, not {obj_type_repr}"
         )
@@ -159,7 +159,7 @@ def assert_type(
         # represent `(int, list)` as "('int', 'list')" instead of
         # "(<class 'int'>, <class 'list'>)"
         expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
-        exc = TypeAssertionFailedError(
+        exc = TypeAssertionError(
             f"{code_location}: {obj_name} should be one of "
             f"{expected_type_repr}, not {obj_type_repr}"
         )

@@ -20,7 +20,7 @@ class AdvancedFormat:
                 "update your code accordingly"
             )
         self._base_dict: dict[str, Union[str, list]] = base_dict
-        self.overrides: dict[str, Callable] = {}
+        self.overrides: dict[str, Callable] = dict()
     
     def __getitem__(self, key: str) -> Any:
         if key in self.overrides:
@@ -517,8 +517,6 @@ tess['system_prompt'] = '' # Tess can use any system prompt, or none
 alpaca_strict = alpaca.copy() # Alpaca with more stopping strings
 alpaca_strict['stops'] = [
     '###',
-    '### ',
-    '\n\n###',
     '\n\n##',
     '\n\nInstruction:',
     '\n\nResponse:',
