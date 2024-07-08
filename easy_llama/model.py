@@ -16,13 +16,13 @@ from .utils import (
     print_verbose,
     _print_debug,
     assert_type,
+    NoneType,
     softmax
 )
 
 from .samplers import SamplerSettings, DefaultSampling
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional, Union
-from types     import NoneType
 
 
 class ModelUnloadedException(Exception):
@@ -404,13 +404,14 @@ class Model:
 
     
     def __repr__(self) -> str:
-        return \
-            f"Model({self._model_path!r}, " + \
-            f"context_length={self._context_length}, " + \
-            f"n_gpu_layers={self._n_gpu_layers}, " + \
-            f"offload_kqv={self._offload_kqv}, "+ \
-            f"flash_attn={self._flash_attn}, " + \
+        return (
+            f"Model({self._model_path!r}, "
+            f"context_length={self._context_length}, "
+            f"n_gpu_layers={self._n_gpu_layers}, "
+            f"offload_kqv={self._offload_kqv}, "
+            f"flash_attn={self._flash_attn}, "
             f"verbose={self._verbose})"
+        )
     
     def __sizeof__(self) -> int:
         return self._model_file_size_bytes
@@ -427,7 +428,7 @@ class Model:
     def __call__(
         self,
         prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = [],
+        stops: list[Union[str, int]] = list(),
         sampler: SamplerSettings = DefaultSampling
     ) -> str:
         """
@@ -526,7 +527,7 @@ class Model:
     def generate(
         self,
         prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = [],
+        stops: list[Union[str, int]] = list(),
         sampler: SamplerSettings = DefaultSampling
     ) -> str:
         """
@@ -570,7 +571,7 @@ class Model:
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
         stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
         stopping_criteria = None
-        if stop_token_ids is not []:
+        if stop_token_ids != list():
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
@@ -594,7 +595,7 @@ class Model:
     def stream(
         self,
         prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = [],
+        stops: list[Union[str, int]] = list(),
         sampler: SamplerSettings = DefaultSampling
     ) -> Generator:
 
@@ -644,7 +645,7 @@ class Model:
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
         stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
         stopping_criteria = None
-        if stop_token_ids is not []:
+        if stop_token_ids != list():
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
@@ -669,7 +670,7 @@ class Model:
     def stream_print(
         self,
         prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = [],
+        stops: list[Union[str, int]] = list(),
         sampler: SamplerSettings = DefaultSampling,
         end: str = "\n",
         file: _SupportsWriteAndFlush = sys.stdout,

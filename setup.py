@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.57'
+__version__ = '0.1.58'
 
 from setuptools import setup
 
@@ -30,6 +30,7 @@ setup(
         'Natural Language :: English',
         'Programming Language :: Python :: Implementation :: CPython',
         'Programming Language :: Python :: 3 :: Only',
+        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',

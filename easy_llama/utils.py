@@ -24,6 +24,8 @@ DIM_STYLE = Fore.RESET + Fore.LIGHTBLACK_EX
 SPECIAL_STYLE = Fore.RESET + Fore.YELLOW
 ERROR_STYLE = Fore.RESET + Fore.LIGHTRED_EX
 
+NoneType: type = type(None)
+
 class TypeAssertionError(Exception):
     """`assert_type()` failed"""
 
