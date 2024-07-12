@@ -498,7 +498,8 @@ class Model:
 
         Any parameters unspecified will be unchanged
         """
-        self.unload()
+        if hasattr(self, 'llama'):
+            self.unload()
         self.__init__(
             model_path=self._model_path,
             context_length=self._context_length if context_length is None else context_length,
@@ -761,7 +762,7 @@ class Model:
         if self.verbose:
             print_verbose(f'calculating softmax over {len(scores)} values')
         normalized_scores: list[np.floating] = list(
-            softmax(z=scores, T=temp, dtype=None)
+            softmax(z=scores, T=temp, dtype=np.float32)   # TODO: maybe don't cast to list?
         )
 
         # construct the final list

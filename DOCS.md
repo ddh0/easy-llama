@@ -6,7 +6,11 @@
 
 > [!NOTE]
 >
-> The documentation assumes you have imported easy-llama with `import easy_llama as ez`.
+> The documentation assumes you have imported easy-llama as `ez`:
+> 
+> ```python
+import easy_llama as ez
+> ```
 
 # `class ez.Model`
 
