@@ -6,8 +6,8 @@ from ._version import __version__, __llama_cpp_version__
 
 import sys
 
-from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
-from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type
+from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush, ModelUnloadedException
+from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type, NoneType
 from typing    import Optional, Literal, Union, Callable
 from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
@@ -77,7 +77,7 @@ class Thread:
         model: Model,
         format: Union[dict, AdvancedFormat],
         sampler: SamplerSettings = SamplerSettings(),
-        messages: Optional[list[Message]] = None,
+        messages: Optional[list[Message]] = None
     ):
         """
         Given a Model and a format, construct a Thread instance.
@@ -330,6 +330,9 @@ class Thread:
     def _interactive_update_sampler(self) -> None:
         """Interactively update the sampler settings used in this Thread"""
         print()
+
+        _sentinel = False
+
         try:
             new_max_len_tokens = input(f'max_len_tokens: {self.sampler.max_len_tokens} -> ')
             new_temp = input(f'temp: {self.sampler.temp} -> ')
@@ -339,7 +342,8 @@ class Thread:
             new_presence_penalty = input(f'presence_penalty: {self.sampler.presence_penalty} -> ')
             new_repeat_penalty = input(f'repeat_penalty: {self.sampler.repeat_penalty} -> ')
             new_top_k = input(f'top_k: {self.sampler.top_k} -> ')
-        
+            _sentinel = True
+
         except KeyboardInterrupt:
             print('\neasy_llama: sampler settings not updated\n')
             return
@@ -400,8 +404,10 @@ class Thread:
             pass
         else:
             print('easy_llama: top_k updated')
-        print()
-                
+        
+        if _sentinel:   # pretty formatting
+            print()
+    
 
     def _interactive_input(
         self,
@@ -693,10 +699,7 @@ class Thread:
     
     def as_string(self) -> str:
         """Return this thread's message history as a string"""
-        thread_string = ''
-        for msg in self.messages:
-            thread_string += msg.as_string()
-        return thread_string
+        return ''.join(msg.as_string() for msg in self.messages)
 
     
     def print_stats(
@@ -711,3 +714,75 @@ class Thread:
         print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file)
         print(f"{ctx_used_pct}% of context used", file=file)
         print(f"{len(self.messages)} messages", file=file)
+    
+    def summarize(
+            self,
+            messages: Optional[list[Message]] = None,
+            model: Optional[Model] = None
+        ):
+        """
+        Generate a summary from a list of messages. If no messages are
+        provided, use `self.messages`.
+        """
+
+        _model = self.model
+
+        if isinstance(model, Model):
+            try:
+                assert_model_is_loaded(model)
+            except ModelUnloadedException:
+                model.reload()
+            finally:
+                _model = model
+
+        assert_type(
+            messages,
+            (list, NoneType),
+            'messages',
+            'generate_summary'
+        )
+
+        if messages == []:
+            raise ValueError(
+                f"generate_summary: the list of messages cannot be empty"
+            )
+
+        if messages is None:
+            messages = self.messages
+
+        messages_str = ''.join(msg.as_string() for msg in messages)
+
+        inf_str = self.create_message(
+                    'system',
+                    'Follow the given instructions exactly.'
+                ).as_string() + self.create_message(
+                    'user',
+                    'Hello. Take a moment to read the following conversation carefully. '
+                    'When you\'re done, provide a short summary including only the most relevant details.'
+                    f'\n\n{messages_str}\n\n'
+                    'Now that you have read the above conversation, please provide a short summary. '
+                    'Include only the most relevant details of the conversation.'
+                ).as_string() + self.format['bot_prefix'] + \
+                'After carefully reading through the conversation, here\'s a short ' + \
+                'summary that includes only the most relevant details:\n\n'
+
+        len_inf_str = _model.get_length(inf_str)
+
+        if len_inf_str >= self.model.context_length:
+            raise ValueError(
+                f"generate_sumary: the length of messages provided exceeds "
+                f"the model's context length ({len_inf_str} >= "
+                f"{_model.context_length})"
+            )
+        
+        summary = _model.generate(
+            inf_str,
+            stops=self.format['stops'],
+            sampler=SamplerSettings(max_len_tokens=512)
+        )
+
+        # unload helper model
+        if isinstance(model, Model):
+            model.unload()
+        
+        return summary

@@ -750,7 +750,7 @@ class Model:
 
         assert_model_is_loaded(self)
         prompt_tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
-        self.llama.reset() # reset model state
+        self.llama.reset()
         self.llama.eval(prompt_tokens)
         scores = self.llama.scores[len(prompt_tokens) - 1]
 
