@@ -482,6 +482,17 @@ class Thread:
                     elif last_msg['role'] == 'bot':
                         print(f"\n{_bot_style}{last_msg['content']}{RESET_ALL}\n")
                 
+                elif command.lower() in ['refill', 'reprint', 'lost', 'find']:
+                    cls()
+                    print()
+                    for msg in self.messages:
+                        if msg['role'] == 'system':
+                            print(f"{_special_style}{msg['content']}{RESET_ALL}\n\n")
+                        if msg['role'] == 'user':
+                            print(f"{_user_style}{msg['content']}{RESET_ALL}\n\n")
+                        if msg['role'] == 'bot':
+                            print(f"{_bot_style}{msg['content']}{RESET_ALL}\n\n")
+                
                 elif command.lower() in ['inf', 'inference', 'inf_str']:
                     print(f'\n"""{self.inference_str_from_messages()}"""\n')
                 
@@ -494,6 +505,11 @@ class Thread:
                 elif command.lower() in ['exit', 'quit']:
                     print(RESET_ALL)
                     return None, None
+                
+                elif command.lower() in ['sum', 'summary', 'summarize']:
+                    print('\nGenerating summary...\n')
+                    print(self.summarize())
+                    print()
                 
                 elif command.lower() in ['help', '/?', '?']:
                     print()
@@ -508,6 +524,7 @@ class Thread:
                     print('last | repeat       -- Repeat the last message')
                     print('inference | inf     -- Print the inference string')
                     print('reroll | swipe      -- Regenerate the last message')
+                    print('summary | summarize -- Generate a summary of the thread')
                     print('exit | quit         -- Exit the interactive chat (can also use ^C)')
                     print('help | ?            -- Show this screen')
                     print()
@@ -722,7 +739,8 @@ class Thread:
         ):
         """
         Generate a summary from a list of messages. If no messages are
-        provided, use `self.messages`.
+        provided, use `self.messages`. If no model is specified, use
+        `self.model`.
         """
 
         _model = self.model
@@ -752,37 +770,42 @@ class Thread:
 
         messages_str = ''.join(msg.as_string() for msg in messages)
 
-        inf_str = self.create_message(
+        inf_str = \
+                self.create_message(
                     'system',
-                    'Follow the given instructions exactly.'
-                ).as_string() + self.create_message(
+                    'Follow the given instructions exactly. Do not add any '
+                    'unnecessary information.'
+                ).as_string() + \
+                self.create_message(
                     'user',
-                    'Hello. Take a moment to read the following conversation carefully. '
-                    'When you\'re done, provide a short summary including only the most relevant details.'
+                    'Hello. Take a moment to read the following conversation '
+                    'carefully. When you\'re done, write a single paragraph '
+                    'that explains all of the most relevant details.'
                     f'\n\n{messages_str}\n\n'
-                    'Now that you have read the above conversation, please provide a short summary. '
-                    'Include only the most relevant details of the conversation.'
-                ).as_string() + self.format['bot_prefix'] + \
-                'After carefully reading through the conversation, here\'s a short ' + \
-                'summary that includes only the most relevant details:\n\n'
+                    'Now that you\'ve read the above conversation, please '
+                    'provide a summary in the form of a single paragraph.'
+                ).as_string() + \
+                self.format['bot_prefix'] + \
+                'After carefully reading through the conversation, here\'s' + \
+                ' a paragraph that explains the most relevant details:\n\n'
 
-        len_inf_str = _model.get_length(inf_str)
+        required_ctx_len = _model.get_length(inf_str) + 257
 
-        if len_inf_str >= self.model.context_length:
+        if required_ctx_len > self.model.context_length:
             raise ValueError(
-                f"generate_sumary: the length of messages provided exceeds "
-                f"the model's context length ({len_inf_str} >= "
-                f"{_model.context_length})"
+                f"generate_sumary: the model's context length is too small to "
+                f"generate a summary "
+                f"({required_ctx_len} >= {_model.context_length})"
             )
         
         summary = _model.generate(
             inf_str,
-            stops=self.format['stops'],
-            sampler=SamplerSettings(max_len_tokens=512)
+            stops=self.format['stops'] + ['\n\n'],
+            sampler=SamplerSettings(max_len_tokens=256)
         )
 
         # unload helper model
-        if isinstance(model, Model):
-            model.unload()
+        if _model is not self.model:
+            _model.unload()
         
         return summary
