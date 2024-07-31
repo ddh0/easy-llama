@@ -239,12 +239,12 @@ To install easy-llama from source, copy and paste the following commands into yo
 pip uninstall easy-llama llama-cpp-python -y
 rm -rf ./easy-llama
 rm -rf ./llama-cpp-python
-git clone https://github.com/abetlen/llama-cpp-python
+git clone "https://github.com/abetlen/llama-cpp-python"
 cd ./llama-cpp-python/vendor/
 rm -rf ./llama.cpp
-git clone https://github.com/ggerganov/llama.cpp
+git clone "https://github.com/ggerganov/llama.cpp"
 cd -
-git clone https://github.com/ddh0/easy-llama
+git clone "https://github.com/ddh0/easy-llama"
 CMAKE_ARGS="-DGGML_CUDA=1" pip install -e ./llama-cpp-python
 pip install -e ./easy-llama
 ```

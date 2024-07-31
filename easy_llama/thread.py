@@ -487,11 +487,11 @@ class Thread:
                     print()
                     for msg in self.messages:
                         if msg['role'] == 'system':
-                            print(f"{_special_style}{msg['content']}{RESET_ALL}\n\n")
+                            print(f"{_special_style}{msg['content']}{RESET_ALL}\n")
                         if msg['role'] == 'user':
-                            print(f"{_user_style}{msg['content']}{RESET_ALL}\n\n")
+                            print(f"{_user_style}{msg['content']}{RESET_ALL}\n")
                         if msg['role'] == 'bot':
-                            print(f"{_bot_style}{msg['content']}{RESET_ALL}\n\n")
+                            print(f"{_bot_style}{msg['content']}{RESET_ALL}\n")
                 
                 elif command.lower() in ['inf', 'inference', 'inf_str']:
                     print(f'\n"""{self.inference_str_from_messages()}"""\n')
@@ -508,7 +508,7 @@ class Thread:
                 
                 elif command.lower() in ['sum', 'summary', 'summarize']:
                     print('\nGenerating summary...\n')
-                    print(self.summarize())
+                    self.summarize()
                     print()
                 
                 elif command.lower() in ['help', '/?', '?']:
@@ -624,7 +624,7 @@ class Thread:
             if hook is not None:
                 print(DIM_STYLE, end='', flush=True)
                 hook(self)
-                print(RESET_ALL, end='', flush=True)
+                print(RESET_ALL, end='\n', flush=True)
 
             prompt = f"{RESET_ALL}  > {USER_STYLE}"
             
@@ -795,7 +795,7 @@ class Thread:
             raise ValueError(
                 f"generate_sumary: the model's context length is too small to "
                 f"generate a summary "
-                f"({required_ctx_len} >= {_model.context_length})"
+                f"({required_ctx_len} > {_model.context_length})"
             )
         
         summary = _model.generate(

@@ -121,10 +121,10 @@ mistral_instruct: dict[str, Union[str, list]] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
-    "user_prefix": " [INST] ",
-    "user_suffix": " [/INST]",
+    "user_prefix": "[INST] ",
+    "user_suffix": "[/INST]",
     "bot_prefix": "",
-    "bot_suffix": "",
+    "bot_suffix": " ",
     "stops": []
 }
 
@@ -183,7 +183,7 @@ llama3: dict[str, Union[str, list]] = {
     "user_suffix": "<|eot_id|>\n",
     "bot_prefix": "<|start_header_id|>assistant<|end_header_id|>\n\n",
     "bot_suffix": "<|eot_id|>\n",
-    "stops": [128001, 128009]
+    "stops": [128001, 128008, 128009]
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca

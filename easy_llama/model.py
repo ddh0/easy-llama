@@ -16,6 +16,7 @@ from .utils import (
     print_verbose,
     _print_debug,
     assert_type,
+    print_info,
     NoneType,
     softmax
 )
@@ -70,6 +71,7 @@ class Model:
         n_gpu_layers: int = 0,
         offload_kqv: bool = True,
         flash_attn: bool = False,
+        quantize_kv_cache: bool = False,
         verbose: bool = False
     ):
         """
@@ -82,6 +84,7 @@ class Model:
         - n_gpu_layers: The number of layers to be offloaded to the GPU
         - offload_kqv: Whether the KQV cache (context) should be offloaded
         - flash_attn: Whether to use Flash Attention
+        - quantize_kv_cache: Whether to use q8_0 values for KV cache
         - verbose: Whether to print additional backend information
         """
 
@@ -104,6 +107,7 @@ class Model:
         assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
         assert_type(offload_kqv, bool, 'offload_kqv', 'Model')
         assert_type(flash_attn, bool, 'flash_attn', 'Model')
+        assert_type(quantize_kv_cache, bool, 'quantize_kv_cache', 'Model')
         
         # save __init__ parameters for __repr__
         self._model_path = model_path
@@ -112,6 +116,7 @@ class Model:
         self._offload_kqv = offload_kqv
         self._flash_attn = flash_attn
         self._verbose = self.verbose = verbose
+        self._quantize_kv_cache = quantize_kv_cache
 
         # if context_length <= 0, use n_ctx_train
         if isinstance(context_length, int) and context_length <= 0:
@@ -141,6 +146,9 @@ class Model:
         n_layer = None
         ctx_scale = None
         ctx_quality_hint = None
+        n_attn_heads = None
+        n_kv_heads = None
+        n_gqa = None
 
         for key in self.metadata.keys():
             if key.endswith('.context_length'):
@@ -149,11 +157,18 @@ class Model:
                 rope_freq_base_train = float(self.metadata[key])
             elif key.endswith('.block_count'):
                 n_layer = int(self.metadata[key])
+            elif key.endswith('.attention.head_count'):
+                n_attn_heads = int(self.metadata[key])
+            elif key.endswith('.attention.head_count_kv'):
+                n_kv_heads = int(self.metadata[key])
 
         if n_ctx_train is None:
             raise KeyError(
                 "GGUF file does not specify a context length"
             )
+
+        if n_attn_heads is not None and n_kv_heads is not None:
+            n_gqa = int(n_attn_heads / n_kv_heads)
         
         rope_freq_base = Model._calculate_rope_freq_base(
             n_ctx_train,
@@ -216,6 +231,37 @@ class Model:
             )
             flash_attn = False
         
+        if quantize_kv_cache:
+            if n_gqa is not None and n_gqa > 4:
+                print_warning(
+                    f"model has GQA value of {n_gqa}, "
+                    f"quantizing KV cache may cause loss of quality"
+                )
+            # use q8_0 for K, V
+            type_k = 8
+            type_v = 8 if flash_attn else 1 # llama.cpp requires flash_attn for V quantization
+            if verbose:
+                if flash_attn:
+                    print_verbose(
+                        "attempting to load model with q8_0 KV cache"
+                    )
+                else:
+                    print_verbose(
+                        "attempting to load model with q8_0 K cache"
+                    )
+                    print_verbose(
+                        "(to quantize V cache, flash_attn must be enabled)"
+                    )
+        else:
+            if n_gqa is not None and n_gqa <= 2:
+                print_info(
+                    f"model has GQA value of {n_gqa}, "
+                    f"consider setting `quantize_kv_cache=True` to reduce memory usage"
+                )
+            # use f16 for K, V (default)
+            type_k = 1
+            type_v = 1
+        
         # guard against models with no rope_freq_base
         if rope_freq_base is None:
             rope_freq_base = 0
@@ -234,8 +280,8 @@ class Model:
             mul_mat_q=True,                    # use `7` for q5_1
             offload_kqv=offload_kqv,           # use `6` for q5_0
             flash_attn=flash_attn,             # use `3` for q4_1
-            #type_k=8,                         # use `2` for q4_0
-            #type_v=8,
+            type_k=type_k,                     # use `2` for q4_0
+            type_v=type_v,
             verbose=verbose
         )
 
@@ -327,15 +373,20 @@ class Model:
         self.n_layer: int = n_layer
         self.n_gpu_layers: int = n_gpu_layers 
         self.ctx_scale: float = ctx_scale
+        self.type_k: int = type_k
+        self.type_v: int = type_v
+        self.n_gqa: int = n_gqa
 
         if verbose:
             print_verbose("new Model instance with the following attributes:")
             print_verbose(f"filename             == {self.filename}")
             print_verbose(f"n_gpu_layers         == {n_gpu_layers}")
-            if n_layer is not None:
-                print_verbose(f"n_layer              == {self.n_layer}")
+            print_verbose(f"n_layer              == {self.n_layer}")
             print_verbose(f"offload_kqv          == {offload_kqv}")
             print_verbose(f"flash_attn           == {flash_attn}")
+            print_verbose(f"n_gqa                == {n_gqa}")
+            print_verbose(f"type_k               == {'f16' if type_k == 1 else 'q8_0'}")
+            print_verbose(f"type_v               == {'f16' if type_v == 1 else 'q8_0'}")
             print_verbose(f"n_batch              == {n_batch}")
             print_verbose(f"n_threads            == {n_threads}")
             print_verbose(f"n_threads_batch      == {n_threads_batch}")
@@ -344,8 +395,7 @@ class Model:
             print_verbose(f"rope_freq_base_train == {rope_freq_base_train}")
             print_verbose(f"rope_freq_base       == {rope_freq_base}")
             print_verbose(f"ctx_scale            == {ctx_scale} ({ctx_quality_hint})")
-            if self.n_vocab is not None:
-                print_verbose(f"n_vocab              == {self.n_vocab}")
+            print_verbose(f"n_vocab              == {self.n_vocab}")
             if self.bos_token is not None:
                 print_verbose(f"self.bos_token       == {self.bos_token}")
             if self.eos_token is not None:
@@ -410,6 +460,7 @@ class Model:
             f"n_gpu_layers={self._n_gpu_layers}, "
             f"offload_kqv={self._offload_kqv}, "
             f"flash_attn={self._flash_attn}, "
+            f"quantize_kv_cache={self._quantize_kv_cache}, "
             f"verbose={self._verbose})"
         )
     

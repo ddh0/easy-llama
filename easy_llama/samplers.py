@@ -187,8 +187,14 @@ MidnightMiqu = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
     min_p = 0.12,
-    frequency_penalty = 0.0,
-    presence_penalty = 0.0,
     repeat_penalty = 1.05,
+    top_k = -1
+)
+
+# https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct/blob/main/generation_config.json
+Llama3 = SamplerSettings(
+    temp = 0.6,
+    top_p = 0.9,
+    min_p = 0.0,
     top_k = -1
 )
