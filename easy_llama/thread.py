@@ -1,6 +1,5 @@
 # thread.py
 # https://github.com/ddh0/easy-llama/
-from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing the Thread class, used for interaction with a Model"""
 
@@ -809,3 +808,9 @@ class Thread:
             _model.unload()
         
         return summary
+
+    def warmup(self):
+        """
+        Ingest the text of this thread into the model's cache
+        """
+        self.model.ingest(self.inference_str_from_messages())
