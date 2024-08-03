@@ -542,6 +542,7 @@ class Model:
         n_gpu_layers: Optional[int] = None,
         offload_kqv: Optional[bool] = None,
         flash_attn: Optional[bool] = None,
+        quantize_kv_cache: Optional[bool] = None,
         verbose: Optional[bool] = None
     ):
         """
@@ -557,7 +558,8 @@ class Model:
             n_gpu_layers=self._n_gpu_layers if n_gpu_layers is None else n_gpu_layers,
             offload_kqv=self._offload_kqv if offload_kqv is None else offload_kqv,
             flash_attn=self._flash_attn if flash_attn is None else flash_attn,
-            verbose=self._verbose if verbose is None else verbose,
+            quantize_kv_cache=self._quantize_kv_cache if quantize_kv_cache is None else quantize_kv_cache,
+            verbose=self._verbose if verbose is None else verbose
         )
         assert_model_is_loaded(self)
 
@@ -569,10 +571,9 @@ class Model:
         assert_model_is_loaded(self)
         return len(
             self.llama.tokenize(
-                text.encode(
-                    "utf-8",
-                    errors="ignore"
-                )
+                text.encode("utf-8", errors="ignore"),
+                add_bos=bool(self.llama._model.add_bos_token()),
+                special=True
             )
         )
 
