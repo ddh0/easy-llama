@@ -415,6 +415,7 @@ class Model:
             if self.sep_token is not None:
                 print_verbose(f"self.sep_token       == {self.sep_token}")
     
+
     @staticmethod
     def _calculate_rope_freq_base(
             n_ctx_train: int,
@@ -452,6 +453,7 @@ class Model:
         # experimental formula B:
         #   return (ctx_scale**(2**(1/4)))*rope_freq_base_train
 
+
     
     def __repr__(self) -> str:
         return (
@@ -464,18 +466,23 @@ class Model:
             f"verbose={self._verbose})"
         )
     
+    
     def __sizeof__(self) -> int:
         return self._model_file_size_bytes
     
+
     def __del__(self):
         self.unload()
     
+
     def __enter__(self):
         return self
+
 
     def __exit__(self, *_):
         self.unload()
     
+
     def __call__(
         self,
         prompt: str | list[int],
@@ -487,6 +494,7 @@ class Model:
         """
         return self.generate(prompt, stops, sampler)
     
+
     def _print_debug(self) -> None:
         try:
             assert_model_is_loaded(self)
@@ -516,6 +524,7 @@ class Model:
         )
         _print_debug(self.llama._model.model)
 
+
     def unload(self):
         """
         Unload the model from memory
@@ -536,6 +545,7 @@ class Model:
         if self.verbose:
             print_verbose('model unloaded')
     
+
     def reload(
         self,
         context_length: Optional[int] = None,
@@ -563,30 +573,59 @@ class Model:
         )
         assert_model_is_loaded(self)
     
+
     def tokenize(self, text: str) -> list[int]:
         """
-        Tokenize the given text (`str -> list[int]`)
+        Tokenize the given text (from `str` to `list[int]`)
         """
         assert_type(text, str, 'text', 'tokenize')
         assert_model_is_loaded(self)
-        return self.llama._model.tokenize(
+        tokens = self.llama._model.tokenize(
             text.encode('utf-8'),
             add_bos=bool(self.llama._model.add_bos_token()),
             special=True
         )
+        if len(tokens) > 1:
+            # remove duplicate BOS tokens at the start of the text
+            while tokens[0] == self.bos_token and tokens[1] == self.bos_token:
+                tokens.pop(0)
+                print_info("tokenize: removed duplicate BOS token")
+            # remove duplicate EOS tokens at the start of the text
+            while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
+                tokens.pop(-1)
+                print_info("tokenize: removed duplicate EOS token")
+        return tokens
+
 
     def detokenize(self, tokens: list[int] | int) -> str:
         """
-        Detokenize the given text (`list[int] -> str`)
+        Detokenize the given text (from `list[int]` to `str`)
         """
         assert_type(tokens, (list, int), 'tokens', 'detokenize')
         if isinstance(tokens, int):
             tokens = [tokens]  # handle single tokens
+        for tok_id in tokens:
+            if not 0 <= tok_id < self.n_vocab:
+                raise ValueError(
+                    f"detokenize: token id {tok_id} is out of range. "
+                    f"acceptable values are between 0 and {self.n_vocab-1} "
+                    "inclusive"
+                )
+        if len(tokens) > 1:
+            # remove duplicate BOS tokens at the start of the text
+            while tokens[0] == self.bos_token and tokens[1] == self.bos_token:
+                tokens.pop(0)
+                print_info("detokenize: removed duplicate BOS token")
+            # remove duplicate EOS tokens at the start of the text
+            while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
+                tokens.pop(-1)
+                print_info("detokenize: removed duplicate EOS token")
         assert_model_is_loaded(self)
         return self.llama._model.detokenize(
             tokens,
             special=True
         ).decode('utf-8', errors='ignore')
+
 
     def get_length(self, text: str) -> int:
         """
@@ -594,6 +633,7 @@ class Model:
         """
         return len(self.tokenize(text))
     
+
     def get_tokenization_mapping(
             self,
             text: str
@@ -612,6 +652,7 @@ class Model:
             )
         )
     
+
     def print_tokenization_mapping(self, text: str) -> None:
         """
         Tokenize the given text and display a mapping of each
@@ -625,7 +666,7 @@ class Model:
             print(f"{token_id:>7} -> '{token_text}'")
         print(f"Total number of tokens: {self.get_length(text)}")
         
-
+    
     def generate(
         self,
         prompt: str | list[int],
@@ -643,13 +684,13 @@ class Model:
         """
         assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
-            for tok in prompt:
-                assert_type(
-                    tok,
-                    int,
-                    'some item in the list of prompt tokens',
-                    'generate',
+            prompt_tokens = prompt
+        else:
+            if self.verbose:
+                print_verbose(
+                    "tokenizing prompt"
                 )
+            prompt_tokens = self.tokenize(prompt)
         assert_type(stops, list, 'stops', 'generate')
         for item in stops:
             assert_type(
@@ -657,6 +698,11 @@ class Model:
                 (str, int),
                 "some item in parameter 'stops'",
                 'generate'
+            )
+        
+        if self.verbose:
+            print_verbose(
+                f"generate: recieved prompt with {len(prompt_tokens)} tokens"
             )
 
         if self.verbose:
@@ -717,13 +763,13 @@ class Model:
 
         assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):
-            for tok in prompt:
-                assert_type(
-                    tok,
-                    int,
-                    'some item in the list of prompt tokens',
-                    'stream'
+            prompt_tokens = prompt
+        else:
+            if self.verbose:
+                print_verbose(
+                    "tokenizing prompt"
                 )
+            prompt_tokens = self.tokenize(prompt)
         assert_type(stops, list, 'stops', 'stream')
         for item in stops:
             assert_type(
@@ -731,6 +777,11 @@ class Model:
                 (str, int),
                 "some item in parameter 'stops'",
                 'stream'
+            )
+        
+        if self.verbose:
+            print_verbose(
+                f"stream: recieved prompt with {len(prompt_tokens)} tokens"
             )
 
         if self.verbose:
@@ -816,9 +867,24 @@ class Model:
         Ingest the given text into the model's cache
         """
 
+        assert_type(text, (str, list), 'prompt', 'stream')
+        if isinstance(text, list):
+            tokens = text
+        else:
+            if self.verbose:
+                print_verbose(
+                    "tokenizing text"
+                )
+            tokens = self.tokenize(text)
+        
+        if self.verbose:
+            print_verbose(
+                f"ingesting {len(tokens)} tokens of text"
+            )
+        
         assert_model_is_loaded(self)
         self.llama.create_completion(
-            text,
+            tokens,
             max_tokens=1,
             temperature=0.0
         )
@@ -849,8 +915,7 @@ class Model:
                 f"candidates: k should be between 1 and {len(self.vocab)} inclusive"
             )
 
-        assert_model_is_loaded(self)
-        prompt_tokens = self.llama.tokenize(prompt.encode('utf-8', errors='ignore'))
+        prompt_tokens = self.tokenize(prompt)
         self.llama.reset()
         self.llama.eval(prompt_tokens)
         scores = self.llama.scores[len(prompt_tokens) - 1]
@@ -891,7 +956,7 @@ class Model:
 
         for _tuple in self.candidates(prompt, k, temp):
             print(
-                f"token {_tuple[0]!r} has probability {_tuple[1]}",
+                f"token {_tuple[0]!r:<16} has probability {_tuple[1]}",
                 file=file,
             )
 

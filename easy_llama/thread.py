@@ -155,6 +155,7 @@ class Thread:
             print_verbose(f"sampler.repeat_penalty    == {self.sampler.repeat_penalty}")
             print_verbose(f"sampler.top_k             == {self.sampler.top_k}")
 
+
     def __repr__(self) -> str:
         # if only message in self.messages is system message
         if len(self.messages) == 1 and self.messages[0]['role'] == 'system':
@@ -166,9 +167,11 @@ class Thread:
         return f"Thread({self.model!r}, {self.format!r}, " + \
                 f"{self.sampler!r}, {self.messages!r})"
     
+
     def __str__(self) -> str:
         return self.as_string()
     
+
     def __len__(self) -> int:
         """
         `len(Thread)` returns the length of the Thread in tokens
@@ -176,6 +179,7 @@ class Thread:
         To get the number of messages in the Thread, use `len(Thread.messages)`
         """
         return self.len_messages()
+
 
     def create_message(
         self,
@@ -224,6 +228,7 @@ class Thread:
                 }
             )
     
+
     def len_messages(self) -> int:
         """
         Return the total length of all messages in this thread, in tokens.
@@ -232,6 +237,7 @@ class Thread:
         """
 
         return self.model.get_length(self.as_string())
+
 
     def add_message(
         self,
@@ -250,6 +256,7 @@ class Thread:
                 content=content
             )
         )
+
 
     def inference_str_from_messages(self) -> str:
         """
@@ -731,6 +738,7 @@ class Thread:
         print(f"{ctx_used_pct}% of context used", file=file)
         print(f"{len(self.messages)} messages", file=file)
     
+
     def summarize(
             self,
             messages: Optional[list[Message]] = None,
@@ -808,6 +816,7 @@ class Thread:
             _model.unload()
         
         return summary
+
 
     def warmup(self):
         """

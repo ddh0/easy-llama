@@ -23,14 +23,14 @@ class SamplerSettings:
     """
 
     param_types: dict[str, tuple[type]] = {
-        'max_len_tokens'    : (int, NoneType),
+        'max_len_tokens'    : (int,   NoneType),
         'temp'              : (float, NoneType),
         'top_p'             : (float, NoneType),
         'min_p'             : (float, NoneType),
         'frequency_penalty' : (float, NoneType),
         'presence_penalty'  : (float, NoneType),
         'repeat_penalty'    : (float, NoneType),
-        'top_k'             : (int, NoneType)
+        'top_k'             : (int,   NoneType)
     }
 
     def __init__(
@@ -90,6 +90,9 @@ class SamplerSettings:
 # most likely token is always chosen
 GreedyDecoding = SamplerSettings(
     temp = 0.0,
+    top_p = 1.0,
+    min_p = 0.0,
+    top_k = -1
 )
 
 # reflects llama.cpp
@@ -119,8 +122,7 @@ SemiSampling = SamplerSettings(
 
 # for models with large vocabulary, which tend to run hot
 TikTokenSampling = SamplerSettings(
-    temp=0.6,
-    repeat_penalty=1.1
+    temp=0.65
 )
 
 # use min_p as the only active sampler (more permissive)
@@ -150,13 +152,19 @@ StrictMinPSampling = SamplerSettings(
 # https://arxiv.org/abs/2210.14140
 ContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 0.6
+    top_p = 1.0,
+    min_p = 0.0,
+    presence_penalty = 0.6,
+    top_k = -1
 )
 
 # https://arxiv.org/abs/2210.14140
 WarmContrastiveSearch = SamplerSettings(
     temp = 0.0,
-    presence_penalty = 1.0
+    top_p = 1.0,
+    min_p = 0.0,
+    presence_penalty = 1.0,
+    top_k = -1
 )
 
 # outputs completely random tokens from vocab (useless)

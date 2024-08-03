@@ -185,6 +185,7 @@ class GGUFValueType(IntEnum):
     FLOAT64 = 12
 
 class QuickGGUFReader:
+    # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
 
     # the GGUF format versions that this class supports
     SUPPORTED_GGUF_VERSIONS = [2, 3]
