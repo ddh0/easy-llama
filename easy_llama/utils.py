@@ -8,7 +8,7 @@ import sys
 import struct
 import numpy as np
 
-from typing   import Iterable, TextIO, Optional, Union
+from typing   import Iterable, TextIO, Optional
 from io       import BufferedReader
 from time     import strftime
 from enum     import IntEnum
@@ -128,7 +128,7 @@ def _print_debug(
 
 def assert_type(
     obj: object,
-    expected_type: Union[type, tuple[type]],
+    expected_type: type | tuple[type],
     obj_name: str,
     code_location: str,
     hint: Optional[str] = None
@@ -236,7 +236,7 @@ class QuickGGUFReader:
     def get_single(
             value_type: GGUFValueType,
             file: BufferedReader
-        ) -> Union[str, int, float, bool]:
+        ) -> str | int | float | bool:
         """Read a single value from an open file"""
         if value_type == GGUFValueType.STRING:
             string_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
@@ -249,8 +249,8 @@ class QuickGGUFReader:
     
     @staticmethod
     def load_metadata(
-            fn: Union[os.PathLike[str], str]
-        ) -> dict[str, Union[str, int, float, bool, list]]:
+            fn: os.PathLike[str] | str
+        ) -> dict[str, str | int | float | bool | list]:
         """
         Given a path to a GGUF file, peek at its header for metadata
 
@@ -258,7 +258,7 @@ class QuickGGUFReader:
         strings, ints, floats, bools, or lists
         """
 
-        metadata: dict[str, Union[str, int, float, bool, list]] = {}
+        metadata: dict[str, str | int | float | bool | list] = {}
         with open(fn, "rb") as file:
             magic = file.read(4)
 

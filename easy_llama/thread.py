@@ -7,7 +7,7 @@ import sys
 
 from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush, ModelUnloadedException
 from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type, NoneType
-from typing    import Optional, Literal, Union, Callable
+from typing    import Optional, Literal, Callable
 from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
 
@@ -74,7 +74,7 @@ class Thread:
     def __init__(
         self,
         model: Model,
-        format: Union[dict, AdvancedFormat],
+        format: dict | AdvancedFormat,
         sampler: SamplerSettings = SamplerSettings(),
         messages: Optional[list[Message]] = None
     ):
@@ -130,7 +130,7 @@ class Thread:
         # set to `[]` during construction
 
         self.model: Model = model
-        self.format: Union[dict, AdvancedFormat] = format
+        self.format: dict | AdvancedFormat = format
         self.sampler: SamplerSettings = sampler
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_prompt'])

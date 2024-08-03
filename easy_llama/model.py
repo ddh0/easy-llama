@@ -23,7 +23,7 @@ from .utils import (
 
 from .samplers import SamplerSettings, DefaultSampling
 from llama_cpp import Llama, StoppingCriteriaList
-from typing    import Generator, Optional, Union
+from typing    import Generator, Optional
 
 
 class ModelUnloadedException(Exception):
@@ -419,7 +419,7 @@ class Model:
     def _calculate_rope_freq_base(
             n_ctx_train: int,
             n_ctx_load: int,
-            rope_freq_base_train: Union[float, None]
+            rope_freq_base_train: Optional[float]
         ) -> float:
         """
         Returns the rope_freq_base value at which model should be loaded
@@ -478,8 +478,8 @@ class Model:
     
     def __call__(
         self,
-        prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = list(),
+        prompt: str | list[int],
+        stops: list[str | int] = list(),
         sampler: SamplerSettings = DefaultSampling
     ) -> str:
         """
@@ -562,25 +562,74 @@ class Model:
             verbose=self._verbose if verbose is None else verbose
         )
         assert_model_is_loaded(self)
+    
+    def tokenize(self, text: str) -> list[int]:
+        """
+        Tokenize the given text (`str -> list[int]`)
+        """
+        assert_type(text, str, 'text', 'tokenize')
+        assert_model_is_loaded(self)
+        return self.llama._model.tokenize(
+            text.encode('utf-8'),
+            add_bos=bool(self.llama._model.add_bos_token()),
+            special=True
+        )
+
+    def detokenize(self, tokens: list[int] | int) -> str:
+        """
+        Detokenize the given text (`list[int] -> str`)
+        """
+        assert_type(tokens, (list, int), 'tokens', 'detokenize')
+        if isinstance(tokens, int):
+            tokens = [tokens]  # handle single tokens
+        assert_model_is_loaded(self)
+        return self.llama._model.detokenize(
+            tokens,
+            special=True
+        ).decode('utf-8', errors='ignore')
 
     def get_length(self, text: str) -> int:
         """
-        Return the length of the given text in tokens according to this model,
-        including the appended BOS token.
+        Return the length of the given text in tokens according to this model
         """
-        assert_model_is_loaded(self)
-        return len(
-            self.llama.tokenize(
-                text.encode("utf-8", errors="ignore"),
-                add_bos=bool(self.llama._model.add_bos_token()),
-                special=True
+        return len(self.tokenize(text))
+    
+    def get_tokenization_mapping(
+            self,
+            text: str
+        ) -> None:
+        """
+        Tokenize the given text and return a list of tuples where the first
+        item in the tuple is the token ID and the second item is the
+        corresponding text
+        """
+        token_id_list: list[int] = self.tokenize(text)
+
+        return list(
+            zip(
+                token_id_list,
+                [self.detokenize(tok_text) for tok_text in token_id_list]
             )
         )
+    
+    def print_tokenization_mapping(self, text: str) -> None:
+        """
+        Tokenize the given text and display a mapping of each
+        token ID and its corresponding decoded text
+
+        This is meant to be equivalent to `llama-tokenize`
+        """
+        token_mapping_list: list[tuple[int, str]] = self.get_tokenization_mapping(text)
+
+        for token_id, token_text in token_mapping_list:
+            print(f"{token_id:>7} -> '{token_text}'")
+        print(f"Total number of tokens: {self.get_length(text)}")
+        
 
     def generate(
         self,
-        prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = list(),
+        prompt: str | list[int],
+        stops: list[str | int] = list(),
         sampler: SamplerSettings = DefaultSampling
     ) -> str:
         """
@@ -647,8 +696,8 @@ class Model:
 
     def stream(
         self,
-        prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = list(),
+        prompt: str | list[int],
+        stops: list[str | int] = list(),
         sampler: SamplerSettings = DefaultSampling
     ) -> Generator:
 
@@ -722,8 +771,8 @@ class Model:
 
     def stream_print(
         self,
-        prompt: Union[str, list[int]],
-        stops: list[Union[str, int]] = list(),
+        prompt: str | list[int],
+        stops: list[str | int] = list(),
         sampler: SamplerSettings = DefaultSampling,
         end: str = "\n",
         file: _SupportsWriteAndFlush = sys.stdout,
@@ -762,7 +811,7 @@ class Model:
         return res
 
 
-    def ingest(self, text: Union[str, list[int]]) -> None:
+    def ingest(self, text: str | list[int]) -> None:
         """
         Ingest the given text into the model's cache
         """

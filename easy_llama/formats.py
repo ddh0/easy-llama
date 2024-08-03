@@ -3,13 +3,13 @@
 
 """Submodule containing various prompt formats used by models"""
 
-from typing import Callable, Union, Any
+from typing import Callable, Any
 from .utils import assert_type
 
 
 class AdvancedFormat:
 
-    def __init__(self, base_dict: dict[str, Union[str, list]]):
+    def __init__(self, base_dict: dict[str, str | list]):
         assert_type(base_dict, dict, 'base_dict', 'AdvancedFormat')
         _base_dict_keys = base_dict.keys() # only read once
         if 'system_prompt' not in _base_dict_keys and 'system_content' in _base_dict_keys:
@@ -18,7 +18,7 @@ class AdvancedFormat:
                 "key instead of the expected 'system_prompt' key - please "
                 "update your code accordingly"
             )
-        self._base_dict: dict[str, Union[str, list]] = base_dict
+        self._base_dict: dict[str, str | list] = base_dict
         self.overrides: dict[str, Callable] = dict()
     
     def __getitem__(self, key: str) -> Any:
@@ -37,8 +37,8 @@ class AdvancedFormat:
     def __repr__(self) -> str:
         return f'AdvancedFormat({self._get_literal_dict_()!r})'
     
-    def _get_literal_dict_(self) -> dict[str, Union[str, list, Callable]]:
-        literal_dict: dict[str, Union[str, list, Callable]] = self._base_dict
+    def _get_literal_dict_(self) -> dict[str, str | list | Callable]:
+        literal_dict: dict[str, str | list | Callable] = self._base_dict
         for k in self.overrides:
             literal_dict[k] = self.overrides[k]
         return literal_dict
@@ -68,7 +68,7 @@ class AdvancedFormat:
 
 def wrap(
     prompt: str,
-    format: Union[dict[str, Union[str, list]], AdvancedFormat]
+    format: dict[str, str | list] | AdvancedFormat
 ) -> str:
     """Wrap a given string in any prompt format for single-turn completion"""
     return format['system_prefix'] + \
@@ -80,7 +80,7 @@ def wrap(
            format['bot_prefix']
 
 
-blank: dict[str, Union[str, list]] = {
+blank: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
@@ -92,7 +92,7 @@ blank: dict[str, Union[str, list]] = {
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
-alpaca: dict[str, Union[str, list]] = {
+alpaca: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "Below is an instruction that describes a task. " + \
     "Write a response that appropriately completes the request.",
@@ -116,7 +116,7 @@ alpaca: dict[str, Union[str, list]] = {
 # ```
 # In the pseudo-code above, note that the tokenize method should not add a BOS or EOS token automatically, but should add a prefix space.
 
-mistral_instruct: dict[str, Union[str, list]] = {
+mistral_instruct: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
@@ -128,7 +128,7 @@ mistral_instruct: dict[str, Union[str, list]] = {
 }
 
 # https://docs.mistral.ai/platform/guardrailing/
-mistral_instruct_safe: dict[str, Union[str, list]] = {
+mistral_instruct_safe: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
@@ -143,7 +143,7 @@ mistral_instruct_safe: dict[str, Union[str, list]] = {
 }
 
 # https://github.com/openai/openai-python/blob/main/chatml.md
-chatml: dict[str, Union[str, list]] = {
+chatml: dict[str, str | list] = {
     "system_prefix": "<|im_start|>system\n",
     "system_prompt": "",
     "system_suffix": "<|im_end|>\n",
@@ -156,7 +156,7 @@ chatml: dict[str, Union[str, list]] = {
 
 # https://huggingface.co/blog/llama2
 # system message relaxed to avoid undue refusals
-llama2chat: dict[str, Union[str, list]] = {
+llama2chat: dict[str, str | list] = {
     "system_prefix": "[INST] <<SYS>>\n",
     "system_prompt": "You are a helpful AI assistant.",
     "system_suffix": "\n<</SYS>>\n\n",
@@ -174,7 +174,7 @@ llama2chat: dict[str, Union[str, list]] = {
 #
 # '<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant called "Llama 3".<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhi<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n'
 #
-llama3: dict[str, Union[str, list]] = {
+llama3: dict[str, str | list] = {
     "system_prefix": "<|start_header_id|>system<|end_header_id|>\n\n",
     "system_prompt": 'You are a helpful AI assistant called "Llama 3".',
     "system_suffix": "<|eot_id|>\n",
@@ -186,7 +186,7 @@ llama3: dict[str, Union[str, list]] = {
 }
 
 # https://github.com/tatsu-lab/stanford_alpaca
-alpaca: dict[str, Union[str, list]] = {
+alpaca: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "Below is an instruction that describes a task. " + \
     "Write a response that appropriately completes the request.",
@@ -199,7 +199,7 @@ alpaca: dict[str, Union[str, list]] = {
 }
 
 # https://huggingface.co/microsoft/Phi-3-mini-4k-instruct
-phi3: dict[str, Union[str, list]] = {
+phi3: dict[str, str | list] = {
     "system_prefix": "<|system|>\n",
     "system_prompt": "",
     "system_suffix": "<|end|>\n",
@@ -212,7 +212,7 @@ phi3: dict[str, Union[str, list]] = {
 
 # https://huggingface.co/google/gemma-2-27b-it
 # https://ai.google.dev/gemma/docs/model_card_2
-gemma2: dict[str, Union[str, list]] = {
+gemma2: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",   # Does not officially support system prompt
     "system_suffix": "",
@@ -226,7 +226,7 @@ gemma2: dict[str, Union[str, list]] = {
 # this is the official vicuna. it is often butchered in various ways,
 # most commonly by adding line breaks
 # https://github.com/flu0r1ne/FastChat/blob/main/docs/vicuna_weights_version.md
-vicuna_lmsys: dict[str, Union[str, list]] = {
+vicuna_lmsys: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": " ",
@@ -239,7 +239,7 @@ vicuna_lmsys: dict[str, Union[str, list]] = {
 
 # spotted here and elsewhere:
 # https://huggingface.co/Norquinal/Mistral-7B-claude-chat
-vicuna_common: dict[str, Union[str, list]] = {
+vicuna_common: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "A chat between a curious user and an artificial " + \
     "intelligence assistant. The assistant gives helpful, detailed, " + \
@@ -268,7 +268,7 @@ markup = {
 }
 
 # https://huggingface.co/timdettmers/guanaco-65b
-guanaco: dict[str, Union[str, list]] = {
+guanaco: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "A chat between a curious human and an artificial " + \
     "intelligence assistant. The assistant gives helpful, detailed, " + \
@@ -282,7 +282,7 @@ guanaco: dict[str, Union[str, list]] = {
 }
 
 # https://huggingface.co/pankajmathur/orca_mini_v3_7b
-orca_mini: dict[str, Union[str, list]] = {
+orca_mini: dict[str, str | list] = {
     "system_prefix": "### System:\n",
     "system_prompt": "You are an AI assistant that follows instruction " + \
     "extremely well. Help as much as you can.",
@@ -295,7 +295,7 @@ orca_mini: dict[str, Union[str, list]] = {
 }
 
 # https://huggingface.co/HuggingFaceH4/zephyr-7b-beta
-zephyr: dict[str, Union[str, list]] = {
+zephyr: dict[str, str | list] = {
     "system_prefix": "<|system|>\n",
     "system_prompt": "You are a friendly chatbot.",
     "system_suffix": "</s>\n",
@@ -307,7 +307,7 @@ zephyr: dict[str, Union[str, list]] = {
 }
 
 # OpenChat: https://huggingface.co/openchat/openchat-3.5-0106
-openchat: dict[str, Union[str, list]] = {
+openchat: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
@@ -320,7 +320,7 @@ openchat: dict[str, Union[str, list]] = {
 
 # SynthIA by Migel Tissera
 # https://huggingface.co/migtissera/Tess-XS-v1.0
-synthia: dict[str, Union[str, list]] = {
+synthia: dict[str, str | list] = {
     "system_prefix": "SYSTEM: ",
     "system_prompt": "Elaborate on the topic using a Tree of Thoughts and " + \
     "backtrack when necessary to construct a clear, cohesive Chain of " + \
@@ -335,7 +335,7 @@ synthia: dict[str, Union[str, list]] = {
 
 # Intel's neural chat v3
 # https://github.com/intel/intel-extension-for-transformers/blob/main/intel_extension_for_transformers/neural_chat/prompts/prompt.py
-neural_chat: dict[str, Union[str, list]] = {
+neural_chat: dict[str, str | list] = {
      "system_prefix": "### System:\n",
     "system_prompt": \
         "- You are a helpful assistant chatbot trained by Intel.\n" + \
@@ -353,7 +353,7 @@ neural_chat: dict[str, Union[str, list]] = {
 }
 
 # experimental: stanford's alpaca format adapted for chatml models
-chatml_alpaca: dict[str, Union[str, list]] = {
+chatml_alpaca: dict[str, str | list] = {
     "system_prefix": "<|im_start|>system\n",
     "system_prompt": "Below is an instruction that describes a task. Write " + \
     "a response that appropriately completes the request.",
@@ -366,7 +366,7 @@ chatml_alpaca: dict[str, Union[str, list]] = {
 }
 
 # experimental
-autocorrect: dict[str, Union[str, list]] = {
+autocorrect: dict[str, str | list] = {
     "system_prefix": "<|im_start|>instruction\n",
     "system_prompt": "Below is a word or phrase that might be misspelled. " + \
     "Output the corrected word or phrase without " + \
@@ -381,7 +381,7 @@ autocorrect: dict[str, Union[str, list]] = {
 
 # https://huggingface.co/jondurbin/bagel-dpo-7b-v0.1
 # Replace "assistant" with any other role
-bagel: dict[str, Union[str, list]] = {
+bagel: dict[str, str | list] = {
     "system_prefix": "system\n",
     "system_prompt": "",
     "system_suffix": "\n",
@@ -393,7 +393,7 @@ bagel: dict[str, Union[str, list]] = {
 }
 
 # https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0
-solar_instruct: dict[str, Union[str, list]] = {
+solar_instruct: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
@@ -405,7 +405,7 @@ solar_instruct: dict[str, Union[str, list]] = {
 }
 
 # NeverSleep's Noromaid - alpaca with character names prefixed
-noromaid: dict[str, Union[str, list]] = {
+noromaid: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "Below is an instruction that describes a task. " + \
     "Write a response that appropriately completes the request.",
@@ -418,7 +418,7 @@ noromaid: dict[str, Union[str, list]] = {
 }
 
 # https://huggingface.co/Undi95/Borealis-10.7B
-nschatml: dict[str, Union[str, list]] = {
+nschatml: dict[str, str | list] = {
     "system_prefix": "<|im_start|>\n",
     "system_prompt": "",
     "system_suffix": "<|im_end|>\n",
@@ -430,7 +430,7 @@ nschatml: dict[str, Union[str, list]] = {
 }
 
 # natural format for many models
-natural: dict[str, Union[str, list]] = {
+natural: dict[str, str | list] = {
     "system_prefix": "<<SYSTEM>> ",
     "system_prompt": "",
     "system_suffix": "\n\n",
@@ -442,7 +442,7 @@ natural: dict[str, Union[str, list]] = {
 }
 
 # https://docs.cohere.com/docs/prompting-command-r
-command: dict[str, Union[str, list]] = {
+command: dict[str, str | list] = {
     "system_prefix": "<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>",
     "system_prompt": "",
     "system_suffix": "<|END_OF_TURN_TOKEN|>",
