@@ -35,14 +35,14 @@ class SamplerSettings:
 
     def __init__(
         self,
-        max_len_tokens:    Optional[int]   = -1,
-        temp:              Optional[float] = 0.8,
-        top_p:             Optional[float] = 0.95,
-        min_p:             Optional[float] = 0.05,
-        frequency_penalty: Optional[float] = 0.0,
-        presence_penalty:  Optional[float] = 0.0,
-        repeat_penalty:    Optional[float] = 1.0,
-        top_k:             Optional[int]   = 40
+        max_len_tokens    : Optional[int]   = -1,
+        temp              : Optional[float] = 0.8,
+        top_p             : Optional[float] = 0.95,
+        min_p             : Optional[float] = 0.05,
+        frequency_penalty : Optional[float] = 0.0,
+        presence_penalty  : Optional[float] = 0.0,
+        repeat_penalty    : Optional[float] = 1.0,
+        top_k             : Optional[int]   = 40
     ):
         """
         Construct a new SamplerSettings instance
@@ -58,14 +58,30 @@ class SamplerSettings:
         For greedy decoding, see the preset `GreedyDecoding`.
         """
 
-        self.max_len_tokens    = max_len_tokens if max_len_tokens is not None else -1
-        self.temp              = temp if temp is not None else 1.0
-        self.top_p             = top_p if top_p is not None else 1.0
-        self.min_p             = min_p if min_p is not None else 0.0
-        self.frequency_penalty = frequency_penalty if frequency_penalty is not None else 0.0
-        self.presence_penalty  = presence_penalty if presence_penalty is not None else 0.0
-        self.repeat_penalty    = repeat_penalty if repeat_penalty is not None else 1.0
-        self.top_k             = top_k if top_k is not None else -1
+        self.max_len_tokens = (
+            max_len_tokens if max_len_tokens is not None else -1
+        )
+        self.temp = (
+            temp if temp is not None else 1.0
+        )
+        self.top_p = (
+            top_p if top_p is not None else 1.0
+        )
+        self.min_p = (
+            min_p if min_p is not None else 0.0
+        )
+        self.frequency_penalty = (
+            frequency_penalty if frequency_penalty is not None else 0.0
+        )
+        self.presence_penalty = (
+            presence_penalty if presence_penalty is not None else 0.0
+        )
+        self.repeat_penalty = (
+            repeat_penalty if repeat_penalty is not None else 1.0
+        )
+        self.top_k = (
+            top_k if top_k is not None else -1
+        )
 
         for sampler_param in SamplerSettings.param_types:
             assert_type(
@@ -99,7 +115,7 @@ GreedyDecoding = SamplerSettings(
 DefaultSampling = SamplerSettings()
 
 # unmodified probability distribution (i.e. what the model actually thinks)
-SimpleSampling = SamplerSettings(
+NoSampling = SimpleSampling = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
     min_p = 0.0,
@@ -129,7 +145,7 @@ TikTokenSampling = SamplerSettings(
 LowMinPSampling = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
-    min_p = 0.05,
+    min_p = 0.025,
     top_k = -1
 )
 
@@ -137,7 +153,7 @@ LowMinPSampling = SamplerSettings(
 MinPSampling = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
-    min_p = 0.1,
+    min_p = 0.05,
     top_k = -1
 )
 
@@ -145,7 +161,7 @@ MinPSampling = SamplerSettings(
 StrictMinPSampling = SamplerSettings(
     temp = 1.0,
     top_p = 1.0,
-    min_p = 0.2,
+    min_p = 0.1,
     top_k = -1
 )
 

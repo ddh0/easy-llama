@@ -10,7 +10,6 @@ import numpy as np
 
 from typing   import Iterable, TextIO, Optional
 from io       import BufferedReader
-from time     import strftime
 from enum     import IntEnum
 from colorama import Fore
 
@@ -36,22 +35,6 @@ class _ArrayLike(Iterable):
 class _SupportsWriteAndFlush(TextIO):
     pass
 
-high_precision_dtype = None
-
-dtypes = [
-    'float96',
-    'float80',
-    'float64',
-    'float32',
-    'float16'
-]
-
-# find the highest available numpy precision on this machine
-for dt in dtypes:
-    if hasattr(np, dt):
-        high_precision_dtype: type = getattr(np, dt)
-        break
-
 def softmax(
     z: _ArrayLike,
     T: Optional[float] = None,
@@ -65,8 +48,7 @@ def softmax(
     used (up to `np.float96`).
     """
     if dtype is None:
-        assert high_precision_dtype is not None
-        _dtype = high_precision_dtype
+        _dtype = np.float32
     else:
         assert_type(
             dtype,
@@ -96,11 +78,6 @@ def cls() -> None:
     else:
         os.system('clear')
         print("\033c\033[3J", end='', flush=True)
-
-# not used by default, but useful as a feature of an AdvancedFormat
-def get_timestamp_str() -> str:
-    # helpful: https://strftime.net
-    return strftime("%Y, %b %e, %a %l:%M %p")
 
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."

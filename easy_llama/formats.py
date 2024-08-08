@@ -3,60 +3,52 @@
 
 """Submodule containing various prompt formats used by models"""
 
+import time
+
 from typing import Callable, Any
 from .utils import assert_type
 
 
 class AdvancedFormat:
 
-    def __init__(self, base_dict: dict[str, str | list]):
-        assert_type(base_dict, dict, 'base_dict', 'AdvancedFormat')
-        _base_dict_keys = base_dict.keys() # only read once
-        if 'system_prompt' not in _base_dict_keys and 'system_content' in _base_dict_keys:
+    def __init__(self, _dict: dict[str, str | list | Callable]):
+        assert_type(_dict, dict, '_dict', 'AdvancedFormat')
+        _dict_keys = _dict.keys() # only read once
+        if 'system_prompt' not in _dict_keys and 'system_content' in _dict_keys:
             raise ValueError(
-                "AdvancedFormat: base_dict uses deprecated 'system_content' "
-                "key instead of the expected 'system_prompt' key - please "
-                "update your code accordingly"
+                "AdvancedFormat: the provided dictionary uses the deprecated "
+                "'system_content' key instead of the expected 'system_prompt' "
+                "key. please update your code accordingly."
             )
-        self._base_dict: dict[str, str | list] = base_dict
-        self.overrides: dict[str, Callable] = dict()
+        self._dict = _dict
     
     def __getitem__(self, key: str) -> Any:
-        if key in self.overrides:
-            # return the result of the override function as though it
-            # were the value of the key
-            return self.overrides[key]()
-        elif key in self._base_dict:
-            return self._base_dict[key]
+        if key in self._dict.keys():
+            if isinstance(self._dict[key], Callable):
+                # return the result of the function as though it was a
+                # value in the dictionary
+                return self._dict[key]()
+            else:
+                return self._dict[key]
         else:
             raise KeyError(
-                f'AdvancedFormat: The specified key {key!r} was not found '
-                'in self.overrides or self._base_dict'
+                f"AdvancedFormat: the specified key {key!r} was not found"
             )
     
     def __repr__(self) -> str:
-        return f'AdvancedFormat({self._get_literal_dict_()!r})'
+        return f'AdvancedFormat({self._dict!r})'
     
-    def _get_literal_dict_(self) -> dict[str, str | list | Callable]:
-        literal_dict: dict[str, str | list | Callable] = self._base_dict
-        for k in self.overrides:
-            literal_dict[k] = self.overrides[k]
-        return literal_dict
+    def keys(self):
+        return self._dict.keys()
     
-    def keys(self) -> set[str]:
-        # set containing all keys from both base_dict and overrides
-        return set(self._base_dict.keys()).union(set(self.overrides.keys()))
+    def values(self):
+        return self._dict.values()
     
-    def values(self) -> list[Any]:
-        return [self[key] for key in self.keys()]
-    
-    def items(self) -> list[tuple[str, Any]]:
-        return [(key, self[key]) for key in self.keys()]
-    
-    def override(self, key: str, fn: Callable) -> None:
-        self.overrides[key] = fn
+    def items(self):
+        return self._dict.items()
     
     def wrap(self, prompt: str) -> str:
+        assert_type(prompt, str, 'prompt', 'AdvancedFormat.wrap')
         return self['system_prefix'] + \
                self['system_prompt'] + \
                self['system_suffix'] + \
@@ -71,6 +63,7 @@ def wrap(
     format: dict[str, str | list] | AdvancedFormat
 ) -> str:
     """Wrap a given string in any prompt format for single-turn completion"""
+    assert_type(prompt, str, 'prompt', 'formats.wrap')
     return format['system_prefix'] + \
            format['system_prompt'] + \
            format['system_suffix'] + \
@@ -78,6 +71,24 @@ def wrap(
            prompt                  + \
            format['user_suffix']   + \
            format['bot_prefix']
+
+
+def get_time_str():
+    """Return a timestamp of the current time as a string"""
+    # helpful: https://strftime.net
+    return time.strftime("%l:%M %p, %A, %B %e, %Y")
+
+
+# AdvancedFormat2({
+#     "system_prefix" : "<|start_header_id|>system<|end_header_id|>\n\n",
+#     "system_prompt" : system_prompt,
+#     "system_suffix" : _llama3_suffix_with_timestamp,
+#     "user_prefix"   : "<|start_header_id|>user<|end_header_id|>\n\n",
+#     "user_suffix"   : _llama3_suffix_with_timestamp,
+#     "bot_prefix"    : "<|start_header_id|>assistant<|end_header_id|>\n\n",
+#     "bot_suffix"    : _llama3_suffix_with_timestamp,
+#     "stops"         : [128001, 128008, 128009, 128011, 128012]
+# })
 
 
 blank: dict[str, str | list] = {
@@ -132,13 +143,13 @@ mistral_instruct_safe: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
-    "user_prefix": " [INST] Always assist with care, respect, and truth. " + \
+    "user_prefix": "[INST] Always assist with care, respect, and truth. " + \
     "Respond with utmost utility yet securely. Avoid harmful, unethical, " + \
     "prejudiced, or negative content. Ensure replies promote fairness and " + \
     "positivity. ",
-    "user_suffix": " [/INST]",
+    "user_suffix": "[/INST]",
     "bot_prefix": "",
-    "bot_suffix": "",
+    "bot_suffix": " ",
     "stops": []
 }
 
@@ -523,3 +534,21 @@ alpaca_strict['stops'] = [
     '### Instruction:',
     '### Response:'
 ]
+
+#
+# AdvancedFormat presets
+#
+
+def _llama3_suffix_with_timestamp():
+    return f"<|eot_id|>\n<|reserved_special_token_3|>{get_time_str()}<|reserved_special_token_4|>\n"
+
+Llama3WithTimestamps = AdvancedFormat({
+    "system_prefix" : "<|start_header_id|>system<|end_header_id|>\n\n",
+    "system_prompt": 'You are a helpful AI assistant called "Llama 3".',
+    "system_suffix": _llama3_suffix_with_timestamp,
+    "user_prefix": "<|start_header_id|>user<|end_header_id|>\n\n",
+    "user_suffix": _llama3_suffix_with_timestamp,
+    "bot_prefix": "<|start_header_id|>assistant<|end_header_id|>\n\n",
+    "bot_suffix": _llama3_suffix_with_timestamp,
+    "stops": [128001, 128008, 128009, 128011, 128012]
+})

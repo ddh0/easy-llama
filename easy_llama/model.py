@@ -16,7 +16,6 @@ from .utils import (
     print_verbose,
     _print_debug,
     assert_type,
-    print_info,
     NoneType,
     softmax
 )
@@ -72,7 +71,8 @@ class Model:
         offload_kqv: bool = True,
         flash_attn: bool = False,
         quantize_kv_cache: bool = False,
-        verbose: bool = False
+        verbose: bool = False,
+        **kwargs
     ):
         """
         Given the path to a GGUF file, construct a Model instance.
@@ -86,6 +86,8 @@ class Model:
         - flash_attn: Whether to use Flash Attention
         - quantize_kv_cache: Whether to use q8_0 values for KV cache
         - verbose: Whether to print additional backend information
+
+        Additional `kwargs` are passed to the `llama_cpp.Llama` constructor.
         """
 
         assert_type(verbose, bool, 'verbose', 'Model')
@@ -232,31 +234,26 @@ class Model:
             flash_attn = False
         
         if quantize_kv_cache:
-            if n_gqa is not None and n_gqa > 4:
-                print_warning(
-                    f"model has GQA value of {n_gqa}, "
-                    f"quantizing KV cache may cause loss of quality"
-                )
             # use q8_0 for K, V
+            # llama.cpp requires flash_attn for V quantization
             type_k = 8
-            type_v = 8 if flash_attn else 1 # llama.cpp requires flash_attn for V quantization
+            type_v = 8 if flash_attn else 1
             if verbose:
                 if flash_attn:
                     print_verbose(
-                        "attempting to load model with q8_0 KV cache"
+                        "using q8_0 KV cache"
                     )
                 else:
                     print_verbose(
-                        "attempting to load model with q8_0 K cache"
+                        "using q8_0 K cache, f16 V cache"
                     )
                     print_verbose(
-                        "(to quantize V cache, flash_attn must be enabled)"
+                        "to quantize V cache, flash_attn must be enabled"
                     )
         else:
-            if n_gqa is not None and n_gqa <= 2:
-                print_info(
-                    f"model has GQA value of {n_gqa}, "
-                    f"consider setting `quantize_kv_cache=True` to reduce memory usage"
+            if verbose:
+                print_verbose(
+                    "using f16 KV cache"
                 )
             # use f16 for K, V (default)
             type_k = 1
@@ -265,6 +262,11 @@ class Model:
         # guard against models with no rope_freq_base
         if rope_freq_base is None:
             rope_freq_base = 0
+        
+        if verbose:
+            print_verbose(
+                "attempting to load model..."
+            )
 
         self.llama: Llama = Llama(
             model_path=model_path,
@@ -282,7 +284,8 @@ class Model:
             flash_attn=flash_attn,             # use `3` for q4_1
             type_k=type_k,                     # use `2` for q4_0
             type_v=type_v,
-            verbose=verbose
+            verbose=verbose,
+            **kwargs
         )
 
         try:
@@ -423,7 +426,7 @@ class Model:
             rope_freq_base_train: Optional[float]
         ) -> float:
         """
-        Returns the rope_freq_base value at which model should be loaded
+        Returns the rope_freq_base (theta) value at which model should be loaded
         """
         assert_type(n_ctx_train, int, 'n_ctx_train', '_calculate_rope_freq_base')
         assert_type(n_ctx_load, int, 'n_ctx_load', '_calculate_rope_freq_base')
@@ -452,7 +455,6 @@ class Model:
         #   return (ctx_scale**2)*rope_freq_base_train
         # experimental formula B:
         #   return (ctx_scale**(2**(1/4)))*rope_freq_base_train
-
 
     
     def __repr__(self) -> str:
@@ -563,13 +565,31 @@ class Model:
         if hasattr(self, 'llama'):
             self.unload()
         self.__init__(
-            model_path=self._model_path,
-            context_length=self._context_length if context_length is None else context_length,
-            n_gpu_layers=self._n_gpu_layers if n_gpu_layers is None else n_gpu_layers,
-            offload_kqv=self._offload_kqv if offload_kqv is None else offload_kqv,
-            flash_attn=self._flash_attn if flash_attn is None else flash_attn,
-            quantize_kv_cache=self._quantize_kv_cache if quantize_kv_cache is None else quantize_kv_cache,
-            verbose=self._verbose if verbose is None else verbose
+            model_path = self._model_path,
+            context_length = (
+                self._context_length if context_length is None
+                else context_length
+            ),
+            n_gpu_layers = (
+                self._n_gpu_layers if n_gpu_layers is None
+                else n_gpu_layers
+            ),
+            offload_kqv = (
+                self._offload_kqv if offload_kqv is None
+                else offload_kqv
+            ),
+            flash_attn = (
+                self._flash_attn if flash_attn is None
+                else flash_attn
+            ),
+            quantize_kv_cache = (
+                self._quantize_kv_cache if quantize_kv_cache is None
+                else quantize_kv_cache
+            ),
+            verbose = (
+                self._verbose if verbose is None
+                else verbose
+            )
         )
         assert_model_is_loaded(self)
     
@@ -589,11 +609,13 @@ class Model:
             # remove duplicate BOS tokens at the start of the text
             while tokens[0] == self.bos_token and tokens[1] == self.bos_token:
                 tokens.pop(0)
-                print_info("tokenize: removed duplicate BOS token")
+                if self.verbose:
+                    print_verbose("tokenize: removed duplicate BOS token")
             # remove duplicate EOS tokens at the start of the text
             while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
                 tokens.pop(-1)
-                print_info("tokenize: removed duplicate EOS token")
+                if self.verbose:
+                    print_verbose("tokenize: removed duplicate EOS token")
         return tokens
 
 
@@ -615,11 +637,13 @@ class Model:
             # remove duplicate BOS tokens at the start of the text
             while tokens[0] == self.bos_token and tokens[1] == self.bos_token:
                 tokens.pop(0)
-                print_info("detokenize: removed duplicate BOS token")
+                if self.verbose:
+                    print_verbose("detokenize: removed duplicate BOS token")
             # remove duplicate EOS tokens at the start of the text
             while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
                 tokens.pop(-1)
-                print_info("detokenize: removed duplicate EOS token")
+                if self.verbose:
+                    print_verbose("detokenize: removed duplicate EOS token")
         assert_model_is_loaded(self)
         return self.llama._model.detokenize(
             tokens,
@@ -648,7 +672,7 @@ class Model:
         return list(
             zip(
                 token_id_list,
-                [self.detokenize(tok_text) for tok_text in token_id_list]
+                [self.detokenize(tok_id) for tok_id in token_id_list]
             )
         )
     
@@ -688,7 +712,7 @@ class Model:
         else:
             if self.verbose:
                 print_verbose(
-                    "tokenizing prompt"
+                    "generate: tokenizing prompt"
                 )
             prompt_tokens = self.tokenize(prompt)
         assert_type(stops, list, 'stops', 'generate')
@@ -706,7 +730,7 @@ class Model:
             )
 
         if self.verbose:
-            print_verbose(f'using the following sampler settings for Model.generate:')
+            print_verbose(f'generate: using the following sampler settings:')
             print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
             print_verbose(f'temp              == {sampler.temp}')
             print_verbose(f'top_p             == {sampler.top_p}')
@@ -719,14 +743,14 @@ class Model:
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
         stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
         stopping_criteria = None
-        if stop_token_ids != list():
+        if stop_token_ids != []:
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
 
         assert_model_is_loaded(self)
         return self.llama.create_completion(
-            prompt,
+            prompt=prompt_tokens,
             max_tokens=sampler.max_len_tokens,
             temperature=sampler.temp,
             top_p=sampler.top_p,
@@ -767,7 +791,7 @@ class Model:
         else:
             if self.verbose:
                 print_verbose(
-                    "tokenizing prompt"
+                    "stream: tokenizing prompt"
                 )
             prompt_tokens = self.tokenize(prompt)
         assert_type(stops, list, 'stops', 'stream')
@@ -785,7 +809,7 @@ class Model:
             )
 
         if self.verbose:
-            print_verbose(f'using the following sampler settings for Model.stream:')
+            print_verbose(f'stream: using the following sampler settings:')
             print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
             print_verbose(f'temp              == {sampler.temp}')
             print_verbose(f'top_p             == {sampler.top_p}')
@@ -798,14 +822,14 @@ class Model:
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
         stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
         stopping_criteria = None
-        if stop_token_ids != list():
+        if stop_token_ids != []:
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
         
         assert_model_is_loaded(self)
         return self.llama.create_completion(
-            prompt,
+            prompt=prompt_tokens,
             max_tokens=sampler.max_len_tokens,
             temperature=sampler.temp,
             top_p=sampler.top_p,
@@ -850,16 +874,16 @@ class Model:
             sampler=sampler
         )
 
-        res = ''
+        response = ''
         for i in token_generator:
             tok = i['choices'][0]['text']
             print(tok, end='', file=file, flush=flush)
-            res += tok
+            response += tok
 
         # print `end`, and always flush stream after generation is done
         print(end, end='', file=file, flush=True)
 
-        return res
+        return response
 
 
     def ingest(self, text: str | list[int]) -> None:
@@ -873,7 +897,7 @@ class Model:
         else:
             if self.verbose:
                 print_verbose(
-                    "tokenizing text"
+                    "ingest: tokenizing text"
                 )
             tokens = self.tokenize(text)
         
@@ -884,11 +908,11 @@ class Model:
         
         assert_model_is_loaded(self)
         self.llama.create_completion(
-            tokens,
+            prompt=tokens,
             max_tokens=1,
             temperature=0.0
         )
-    
+
 
     def candidates(
         self,
@@ -904,15 +928,13 @@ class Model:
         Optionally apply temperature `temp` to the probabilities.
         """
 
-        # TODO: this functions uses 7GB of memory
-        # maybe switch from lists to numpy arrays?
-
         assert_type(prompt, str, 'prompt', 'candidates')
         assert_type(k, int, 'k', 'candidates')
         assert_type(temp, (float, NoneType), 'temp', 'candidates')
-        if not 1 <= k <= len(self.vocab):
+        assert_model_is_loaded(self)
+        if not 1 <= k <= self.n_vocab:
             raise ValueError(
-                f"candidates: k should be between 1 and {len(self.vocab)} inclusive"
+                f"candidates: k should be between 1 and {self.n_vocab} inclusive"
             )
 
         prompt_tokens = self.tokenize(prompt)
@@ -920,26 +942,27 @@ class Model:
         self.llama.eval(prompt_tokens)
         scores = self.llama.scores[len(prompt_tokens) - 1]
 
-        # len(self.llama.scores) == self.context_length
-        # len(self.llama.scores[i]) == len(self.vocab)
-        
         # normalize scores with softmax
-        # must normalize over all logits, not just top k
         if self.verbose:
             print_verbose(f'calculating softmax over {len(scores)} values')
-        normalized_scores: list[np.floating] = list(
-            softmax(z=scores, T=temp, dtype=np.float32)   # TODO: maybe don't cast to list?
-        )
+        normalized_scores = softmax(z=scores, T=temp, dtype=np.float32)
 
-        # construct the final list
-        i = 0
-        token_probs_list: list[tuple[str, np.floating]] = list()
-        for tok_str in self.vocab:
-            token_probs_list.append((tok_str, normalized_scores[i]))
-            i += 1
+        # Get the top k indices
+        top_k_indices = np.argpartition(normalized_scores, -k)[-k:]
 
-        # return token_probs_list, sorted by probability, only top k
-        return heapq.nlargest(k, token_probs_list, key=lambda x:x[1])
+        # Detokenize only the top k tokens
+        token_probs_list = [
+            (
+                self.llama._model.detokenize([tok_id], special=True).decode('utf-8', errors='ignore'),
+                normalized_scores[tok_id]
+            )
+            for tok_id in top_k_indices
+        ]
+
+        # Sort the top k tokens by probability
+        token_probs_list.sort(key=lambda x: x[1], reverse=True)
+
+        return token_probs_list
 
 
     def print_candidates(
@@ -956,12 +979,12 @@ class Model:
 
         for _tuple in self.candidates(prompt, k, temp):
             print(
-                f"token {_tuple[0]!r:<16} has probability {_tuple[1]}",
+                f"token {_tuple[0]!r:<16} has probability {_tuple[1] * 100 :>7.3f} %",
                 file=file,
             )
 
 
-def assert_model_is_loaded(model: Model) -> None:
+def assert_model_is_loaded(model) -> None:
     """
     Ensure the model is fully constructed, such that
     `model.llama._model.model is not None` is guaranteed to be `True`
@@ -980,7 +1003,7 @@ def assert_model_is_loaded(model: Model) -> None:
         )
     elif not hasattr(model, 'llama'):
         exc = ModelUnloadedException(
-            "model has no attribute 'llama'"
+            "easy_llama.Model instance has no attribute 'llama'"
         )
     elif not hasattr(model.llama, '_model'):
         exc = ModelUnloadedException(
@@ -998,5 +1021,16 @@ def assert_model_is_loaded(model: Model) -> None:
         exc = ModelUnloadedException(     # likely unreachable
             "model is not loaded"
         )
-    exc.add_note('Are you trying to use a model that has been unloaded?')
+    
+    if not isinstance(model, Model):
+        exc.add_note(
+            'WARNING: `assert_model_is_loaded` was called on an object '
+            'that is NOT an instance of `easy_llama.Model` '
+            f'(object had type {type(model)!r})'
+        )
+    else:
+        exc.add_note(
+            'Are you trying to use a model that has been unloaded?'
+        )
+    
     raise exc

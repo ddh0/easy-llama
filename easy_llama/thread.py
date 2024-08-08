@@ -630,7 +630,7 @@ class Thread:
             if hook is not None:
                 print(DIM_STYLE, end='', flush=True)
                 hook(self)
-                print(RESET_ALL, end='\n', flush=True)
+                print(RESET_ALL, end='', flush=True)
 
             prompt = f"{RESET_ALL}  > {USER_STYLE}"
             
@@ -759,17 +759,19 @@ class Thread:
                 model.reload()
             finally:
                 _model = model
+        else:
+            assert_model_is_loaded(_model)
 
         assert_type(
             messages,
             (list, NoneType),
             'messages',
-            'generate_summary'
+            'summarize'
         )
 
         if messages == []:
             raise ValueError(
-                f"generate_summary: the list of messages cannot be empty"
+                f"summarize: the list of messages cannot be empty"
             )
 
         if messages is None:
@@ -788,7 +790,7 @@ class Thread:
                     'Hello. Take a moment to read the following conversation '
                     'carefully. When you\'re done, write a single paragraph '
                     'that explains all of the most relevant details.'
-                    f'\n\n{messages_str}\n\n'
+                    f'\n\n```{messages_str}```\n\n'
                     'Now that you\'ve read the above conversation, please '
                     'provide a summary in the form of a single paragraph.'
                 ).as_string() + \
@@ -798,11 +800,11 @@ class Thread:
 
         required_ctx_len = _model.get_length(inf_str) + 257
 
-        if required_ctx_len > self.model.context_length:
+        if self.model.context_length < required_ctx_len:
             raise ValueError(
                 f"generate_sumary: the model's context length is too small to "
                 f"generate a summary "
-                f"({required_ctx_len} > {_model.context_length})"
+                f"({_model.context_length} < {required_ctx_len})"
             )
         
         summary = _model.generate(
