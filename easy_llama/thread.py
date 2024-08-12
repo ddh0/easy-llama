@@ -75,7 +75,7 @@ class Thread:
         self,
         model: Model,
         format: dict | AdvancedFormat,
-        sampler: SamplerSettings = SamplerSettings(),
+        sampler: Optional[SamplerSettings] = None,
         messages: Optional[list[Message]] = None
     ):
         """
@@ -109,6 +109,8 @@ class Thread:
             )
         
         assert_type(format['stops'], list, "format['stops']", 'Thread')
+
+        sampler = SamplerSettings() if sampler is None else sampler
         
         if not all(hasattr(sampler, attr) for attr in SamplerSettings.param_types):
             raise AttributeError(
@@ -421,7 +423,8 @@ class Thread:
         _dim_style: str,
         _user_style: str,
         _bot_style: str,
-        _special_style: str
+        _special_style: str,
+        _error_style: str
     ) -> tuple:
         """
         Recive input from the user, while handling multi-line input
@@ -439,13 +442,13 @@ class Thread:
 
                 print()
                 try:
-                    command = input(f'{RESET_ALL}  ! {_dim_style}')
+                    command = input(f'{_error_style}  ! {_dim_style}')
                 except KeyboardInterrupt:
                     print('\n')
                     continue
 
                 if command == '':
-                    print(f'\n[no command]\n')
+                    print(f'\n{_error_style}[no command]{RESET_ALL}\n')
 
                 elif command.lower() in ['reset', 'restart']:
                     self.reset()
@@ -487,6 +490,8 @@ class Thread:
                         print(f"\n{_user_style}{last_msg['content']}{RESET_ALL}\n")
                     elif last_msg['role'] == 'bot':
                         print(f"\n{_bot_style}{last_msg['content']}{RESET_ALL}\n")
+                    else:
+                        print(f"\n{_error_style}{last_msg['content']}{RESET_ALL}\n")
                 
                 elif command.lower() in ['refill', 'reprint', 'lost', 'find']:
                     cls()
@@ -494,10 +499,13 @@ class Thread:
                     for msg in self.messages:
                         if msg['role'] == 'system':
                             print(f"{_special_style}{msg['content']}{RESET_ALL}\n")
-                        if msg['role'] == 'user':
+                        elif msg['role'] == 'user':
                             print(f"{_user_style}{msg['content']}{RESET_ALL}\n")
-                        if msg['role'] == 'bot':
+                        elif msg['role'] == 'bot':
                             print(f"{_bot_style}{msg['content']}{RESET_ALL}\n")
+                        else:
+                            print(f"{_error_style}{msg['content']}{RESET_ALL}\n")
+                        
                 
                 elif command.lower() in ['inf', 'inference', 'inf_str']:
                     print(f'\n"""{self.inference_str_from_messages()}"""\n')
@@ -541,7 +549,7 @@ class Thread:
                     print()
 
                 else:
-                    print(f'\n[unknown command]\n')
+                    print(f'\n{_error_style}[unknown command]{RESET_ALL}\n')
             
             # prefix the bot's next message
             elif user_input == '<':
@@ -584,7 +592,8 @@ class Thread:
         color: bool = True,
         header: Optional[str] = None,
         stream: bool = True,
-        hook: Optional[Callable] = None
+        hook: Optional[Callable] = None,
+        prompt: str = '  > '
     ) -> None:
         """
         Start an interactive chat session using this Thread.
@@ -613,7 +622,11 @@ class Thread:
         print()
 
         # fresh import of color codes in case `color` param has changed
-        from .utils import SPECIAL_STYLE, USER_STYLE, BOT_STYLE, DIM_STYLE
+        from .utils import (
+            SPECIAL_STYLE, USER_STYLE,
+            BOT_STYLE, DIM_STYLE,
+            ERROR_STYLE
+        )
 
         # disable color codes if explicitly disabled by `color` param
         if not color:
@@ -621,6 +634,7 @@ class Thread:
             USER_STYLE = ''
             BOT_STYLE = ''
             DIM_STYLE = ''
+            ERROR_STYLE = ''
         
         if header is not None:
             print(f"{SPECIAL_STYLE}{header}{RESET_ALL}\n")
@@ -632,7 +646,7 @@ class Thread:
                 hook(self)
                 print(RESET_ALL, end='', flush=True)
 
-            prompt = f"{RESET_ALL}  > {USER_STYLE}"
+            prompt = f"{RESET_ALL}{prompt}{USER_STYLE}"
             
             try:
                 user_prompt, next_message_start = self._interactive_input(
@@ -640,7 +654,8 @@ class Thread:
                     DIM_STYLE,
                     USER_STYLE,
                     BOT_STYLE,
-                    SPECIAL_STYLE
+                    SPECIAL_STYLE,
+                    ERROR_STYLE
                 )
             except KeyboardInterrupt:
                 print(f"{RESET_ALL}\n")
@@ -797,15 +812,6 @@ class Thread:
                 self.format['bot_prefix'] + \
                 'After carefully reading through the conversation, here\'s' + \
                 ' a paragraph that explains the most relevant details:\n\n'
-
-        required_ctx_len = _model.get_length(inf_str) + 257
-
-        if self.model.context_length < required_ctx_len:
-            raise ValueError(
-                f"generate_sumary: the model's context length is too small to "
-                f"generate a summary "
-                f"({_model.context_length} < {required_ctx_len})"
-            )
         
         summary = _model.generate(
             inf_str,

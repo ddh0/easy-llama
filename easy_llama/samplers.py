@@ -105,8 +105,8 @@ class SamplerSettings:
 
 # most likely token is always chosen
 GreedyDecoding = SamplerSettings(
-    temp = 0.0,
-    top_p = 1.0,
+    temp = 0.0,  # technically temp=0.0 is enough to get greedy decoding
+    top_p = 1.0, # i'm just paranoid
     min_p = 0.0,
     top_k = -1
 )

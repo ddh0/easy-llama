@@ -543,7 +543,7 @@ def _llama3_suffix_with_timestamp():
     return f"<|eot_id|>\n<|reserved_special_token_3|>{get_time_str()}<|reserved_special_token_4|>\n"
 
 Llama3WithTimestamps = AdvancedFormat({
-    "system_prefix" : "<|start_header_id|>system<|end_header_id|>\n\n",
+    "system_prefix": "<|start_header_id|>system<|end_header_id|>\n\n",
     "system_prompt": 'You are a helpful AI assistant called "Llama 3".',
     "system_suffix": _llama3_suffix_with_timestamp,
     "user_prefix": "<|start_header_id|>user<|end_header_id|>\n\n",

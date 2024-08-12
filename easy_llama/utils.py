@@ -44,8 +44,7 @@ def softmax(
     Compute softmax over values in z, where z is array-like.
     Also apply temperature T, if specified.
 
-    If `dtype` is not specified, the highest available numpy precision will be
-    used (up to `np.float96`).
+    If `dtype` is not specified, `np.float32` will be used.
     """
     if dtype is None:
         _dtype = np.float32
@@ -64,7 +63,8 @@ def softmax(
         # simple formula with no temperature
         e_z = np.exp(_z - np.max(_z), dtype=_dtype)
         return e_z / np.sum(e_z, axis=0, dtype=_dtype)
-    if T in [0, 0.0]:
+    assert_type(T, float, "temperature value 'T'", 'softmax')
+    if T == 0.0:
         raise ZeroDivisionError(
             "softmax: temperature value T cannot be 0"
         )
@@ -240,7 +240,7 @@ class QuickGGUFReader:
         with open(fn, "rb") as file:
             magic = file.read(4)
 
-            if magic != b"GGUF":
+            if magic != b'GGUF':
                 raise ValueError(
                     "your model file is not a valid GGUF file "
                     f"(magic number mismatch, got {magic}, "

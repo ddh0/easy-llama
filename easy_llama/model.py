@@ -20,9 +20,10 @@ from .utils import (
     softmax
 )
 
+from typing    import Generator, Optional, List, Tuple
 from .samplers import SamplerSettings, DefaultSampling
 from llama_cpp import Llama, StoppingCriteriaList
-from typing    import Generator, Optional
+
 
 
 class ModelUnloadedException(Exception):
@@ -30,6 +31,11 @@ class ModelUnloadedException(Exception):
     def __init__(self, message):
         self.message = message
         super().__init__(self.message)
+
+
+class ExceededContextLengthException(Exception):
+    """Exception raised when an input exceeds a model's context length"""
+
 
 class Model:
     """
@@ -470,11 +476,13 @@ class Model:
     
     
     def __sizeof__(self) -> int:
+        """Returns the size of the model file on disk, NOT the memory usage"""
         return self._model_file_size_bytes
     
 
     def __del__(self):
-        self.unload()
+        if hasattr(self, 'llama'):
+            self.unload()
     
 
     def __enter__(self):
@@ -482,19 +490,20 @@ class Model:
 
 
     def __exit__(self, *_):
-        self.unload()
+        if hasattr(self, 'llama'):
+            self.unload()
     
 
     def __call__(
         self,
         prompt: str | list[int],
-        stops: list[str | int] = list(),
-        sampler: SamplerSettings = DefaultSampling
+        stops: Optional[list[str | int]] = None,
+        sampler: Optional[SamplerSettings] = None
     ) -> str:
         """
         `Model(...)` is a shorthand for `Model.generate(...)`
         """
-        return self.generate(prompt, stops, sampler)
+        return self.generate(prompt=prompt, stops=stops, sampler=sampler)
     
 
     def _print_debug(self) -> None:
@@ -621,7 +630,7 @@ class Model:
 
     def detokenize(self, tokens: list[int] | int) -> str:
         """
-        Detokenize the given text (from `list[int]` to `str`)
+        Detokenize the given text (from `int` or `list[int]` to `str`)
         """
         assert_type(tokens, (list, int), 'tokens', 'detokenize')
         if isinstance(tokens, int):
@@ -630,8 +639,8 @@ class Model:
             if not 0 <= tok_id < self.n_vocab:
                 raise ValueError(
                     f"detokenize: token id {tok_id} is out of range. "
-                    f"acceptable values are between 0 and {self.n_vocab-1} "
-                    "inclusive"
+                    f"acceptable values for this model are between 0 and "
+                    f"{self.n_vocab-1} inclusive"
                 )
         if len(tokens) > 1:
             # remove duplicate BOS tokens at the start of the text
@@ -653,7 +662,7 @@ class Model:
 
     def get_length(self, text: str) -> int:
         """
-        Return the length of the given text in tokens according to this model
+        Return the length of the given text in as measured in tokens
         """
         return len(self.tokenize(text))
     
@@ -661,7 +670,7 @@ class Model:
     def get_tokenization_mapping(
             self,
             text: str
-        ) -> None:
+        ) -> list[tuple[int, str]]:
         """
         Tokenize the given text and return a list of tuples where the first
         item in the tuple is the token ID and the second item is the
@@ -688,14 +697,14 @@ class Model:
 
         for token_id, token_text in token_mapping_list:
             print(f"{token_id:>7} -> '{token_text}'")
-        print(f"Total number of tokens: {self.get_length(text)}")
+        print(f"Total number of tokens: {len(token_mapping_list)}")
         
     
     def generate(
         self,
         prompt: str | list[int],
-        stops: list[str | int] = list(),
-        sampler: SamplerSettings = DefaultSampling
+        stops: Optional[list[str | int]] = None,
+        sampler: Optional[SamplerSettings] = None
     ) -> str:
         """
         Given a prompt, return a generated string.
@@ -706,15 +715,8 @@ class Model:
         - stops: A list of strings and/or token IDs at which to end the generation early
         - sampler: The SamplerSettings object used to control text generation
         """
-        assert_type(prompt, (str, list), 'prompt', 'generate')
-        if isinstance(prompt, list):
-            prompt_tokens = prompt
-        else:
-            if self.verbose:
-                print_verbose(
-                    "generate: tokenizing prompt"
-                )
-            prompt_tokens = self.tokenize(prompt)
+        
+        stops = [] if stops is None else stops
         assert_type(stops, list, 'stops', 'generate')
         for item in stops:
             assert_type(
@@ -724,9 +726,29 @@ class Model:
                 'generate'
             )
         
+        sampler = SamplerSettings() if sampler is None else sampler
+        
+        assert_type(prompt, (str, list), 'prompt', 'generate')
+        if isinstance(prompt, list):
+            prompt_tokens = prompt
+        else:
+            if self.verbose:
+                print_verbose(
+                    "generate: tokenizing prompt"
+                )
+            prompt_tokens = self.tokenize(prompt)
+        
+        input_length = len(prompt_tokens)
+
+        if input_length > self.context_length:
+            raise ExceededContextLengthException(
+                f"generate: length of input exceeds model's context length "
+                f"({input_length} > {self.context_length})"
+            )
+        
         if self.verbose:
             print_verbose(
-                f"generate: recieved prompt with {len(prompt_tokens)} tokens"
+                f"generate: recieved prompt with {input_length} tokens"
             )
 
         if self.verbose:
@@ -767,8 +789,8 @@ class Model:
     def stream(
         self,
         prompt: str | list[int],
-        stops: list[str | int] = list(),
-        sampler: SamplerSettings = DefaultSampling
+        stops: Optional[list[str | int]] = None,
+        sampler: Optional[SamplerSettings] = None
     ) -> Generator:
 
         """
@@ -785,15 +807,7 @@ class Model:
         - sampler: The SamplerSettings object used to control text generation
         """
 
-        assert_type(prompt, (str, list), 'prompt', 'stream')
-        if isinstance(prompt, list):
-            prompt_tokens = prompt
-        else:
-            if self.verbose:
-                print_verbose(
-                    "stream: tokenizing prompt"
-                )
-            prompt_tokens = self.tokenize(prompt)
+        stops = [] if stops is None else stops
         assert_type(stops, list, 'stops', 'stream')
         for item in stops:
             assert_type(
@@ -803,9 +817,29 @@ class Model:
                 'stream'
             )
         
+        sampler = SamplerSettings() if sampler is None else sampler
+        
+        assert_type(prompt, (str, list), 'prompt', 'stream')
+        if isinstance(prompt, list):
+            prompt_tokens = prompt
+        else:
+            if self.verbose:
+                print_verbose(
+                    "stream: tokenizing prompt"
+                )
+            prompt_tokens = self.tokenize(prompt)
+        
+        input_length = len(prompt_tokens)
+
+        if input_length > self.context_length:
+            raise ExceededContextLengthException(
+                f"stream: length of input exceeds model's context length "
+                f"({input_length} > {self.context_length})"
+            )
+        
         if self.verbose:
             print_verbose(
-                f"stream: recieved prompt with {len(prompt_tokens)} tokens"
+                f"stream: recieved prompt with {input_length} tokens"
             )
 
         if self.verbose:
@@ -847,10 +881,10 @@ class Model:
     def stream_print(
         self,
         prompt: str | list[int],
-        stops: list[str | int] = list(),
-        sampler: SamplerSettings = DefaultSampling,
-        end: str = "\n",
-        file: _SupportsWriteAndFlush = sys.stdout,
+        stops: Optional[list[str | int]] = None,
+        sampler: Optional[SamplerSettings] = None,
+        end: str = '\n',
+        file: _SupportsWriteAndFlush = None,
         flush: bool = True
     ) -> str:
         """
@@ -873,6 +907,8 @@ class Model:
             stops=stops,
             sampler=sampler
         )
+
+        file = sys.stdout if file is None else file
 
         response = ''
         for i in token_generator:
@@ -917,8 +953,8 @@ class Model:
     def candidates(
         self,
         prompt: str,
-        k: int,
-        temp: Optional[float] = None
+        k: int = 40,  # default top_k sampling parameter
+        temp: Optional[float] = None  # negative values are ok
     ) -> list[tuple[str, np.floating]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
@@ -942,21 +978,24 @@ class Model:
         self.llama.eval(prompt_tokens)
         scores = self.llama.scores[len(prompt_tokens) - 1]
 
-        # normalize scores with softmax
-        if self.verbose:
-            print_verbose(f'calculating softmax over {len(scores)} values')
-        normalized_scores = softmax(z=scores, T=temp, dtype=np.float32)
+        # Get the top k indices based on raw scores
+        top_k_indices = np.argpartition(scores, -k)[-k:]
 
-        # Get the top k indices
-        top_k_indices = np.argpartition(normalized_scores, -k)[-k:]
+        # Get the scores of the top k tokens
+        top_k_scores = scores[top_k_indices]
+
+        # Apply softmax to the top k scores
+        if self.verbose:
+            print_verbose(f'calculating softmax over {len(top_k_scores)} values')
+        normalized_scores = softmax(z=top_k_scores, T=temp, dtype=np.float32)
 
         # Detokenize only the top k tokens
         token_probs_list = [
             (
                 self.llama._model.detokenize([tok_id], special=True).decode('utf-8', errors='ignore'),
-                normalized_scores[tok_id]
+                normalized_scores[i]
             )
-            for tok_id in top_k_indices
+            for i, tok_id in enumerate(top_k_indices)
         ]
 
         # Sort the top k tokens by probability
@@ -977,7 +1016,7 @@ class Model:
         of returning them
         """
 
-        for _tuple in self.candidates(prompt, k, temp):
+        for _tuple in self.candidates(prompt=prompt, k=k, temp=temp):
             print(
                 f"token {_tuple[0]!r:<16} has probability {_tuple[1] * 100 :>7.3f} %",
                 file=file,
