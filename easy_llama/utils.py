@@ -11,16 +11,15 @@ import numpy as np
 from typing   import Iterable, TextIO, Optional
 from io       import BufferedReader
 from enum     import IntEnum
-from colorama import Fore
 
 
 # color codes used in Thread.interact()
-RESET_ALL = Fore.RESET
-USER_STYLE = Fore.RESET + Fore.GREEN
-BOT_STYLE = Fore.RESET + Fore.CYAN
-DIM_STYLE = Fore.RESET + Fore.LIGHTBLACK_EX
-SPECIAL_STYLE = Fore.RESET + Fore.YELLOW
-ERROR_STYLE = Fore.RESET + Fore.LIGHTRED_EX
+RESET_ALL     = '\x1b[39m'
+USER_STYLE    = '\x1b[39m\x1b[32m'
+BOT_STYLE     = '\x1b[39m\x1b[36m'
+DIM_STYLE     = '\x1b[39m\x1b[90m'
+SPECIAL_STYLE = '\x1b[39m\x1b[33m'
+ERROR_STYLE   = '\x1b[39m\x1b[91m'
 
 NoneType: type = type(None)
 

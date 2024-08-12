@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.67'
+__version__ = '0.1.68'
 
 from setuptools import setup
 
@@ -17,7 +17,6 @@ setup(
     packages=['easy_llama'],
     install_requires=[
         'llama_cpp_python',
-        'colorama',
         'numpy',
     ],
     classifiers=[
