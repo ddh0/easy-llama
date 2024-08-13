@@ -631,17 +631,16 @@ class Model:
             add_bos=bool(self.llama._model.add_bos_token()),
             special=True
         )
-        if len(tokens) > 1:
-            # remove duplicate BOS tokens at the start of the text
-            while tokens[0] == self.bos_token and tokens[1] == self.bos_token:
-                tokens.pop(0)
-                if self.verbose:
-                    print_verbose("tokenize: removed duplicate BOS token")
-            # remove duplicate EOS tokens at the end of the text
-            while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
-                tokens.pop(-1)
-                if self.verbose:
-                    print_verbose("tokenize: removed duplicate EOS token")
+        # remove duplicate BOS tokens at the start of the text
+        while len(tokens) > 1 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
+            tokens.pop(0)
+            if self.verbose:
+                print_verbose("tokenize: removed duplicate BOS token")
+        # remove duplicate EOS tokens at the end of the text
+        while len(tokens) > 1 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
+            tokens.pop(-1)
+            if self.verbose:
+                print_verbose("tokenize: removed duplicate EOS token")
         return tokens
 
 
@@ -659,17 +658,16 @@ class Model:
                     f"acceptable values for this model are between 0 and "
                     f"{self.n_vocab-1} inclusive"
                 )
-        if len(tokens) > 1:
-            # remove duplicate BOS tokens at the start of the text
-            while tokens[0] == self.bos_token and tokens[1] == self.bos_token:
-                tokens.pop(0)
-                if self.verbose:
-                    print_verbose("detokenize: removed duplicate BOS token")
-            # remove duplicate EOS tokens at the end of the text
-            while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
-                tokens.pop(-1)
-                if self.verbose:
-                    print_verbose("detokenize: removed duplicate EOS token")
+        # remove duplicate BOS tokens at the start of the text
+        while len(tokens) > 1 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
+            tokens.pop(0)
+            if self.verbose:
+                print_verbose("detokenize: removed duplicate BOS token")
+        # remove duplicate EOS tokens at the end of the text
+        while len(tokens) > 1 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
+            tokens.pop(-1)
+            if self.verbose:
+                print_verbose("detokenize: removed duplicate EOS token")
         assert_model_is_loaded(self)
         return self.llama._model.detokenize(
             tokens,
