@@ -149,13 +149,13 @@ class Thread:
             print_verbose(f"format['bot_prefix']      == {truncate(repr(self.format['bot_prefix']))}")
             print_verbose(f"format['bot_suffix']      == {truncate(repr(self.format['bot_suffix']))}")
             print_verbose(f"format['stops']           == {truncate(repr(self.format['stops']))}")
-            print_verbose(f"sampler.temp              == {self.sampler.temp}")
+            print_verbose(f"sampler.top_k             == {self.sampler.top_k}")
             print_verbose(f"sampler.top_p             == {self.sampler.top_p}")
             print_verbose(f"sampler.min_p             == {self.sampler.min_p}")
+            print_verbose(f"sampler.temp              == {self.sampler.temp}")
             print_verbose(f"sampler.frequency_penalty == {self.sampler.frequency_penalty}")
             print_verbose(f"sampler.presence_penalty  == {self.sampler.presence_penalty}")
             print_verbose(f"sampler.repeat_penalty    == {self.sampler.repeat_penalty}")
-            print_verbose(f"sampler.top_k             == {self.sampler.top_k}")
 
 
     def __repr__(self) -> str:
@@ -192,13 +192,14 @@ class Thread:
         Construct a message using the format of this Thread
         """
 
+        assert_type(role, str, 'role', 'create_message')
+        assert_type(content, str, 'content', 'create_message')
+
         if not role.lower() in ['system', 'user', 'bot']:
             raise ValueError(
                 "create_message: role should be 'system', 'user', or 'bot', "
                 f"not {role.lower()!r}"
             )
-
-        assert_type(content, str, 'content', 'create_message')
 
         if role.lower() == 'system':
             return Message(
@@ -279,19 +280,17 @@ class Thread:
             self.format['bot_prefix']
         )
 
-        #
         # NOTE:
         # If sys_msg_flag is True:
         #     - The first message in the history is a system message
         #     - That message will always be kept in-context
         #
         # Otherwise, all messages are treated equally
-        #
 
         if len(self.messages) == 0:
             return self.format['bot_prefix']
         
-        elif self.messages[0]['role'] == 'system':
+        if self.messages[0]['role'] == 'system':
             sys_msg_flag = True
             sys_msg = self.messages[0]
             sys_msg_str = sys_msg.as_string()
@@ -343,13 +342,13 @@ class Thread:
 
         try:
             new_max_len_tokens = input(f'max_len_tokens: {self.sampler.max_len_tokens} -> ')
-            new_temp = input(f'temp: {self.sampler.temp} -> ')
+            new_top_k = input(f'top_k: {self.sampler.top_k} -> ')
             new_top_p = input(f'top_p: {self.sampler.top_p} -> ')
             new_min_p = input(f'min_p: {self.sampler.min_p} -> ')
+            new_temp = input(f'temp: {self.sampler.temp} -> ')
             new_frequency_penalty = input(f'frequency_penalty: {self.sampler.frequency_penalty} -> ')
             new_presence_penalty = input(f'presence_penalty: {self.sampler.presence_penalty} -> ')
             new_repeat_penalty = input(f'repeat_penalty: {self.sampler.repeat_penalty} -> ')
-            new_top_k = input(f'top_k: {self.sampler.top_k} -> ')
             _sentinel = True
 
         except KeyboardInterrupt:
@@ -365,11 +364,11 @@ class Thread:
             print('easy_llama: max_len_tokens updated')
         
         try:
-            self.sampler.temp = float(new_temp)
+            self.sampler.top_k = int(new_top_k)
         except ValueError:
             pass
         else:
-            print('easy_llama: temp updated')
+            print('easy_llama: top_k updated')
         
         try:
             self.sampler.top_p = float(new_top_p)
@@ -384,6 +383,13 @@ class Thread:
             pass
         else:
             print('easy_llama: min_p updated')
+        
+        try:
+            self.sampler.temp = float(new_temp)
+        except ValueError:
+            pass
+        else:
+            print('easy_llama: temp updated')
 
         try:
             self.sampler.frequency_penalty = float(new_frequency_penalty)
@@ -405,13 +411,6 @@ class Thread:
             pass
         else:
             print('easy_llama: repeat_penalty updated')
-        
-        try:
-            self.sampler.top_k = int(new_top_k)
-        except ValueError:
-            pass
-        else:
-            print('easy_llama: top_k updated')
         
         if _sentinel:   # pretty formatting
             print()

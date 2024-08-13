@@ -41,32 +41,51 @@ def softmax(
 ) -> np.ndarray:
     """
     Compute softmax over values in z, where z is array-like.
-    Also apply temperature T, if specified.
+    Also apply temperature `T`, if specified.
 
-    If `dtype` is not specified, `np.float32` will be used.
+    Any floating-point value for temperature `T` is valid, including 0.0 and
+    negative numbers.
+
+    If `dtype` is not specified, the highest precision
+    numpy `dtype` available will be used.
     """
     if dtype is None:
-        _dtype = np.float32
+        if hasattr(np, 'float128'):
+            _dtype = np.float128
+        elif hasattr(np, 'float96'):
+            _dtype = np.float96
+        elif hasattr(np, 'float80'):
+            _dtype = np.float80
+        elif hasattr(np, 'float64'):
+            _dtype = np.float64
+        elif hasattr(np, 'float32'):
+            _dtype = np.float32
+        elif hasattr(np, 'float16'):
+            _dtype = np.float16
+        else:
+            _dtype = float
     else:
         assert_type(
             dtype,
             type,
             'dtype',
             'softmax',
-            'dtype should be a numpy floating type, such as `np.float16`'
+            'dtype should be a numpy floating type, such as `np.float32`'
         )
         _dtype = dtype
     
     _z = np.asarray(z, dtype=_dtype)
-    if T in [None, 1.0, 1]:
+    if T is None or T == 1.0:
         # simple formula with no temperature
         e_z = np.exp(_z - np.max(_z), dtype=_dtype)
         return e_z / np.sum(e_z, axis=0, dtype=_dtype)
     assert_type(T, float, "temperature value 'T'", 'softmax')
     if T == 0.0:
-        raise ZeroDivisionError(
-            "softmax: temperature value T cannot be 0"
-        )
+        # Return an array where the maximum value in _z is 1.0 and all others are 0.0
+        max_index = np.argmax(_z)
+        result = np.zeros_like(_z, dtype=_dtype)
+        result[max_index] = 1.0
+        return result
     e_z = np.exp(np.divide(_z, T, dtype=_dtype), dtype=_dtype)
     return e_z / np.sum(e_z, axis=0, dtype=_dtype)
 

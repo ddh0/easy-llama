@@ -6,7 +6,6 @@ from ._version import __version__, __llama_cpp_version__
 
 import os
 import sys
-import heapq
 import numpy as np
 
 from .utils import (
@@ -20,10 +19,9 @@ from .utils import (
     softmax
 )
 
-from typing    import Generator, Optional, List, Tuple
-from .samplers import SamplerSettings, DefaultSampling
 from llama_cpp import Llama, StoppingCriteriaList
-
+from typing    import Generator, Optional
+from .samplers import SamplerSettings
 
 
 class ModelUnloadedException(Exception):
@@ -180,7 +178,7 @@ class Model:
         
         rope_freq_base = Model._calculate_rope_freq_base(
             n_ctx_train,
-            context_length or n_ctx_train,
+            context_length if context_length is not None else n_ctx_train,
             rope_freq_base_train
         )
 
@@ -188,10 +186,10 @@ class Model:
             # no need to do context scaling, load model normally
 
             if context_length is None:
-                self.context_length = n_ctx_train
+                self.context_length = self.n_ctx = n_ctx_train
                 ctx_scale = 1.0
             else:
-                self.context_length = context_length
+                self.context_length = self.n_ctx = context_length
                 ctx_scale = context_length/n_ctx_train
             ctx_quality_hint = 'native'
 
@@ -199,21 +197,21 @@ class Model:
             # multiply rope_freq_base according to requested context length
             # because context length > n_ctx_train and rope freq base is known
 
-            self.context_length = context_length
+            self.context_length = self.n_ctx = context_length
             ctx_scale = context_length/n_ctx_train
 
             if 1 < ctx_scale < 1.5:
-                ctx_quality_hint = 'great'
-            elif 1.5 <= ctx_scale < 2:
                 ctx_quality_hint = 'good'
-            elif 2 <= ctx_scale < 4:
+            elif 1.5 <= ctx_scale < 2:
                 ctx_quality_hint = 'fair'
-            elif 4 <= ctx_scale < 8:
+            elif 2 <= ctx_scale < 4:
                 ctx_quality_hint = 'poor'
+            elif 4 <= ctx_scale < 8:
+                ctx_quality_hint = 'bad'
             else: # x8 or more
-                ctx_quality_hint = 'abysmal'
+                ctx_quality_hint = 'terrible'
             
-            if ctx_scale >= 2: # anything below 'good'
+            if ctx_scale >= 2: # anything below 'fair'
                 print_warning(
                     f"context scale is x{ctx_scale} ({ctx_quality_hint})"
                 )
@@ -227,9 +225,14 @@ class Model:
             # if model is not fully offloaded
             n_batch = 512
         
-        # these values for n_threads and n_threads_batch are known to
-        # be optimal unless the host system has an unequal amount of
-        # P-cores and E-cores
+        # NOTE: the optimal n_threads value (for text generation) is equal
+        #       to the number of physical cores (for homogenous CPUs) or
+        #       to the number of performance cores (for heterogenous CPUs)
+        #
+        #       the optimal n_threads_batch value (for prompt eval) is equal
+        #       to the total number of logical cores, regardless of
+        #       their type
+
         n_threads = max(cpu_count//2, 1)
         n_threads_batch = cpu_count
 
@@ -293,6 +296,20 @@ class Model:
             verbose=verbose,
             **kwargs
         )
+        
+        # NOTE: llama.cpp uses the nearest multiple of 32 as the actual
+        #       context length. here we update self.context_length to reflect
+        #       this
+        self.context_length = self.n_ctx = self.llama.n_ctx()
+        assert self.n_ctx == self.context_length
+
+        if self.n_ctx < 512:
+            print_warning(
+                f'the currently loaded context length is less than 512 tokens '
+                f'({self.n_ctx} < 512), sometimes this can cause problems in '
+                f'llama.cpp. if possible, increase the context length to at '
+                f'least 512 tokens'
+            )
 
         try:
             self.vocab: list[str] = self.metadata['tokenizer.ggml.tokens']
@@ -400,7 +417,7 @@ class Model:
             print_verbose(f"n_threads            == {n_threads}")
             print_verbose(f"n_threads_batch      == {n_threads_batch}")
             print_verbose(f"n_ctx_train          == {n_ctx_train}")
-            print_verbose(f"context_length       == {self.context_length}")
+            print_verbose(f"n_ctx                == {self.n_ctx}")
             print_verbose(f"rope_freq_base_train == {rope_freq_base_train}")
             print_verbose(f"rope_freq_base       == {rope_freq_base}")
             print_verbose(f"ctx_scale            == {ctx_scale} ({ctx_quality_hint})")
@@ -445,7 +462,7 @@ class Model:
             else:
                 return rope_freq_base_train
         
-        if rope_freq_base_train in [0.0, None]:
+        if rope_freq_base_train is None or rope_freq_base_train == 0.0:
             raise ValueError(
                 'unable to load model with greater than native '
                 f'context length ({n_ctx_load} > {n_ctx_train}) '
@@ -620,7 +637,7 @@ class Model:
                 tokens.pop(0)
                 if self.verbose:
                     print_verbose("tokenize: removed duplicate BOS token")
-            # remove duplicate EOS tokens at the start of the text
+            # remove duplicate EOS tokens at the end of the text
             while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
                 tokens.pop(-1)
                 if self.verbose:
@@ -648,7 +665,7 @@ class Model:
                 tokens.pop(0)
                 if self.verbose:
                     print_verbose("detokenize: removed duplicate BOS token")
-            # remove duplicate EOS tokens at the start of the text
+            # remove duplicate EOS tokens at the end of the text
             while tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
                 tokens.pop(-1)
                 if self.verbose:
@@ -691,9 +708,9 @@ class Model:
         Tokenize the given text and display a mapping of each
         token ID and its corresponding decoded text
 
-        This is meant to be equivalent to `llama-tokenize`
+        This is meant to be equivalent to `llama.cpp/llama-tokenize`
         """
-        token_mapping_list: list[tuple[int, str]] = self.get_tokenization_mapping(text)
+        token_mapping_list = self.get_tokenization_mapping(text)
 
         for token_id, token_text in token_mapping_list:
             print(f"{token_id:>7} -> '{token_text}'")
@@ -745,8 +762,13 @@ class Model:
                 f"generate: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
-        
-        if self.verbose:
+        elif input_length == self.context_length:
+            raise ExceededContextLengthException(
+                f"generate: length of input is equal to model's context "
+                f"length ({input_length} == {self.context_length}). this "
+                f"leaves no room for any new tokens to be generated"
+            )
+        elif self.verbose:
             print_verbose(
                 f"generate: recieved prompt with {input_length} tokens"
             )
@@ -754,13 +776,13 @@ class Model:
         if self.verbose:
             print_verbose(f'generate: using the following sampler settings:')
             print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
-            print_verbose(f'temp              == {sampler.temp}')
+            print_verbose(f'top_k             == {sampler.top_k}')
             print_verbose(f'top_p             == {sampler.top_p}')
             print_verbose(f'min_p             == {sampler.min_p}')
+            print_verbose(f'temp              == {sampler.temp}')
             print_verbose(f'frequency_penalty == {sampler.frequency_penalty}')
             print_verbose(f'presence_penalty  == {sampler.presence_penalty}')
             print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
-            print_verbose(f'top_k             == {sampler.top_k}')
 
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
         stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
@@ -792,7 +814,6 @@ class Model:
         stops: Optional[list[str | int]] = None,
         sampler: Optional[SamplerSettings] = None
     ) -> Generator:
-
         """
         Given a prompt, return a Generator that yields dicts containing tokens.
 
@@ -836,8 +857,13 @@ class Model:
                 f"stream: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
-        
-        if self.verbose:
+        elif input_length == self.context_length:
+            raise ExceededContextLengthException(
+                f"stream: length of input is equal to model's context "
+                f"length ({input_length} == {self.context_length}). this "
+                f"leaves no room for any new tokens to be generated"
+            )
+        elif self.verbose:
             print_verbose(
                 f"stream: recieved prompt with {input_length} tokens"
             )
@@ -845,13 +871,13 @@ class Model:
         if self.verbose:
             print_verbose(f'stream: using the following sampler settings:')
             print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
-            print_verbose(f'temp              == {sampler.temp}')
+            print_verbose(f'top_k             == {sampler.top_k}')
             print_verbose(f'top_p             == {sampler.top_p}')
             print_verbose(f'min_p             == {sampler.min_p}')
+            print_verbose(f'temp              == {sampler.temp}')
             print_verbose(f'frequency_penalty == {sampler.frequency_penalty}')
             print_verbose(f'presence_penalty  == {sampler.presence_penalty}')
             print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
-            print_verbose(f'top_k             == {sampler.top_k}')
         
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
         stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
@@ -937,9 +963,22 @@ class Model:
                 )
             tokens = self.tokenize(text)
         
-        if self.verbose:
+        input_length = len(tokens)
+
+        if input_length > self.context_length:
+            raise ExceededContextLengthException(
+                f"ingest: length of input exceeds model's context length "
+                f"({input_length} > {self.context_length})"
+            )
+        elif input_length == self.context_length:
+            raise ExceededContextLengthException(
+                f"ingest: length of input is equal to model's context "
+                f"length ({input_length} == {self.context_length}). this "
+                f"leaves no room for any new tokens to be generated"
+            )
+        elif self.verbose:
             print_verbose(
-                f"ingesting {len(tokens)} tokens of text"
+                f"ingest: ingesting {input_length} tokens"
             )
         
         assert_model_is_loaded(self)
@@ -954,7 +993,7 @@ class Model:
         self,
         prompt: str,
         k: int = 40,  # default top_k sampling parameter
-        temp: Optional[float] = None  # negative values are ok
+        temp: Optional[float] = None  # 0.0 or negative values OK
     ) -> list[tuple[str, np.floating]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
@@ -974,8 +1013,33 @@ class Model:
             )
 
         prompt_tokens = self.tokenize(prompt)
+        input_length = len(prompt_tokens)
+
+        if input_length > self.context_length:
+            raise ExceededContextLengthException(
+                f"candidates: length of input exceeds model's context length "
+                f"({input_length} > {self.context_length})"
+            )
+        elif input_length == self.context_length:
+            raise ExceededContextLengthException(
+                f"candidates: length of input is equal to model's context "
+                f"length ({input_length} == {self.context_length}). this "
+                f"leaves no room for any new tokens to be generated"
+            )
+
+        # It is necessary to reset the model before calling llama.eval()
+        if self.verbose:
+            print_verbose(
+                "candidates: reset model state..."
+            )
         self.llama.reset()
+
+        if self.verbose:
+            print_verbose(
+                "candidates: eval..."
+            )
         self.llama.eval(prompt_tokens)
+        
         scores = self.llama.scores[len(prompt_tokens) - 1]
 
         # Get the top k indices based on raw scores
@@ -986,8 +1050,10 @@ class Model:
 
         # Apply softmax to the top k scores
         if self.verbose:
-            print_verbose(f'calculating softmax over {len(top_k_scores)} values')
-        normalized_scores = softmax(z=top_k_scores, T=temp, dtype=np.float32)
+            print_verbose(
+                f'candidates: compute softmax over {len(top_k_scores)} values...'
+            )
+        normalized_scores = softmax(z=top_k_scores, T=temp)
 
         # Detokenize only the top k tokens
         token_probs_list = [
@@ -1007,15 +1073,15 @@ class Model:
     def print_candidates(
         self,
         prompt: str,
-        k: int,
+        k: int = 40,
         temp: Optional[float] = None,
-        file: _SupportsWriteAndFlush = sys.stdout,
+        file: _SupportsWriteAndFlush = None,
     ) -> None:
         """
         Like `Model.candidates()`, but print the values instead
         of returning them
         """
-
+        file = sys.stdout if file is None else file
         for _tuple in self.candidates(prompt=prompt, k=k, temp=temp):
             print(
                 f"token {_tuple[0]!r:<16} has probability {_tuple[1] * 100 :>7.3f} %",
