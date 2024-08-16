@@ -169,9 +169,13 @@ class Model:
                 n_kv_heads = int(self.metadata[key])
 
         if n_ctx_train is None:
-            raise KeyError(
-                "GGUF file does not specify a context length"
+            exc =  KeyError(
+                f"GGUF file metadata does not specify a context length "
             )
+            exc.add_note(
+                f"GGUF file is at {self._model_path!r}"
+            )
+            raise exc
 
         if n_attn_heads is not None and n_kv_heads is not None:
             n_gqa = int(n_attn_heads / n_kv_heads)
@@ -742,6 +746,11 @@ class Model:
             )
         
         sampler = SamplerSettings() if sampler is None else sampler
+
+        if sampler.temp < 0.0:
+            print_warning(
+                f'generate: using negative temperature value {sampler.temp}'
+            )
         
         assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
@@ -756,11 +765,13 @@ class Model:
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
+            print(f'raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"generate: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
+            print(f'raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"generate: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -837,6 +848,11 @@ class Model:
             )
         
         sampler = SamplerSettings() if sampler is None else sampler
+
+        if sampler.temp < 0.0:
+            print_warning(
+                f'stream: using negative temperature value {sampler.temp}'
+            )
         
         assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):
@@ -851,11 +867,13 @@ class Model:
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
+            print(f'raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"stream: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
+            print(f'raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"stream: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -964,11 +982,13 @@ class Model:
         input_length = len(tokens)
 
         if input_length > self.context_length:
+            print(f'raw input: {tokens}')
             raise ExceededContextLengthException(
                 f"ingest: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
+            print(f'raw input: {tokens}')
             raise ExceededContextLengthException(
                 f"ingest: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -1014,11 +1034,13 @@ class Model:
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
+            print(f'raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"candidates: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
+            print(f'raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"candidates: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -1049,14 +1071,17 @@ class Model:
         # Apply softmax to the top k scores
         if self.verbose:
             print_verbose(
-                f'candidates: compute softmax over {len(top_k_scores)} values...'
+                f'candidates: compute softmax over {len(top_k_scores)} '
+                f'values...'
             )
         normalized_scores = softmax(z=top_k_scores, T=temp)
 
         # Detokenize only the top k tokens
         token_probs_list = [
             (
-                self.llama._model.detokenize([tok_id], special=True).decode('utf-8', errors='ignore'),
+                self.llama._model.detokenize(
+                    [tok_id], special=True).decode('utf-8', errors='ignore'
+                ),
                 normalized_scores[i]
             )
             for i, tok_id in enumerate(top_k_indices)
@@ -1082,7 +1107,8 @@ class Model:
         file = sys.stdout if file is None else file
         for _tuple in self.candidates(prompt=prompt, k=k, temp=temp):
             print(
-                f"token {_tuple[0]!r:<16} has probability {_tuple[1] * 100 :>7.3f} %",
+                f"token {_tuple[0]!r:<16} has probability "
+                f"{_tuple[1] * 100 :>7.3f} %",
                 file=file,
             )
 
