@@ -5,8 +5,13 @@
 
 import sys
 
-from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type, NoneType
-from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
+from .model    import (
+    Model, assert_model_is_loaded, _SupportsWriteAndFlush,
+    ExceededContextLengthException
+)
+from .utils    import (
+    RESET_ALL, cls, print_verbose, truncate, assert_type, NoneType
+)
 from typing    import Optional, Literal, Callable
 from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
@@ -664,6 +669,10 @@ class Thread:
                 except KeyboardInterrupt:
                     print(f"{DIM_STYLE} [message not added to history; press ENTER to re-roll]\n")
                     continue
+                except ExceededContextLengthException as exc:
+                    print(f'{ERROR_STYLE}{exc}{RESET_ALL}')
+                    print(f'easy_llama: thread: {DIM_STYLE}{self!r}{RESET_ALL}')
+                    raise
                 else:
                     self.add_message("bot", output)
             else:
@@ -688,6 +697,10 @@ class Thread:
                 except KeyboardInterrupt:
                     print(f"{DIM_STYLE} [message not added to history; press ENTER to re-roll]\n")
                     continue
+                except ExceededContextLengthException as exc:
+                    print(f'{ERROR_STYLE}{exc}{RESET_ALL}')
+                    print(f'easy_llama: thread: {DIM_STYLE}{self!r}{RESET_ALL}')
+                    raise
                 else:
                     self.add_message("bot", output)
 
