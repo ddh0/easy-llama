@@ -91,6 +91,10 @@ class Model:
         - quantize_kv_cache: Whether to use q8_0 values for KV cache
         - verbose: Whether to print additional backend information
 
+        If keyword argument `do_not_load` is explicitly set to `True`, the
+        Model instance will be constructed in an unloaded state. To load the
+        Model into memory, call `Model.reload()` before usage.
+
         Additional `kwargs` are passed to the `llama_cpp.Llama` constructor.
         """
 
@@ -123,6 +127,11 @@ class Model:
         self._flash_attn = flash_attn
         self._verbose = self.verbose = verbose
         self._quantize_kv_cache = quantize_kv_cache
+
+        if 'do_not_load' in kwargs.keys():
+            if kwargs.get('do_not_load') is True:
+                 # only save __init__ params to be used later in self.load()
+                return
 
         # if context_length <= 0, use n_ctx_train
         if isinstance(context_length, int) and context_length <= 0:
@@ -502,17 +511,16 @@ class Model:
     
 
     def __del__(self):
-        if hasattr(self, 'llama'):
-            self.unload()
+       self.unload()
     
 
     def __enter__(self):
+        self.load()
         return self
 
 
     def __exit__(self, *_):
-        if hasattr(self, 'llama'):
-            self.unload()
+        self.unload()
     
 
     def __call__(
@@ -528,13 +536,10 @@ class Model:
     
 
     def _print_debug(self) -> None:
-        try:
-            assert_model_is_loaded(self)
-        except ModelUnloadedException as failed_assertion:
-            exc = ModelUnloadedException(
+        if not self.is_loaded():
+            raise ModelUnloadedException(
                 "_print_debug: Cannot debug a model that is not fully loaded"
             )
-            raise exc from failed_assertion
         print(
             "Model: ---------------------------------------------------------",
             file=sys.stderr
@@ -560,8 +565,10 @@ class Model:
     def unload(self):
         """
         Unload the model from memory
+
+        Does nothing if the model is not loaded
         """
-        if not hasattr(self, 'llama'):
+        if not self.is_loaded():
             if self.verbose:
                 print_verbose('model already unloaded')
             return
@@ -588,11 +595,11 @@ class Model:
         verbose: Optional[bool] = None
     ):
         """
-        Reload the model
+        Re-load the model into memory using the specified parameters
 
         Any parameters unspecified will be unchanged
         """
-        if hasattr(self, 'llama'):
+        if self.is_loaded():
             self.unload()
         self.__init__(
             model_path = self._model_path,
@@ -622,6 +629,31 @@ class Model:
             )
         )
         assert_model_is_loaded(self)
+    
+
+    def load(self) -> None:
+        """
+        Load the model into memory
+
+        Does nothing if already loaded
+        """
+        if self.is_loaded():
+            if self.verbose:
+                print_verbose('model already loaded')
+        else:
+            self.reload()
+    
+
+    def is_loaded(self) -> bool:
+        """
+        Return `True` if the model is fully loaded, `False` otherwise
+        """
+        try:
+            assert_model_is_loaded(self)
+        except ModelUnloadedException:
+            return False
+        else:
+            return True
     
 
     def tokenize(self, text: str) -> list[int]:
@@ -765,13 +797,13 @@ class Model:
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
-            print(f'raw input: {prompt_tokens}')
+            print(f'easy_llama: raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"generate: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
-            print(f'raw input: {prompt_tokens}')
+            print(f'easy_llama: raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"generate: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -867,13 +899,13 @@ class Model:
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
-            print(f'raw input: {prompt_tokens}')
+            print(f'easy_llama: raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"stream: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
-            print(f'raw input: {prompt_tokens}')
+            print(f'easy_llama: raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"stream: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -982,13 +1014,13 @@ class Model:
         input_length = len(tokens)
 
         if input_length > self.context_length:
-            print(f'raw input: {tokens}')
+            print(f'easy_llama: raw input: {tokens}')
             raise ExceededContextLengthException(
                 f"ingest: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
-            print(f'raw input: {tokens}')
+            print(f'easy_llama: raw input: {tokens}')
             raise ExceededContextLengthException(
                 f"ingest: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "
@@ -1034,13 +1066,13 @@ class Model:
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
-            print(f'raw input: {prompt_tokens}')
+            print(f'easy_llama: raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"candidates: length of input exceeds model's context length "
                 f"({input_length} > {self.context_length})"
             )
         elif input_length == self.context_length:
-            print(f'raw input: {prompt_tokens}')
+            print(f'easy_llama: raw input: {prompt_tokens}')
             raise ExceededContextLengthException(
                 f"candidates: length of input is equal to model's context "
                 f"length ({input_length} == {self.context_length}). this "

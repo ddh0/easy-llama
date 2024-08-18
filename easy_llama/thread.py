@@ -5,8 +5,8 @@
 
 import sys
 
-from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush, ModelUnloadedException
 from .utils    import RESET_ALL, cls, print_verbose, truncate, assert_type, NoneType
+from .model    import Model, assert_model_is_loaded, _SupportsWriteAndFlush
 from typing    import Optional, Literal, Callable
 from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
@@ -264,52 +264,18 @@ class Thread:
     def inference_str_from_messages(self) -> str:
         """
         Using the list of messages, construct a string suitable for inference,
-        respecting the format and context length of this thread.
-
-        If the length of all messages is greater than the model's context
-        length, the oldest messages will not be part of the returned string. If
-        the first message in the history is a system message, it will be kept
-        in-context.
+        respecting the format of this thread.
         """
 
         inf_str = ''
-        sys_msg_flag = False
-
-        # bot_prefix is always appended at the end - account for that here
-        context_len_budget = self.model.context_length - self.model.get_length(
-            self.format['bot_prefix']
-        )
-
-        # NOTE:
-        # If sys_msg_flag is True:
-        #     - The first message in the history is a system message
-        #     - That message will always be kept in-context
-        #
-        # Otherwise, all messages are treated equally
 
         if len(self.messages) == 0:
             return self.format['bot_prefix']
         
-        if self.messages[0]['role'] == 'system':
-            sys_msg_flag = True
-            sys_msg = self.messages[0]
-            sys_msg_str = sys_msg.as_string()
-            context_len_budget -= (self.model.get_length(sys_msg_str) - 1)
-
-        if sys_msg_flag:
-            iterator = reversed(self.messages[1:])
-        else:
-            iterator = reversed(self.messages)
-        
-        for message in iterator:
+        for message in reversed(self.messages):
             msg_str = message.as_string()
-            context_len_budget -= (self.model.get_length(msg_str) - 1)
-            if context_len_budget <= 0:
-                break
             inf_str = msg_str + inf_str
 
-        if sys_msg_flag:
-            inf_str = sys_msg_str + inf_str
         inf_str += self.format['bot_prefix']
 
         return inf_str
@@ -341,14 +307,22 @@ class Thread:
         _sentinel = False
 
         try:
-            new_max_len_tokens = input(f'max_len_tokens: {self.sampler.max_len_tokens} -> ')
+            new_max_len_tokens = input(
+                f'max_len_tokens: {self.sampler.max_len_tokens} -> '
+            )
             new_top_k = input(f'top_k: {self.sampler.top_k} -> ')
             new_top_p = input(f'top_p: {self.sampler.top_p} -> ')
             new_min_p = input(f'min_p: {self.sampler.min_p} -> ')
             new_temp = input(f'temp: {self.sampler.temp} -> ')
-            new_frequency_penalty = input(f'frequency_penalty: {self.sampler.frequency_penalty} -> ')
-            new_presence_penalty = input(f'presence_penalty: {self.sampler.presence_penalty} -> ')
-            new_repeat_penalty = input(f'repeat_penalty: {self.sampler.repeat_penalty} -> ')
+            new_frequency_penalty = input(
+                f'frequency_penalty: {self.sampler.frequency_penalty} -> '
+            )
+            new_presence_penalty = input(
+                f'presence_penalty: {self.sampler.presence_penalty} -> '
+            )
+            new_repeat_penalty = input(
+                f'repeat_penalty: {self.sampler.repeat_penalty} -> '
+            )
             _sentinel = True
 
         except KeyboardInterrupt:
@@ -746,8 +720,8 @@ class Thread:
         """Print stats about the context usage in this thread"""
         thread_len_tokens = self.len_messages()
         max_ctx_len = self.model.context_length
-        # ctx_used_pct may be > 100, see inference_str_from_messages for details
-        ctx_used_pct = round((thread_len_tokens/max_ctx_len)*100)
+        c = (thread_len_tokens/max_ctx_len) * 100
+        ctx_used_pct = int(c) + (c > int(c)) # round up to next integer
         print(f"{thread_len_tokens} / {max_ctx_len} tokens", file=file)
         print(f"{ctx_used_pct}% of context used", file=file)
         print(f"{len(self.messages)} messages", file=file)
@@ -764,24 +738,19 @@ class Thread:
         `self.model`.
         """
 
-        _model = self.model
-
-        if isinstance(model, Model):
-            try:
-                assert_model_is_loaded(model)
-            except ModelUnloadedException:
-                model.reload()
-            finally:
-                _model = model
-        else:
-            assert_model_is_loaded(_model)
-
         assert_type(
             messages,
             (list, NoneType),
             'messages',
             'summarize'
         )
+
+        if model is not None:
+            _model = model
+        else:
+            _model = self.model
+        
+        _model.load()
 
         if messages == []:
             raise ValueError(
@@ -818,8 +787,8 @@ class Thread:
             sampler=SamplerSettings(max_len_tokens=256)
         )
 
-        # unload helper model
-        if _model is not self.model:
+        # unload helper model, if used
+        if model is not None:
             _model.unload()
         
         return summary
