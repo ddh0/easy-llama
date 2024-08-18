@@ -95,7 +95,6 @@ class Thread:
         """
         
         assert_type(model, Model, 'model', 'Thread')
-        assert_model_is_loaded(model)
         assert_type(format, (dict, AdvancedFormat), 'format', 'Thread')
         
         _format_keys = format.keys() # only read once
