@@ -6,11 +6,17 @@
 import sys
 
 from .model    import (
-    Model, assert_model_is_loaded, _SupportsWriteAndFlush,
-    ExceededContextLengthException
+    ExceededContextLengthException,
+    _SupportsWriteAndFlush,
+    Model
 )
 from .utils    import (
-    RESET_ALL, cls, print_verbose, truncate, assert_type, NoneType
+    print_verbose,
+    assert_type,
+    RESET_ALL,
+    truncate,
+    NoneType,
+    cls
 )
 from typing    import Optional, Literal, Callable
 from .samplers import SamplerSettings

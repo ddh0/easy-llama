@@ -98,11 +98,7 @@ class Model:
         Additional `kwargs` are passed to the `llama_cpp.Llama` constructor.
         """
 
-        assert_type(verbose, bool, 'verbose', 'Model')
-        if verbose:
-            print_verbose(f"easy_llama package version: {__version__}")
-            print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
-
+        assert_type(verbose, bool, 'verbose', 'Model')        
         assert_type(model_path, str, 'model_path', 'Model')
         if not os.path.exists(model_path):
             raise FileNotFoundError(
@@ -132,6 +128,10 @@ class Model:
             if kwargs.get('do_not_load') is True:
                  # only save __init__ params to be used later in self.load()
                 return
+        
+        if verbose:
+            print_verbose(f"easy_llama package version: {__version__}")
+            print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
 
         # if context_length <= 0, use n_ctx_train
         if isinstance(context_length, int) and context_length <= 0:

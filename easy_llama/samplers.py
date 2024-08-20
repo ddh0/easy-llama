@@ -215,6 +215,6 @@ MidnightMiqu = SamplerSettings(
 Llama3 = SamplerSettings(
     top_k = None,
     top_p = 0.9,
-    min_p = 0.0,
+    min_p = None,
     temp = 0.6
 )
