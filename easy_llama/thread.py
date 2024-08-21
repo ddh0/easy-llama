@@ -5,12 +5,8 @@
 
 import sys
 
-from .model    import (
-    ExceededContextLengthException,
-    _SupportsWriteAndFlush,
-    Model
-)
 from .utils    import (
+    _SupportsWriteAndFlush,
     print_verbose,
     assert_type,
     RESET_ALL,
@@ -18,6 +14,8 @@ from .utils    import (
     NoneType,
     cls
 )
+
+from .model    import Model, ExceededContextLengthException
 from typing    import Optional, Literal, Callable
 from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
@@ -489,7 +487,6 @@ class Thread:
                         else:
                             print(f"{_error_style}{msg['content']}{RESET_ALL}\n")
                         
-                
                 elif command.lower() in ['inf', 'inference', 'inf_str']:
                     print(f'\n"""{self.inference_str_from_messages()}"""\n')
                 
@@ -503,10 +500,13 @@ class Thread:
                     print(RESET_ALL)
                     return None, None
                 
-                elif command.lower() in ['sum', 'summary', 'summarize']:
+                elif command.lower() in ['sum', 'summ', 'summary', 'summarize']:
                     print('\nGenerating summary...\n')
                     self.summarize()
                     print()
+                
+                elif command.lower() in ['msgs', 'messages', 'msg']:
+                    print(f'\n{self.messages}\n')
                 
                 elif command.lower() in ['help', '/?', '?']:
                     print()
@@ -522,6 +522,7 @@ class Thread:
                     print('inference | inf     -- Print the inference string')
                     print('reroll | swipe      -- Regenerate the last message')
                     print('summary | summarize -- Generate a summary of the thread')
+                    print('messages | msg      -- Print the raw list of all messages')
                     print('exit | quit         -- Exit the interactive chat (can also use ^C)')
                     print('help | ?            -- Show this screen')
                     print()
@@ -604,15 +605,13 @@ class Thread:
         """
         print()
 
-        # fresh import of color codes in case `color` param has changed
-        from .utils import (
-            SPECIAL_STYLE, USER_STYLE,
-            BOT_STYLE, DIM_STYLE,
-            ERROR_STYLE
-        )
-
-        # disable color codes if explicitly disabled by `color` param
-        if not color:
+        if color:
+            from .utils import (
+                SPECIAL_STYLE, USER_STYLE,
+                BOT_STYLE, DIM_STYLE,
+                ERROR_STYLE
+            )
+        else:
             SPECIAL_STYLE = ''
             USER_STYLE = ''
             BOT_STYLE = ''

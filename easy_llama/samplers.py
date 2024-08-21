@@ -218,3 +218,8 @@ Llama3 = SamplerSettings(
     min_p = None,
     temp = 0.6
 )
+
+# found by experimentation
+MistralNemo = SamplerSettings(
+    repeat_penalty=1.05
+)

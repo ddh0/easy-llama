@@ -70,7 +70,7 @@ def softmax(
             type,
             'dtype',
             'softmax',
-            'dtype should be a numpy floating type, such as `np.float32`'
+            'dtype should be a floating type, such as `np.float32`'
         )
         _dtype = dtype
     

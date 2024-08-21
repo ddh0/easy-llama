@@ -93,7 +93,7 @@ class Model:
 
         If keyword argument `do_not_load` is explicitly set to `True`, the
         Model instance will be constructed in an unloaded state. To load the
-        Model into memory, call `Model.reload()` before usage.
+        Model into memory, call `Model.load()` before usage.
 
         Additional `kwargs` are passed to the `llama_cpp.Llama` constructor.
         """
@@ -599,8 +599,7 @@ class Model:
 
         Any parameters unspecified will be unchanged
         """
-        if self.is_loaded():
-            self.unload()
+        self.unload()
         self.__init__(
             model_path = self._model_path,
             context_length = (
@@ -668,12 +667,12 @@ class Model:
             special=True
         )
         # remove duplicate BOS tokens at the start of the text
-        while len(tokens) > 1 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
+        while len(tokens) >= 2 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
             tokens.pop(0)
             if self.verbose:
                 print_verbose("tokenize: removed duplicate BOS token")
         # remove duplicate EOS tokens at the end of the text
-        while len(tokens) > 1 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
+        while len(tokens) >= 2 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
             tokens.pop(-1)
             if self.verbose:
                 print_verbose("tokenize: removed duplicate EOS token")
@@ -695,12 +694,12 @@ class Model:
                     f"{self.n_vocab-1} inclusive"
                 )
         # remove duplicate BOS tokens at the start of the text
-        while len(tokens) > 1 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
+        while len(tokens) >= 2 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
             tokens.pop(0)
             if self.verbose:
                 print_verbose("detokenize: removed duplicate BOS token")
         # remove duplicate EOS tokens at the end of the text
-        while len(tokens) > 1 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
+        while len(tokens) >= 2 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
             tokens.pop(-1)
             if self.verbose:
                 print_verbose("detokenize: removed duplicate EOS token")
@@ -1034,7 +1033,7 @@ class Model:
         assert_model_is_loaded(self)
         self.llama.create_completion(
             prompt=tokens,
-            max_tokens=1,
+            max_tokens=2,
             temperature=0.0
         )
 
@@ -1042,7 +1041,7 @@ class Model:
     def candidates(
         self,
         prompt: str,
-        k: int = 40,  # default top_k sampling parameter
+        k: int = 40,  # default top_k sampling parameter. use 0 or lower for n_vocab
         temp: Optional[float] = None  # 0.0 or negative values OK
     ) -> list[tuple[str, np.floating]]:
         """
@@ -1057,6 +1056,8 @@ class Model:
         assert_type(k, int, 'k', 'candidates')
         assert_type(temp, (float, NoneType), 'temp', 'candidates')
         assert_model_is_loaded(self)
+        if k <= 0:
+            k = self.n_vocab
         if not 1 <= k <= self.n_vocab:
             raise ValueError(
                 f"candidates: k should be between 1 and {self.n_vocab} inclusive"
@@ -1080,7 +1081,7 @@ class Model:
             )
 
         # It is necessary to reset the model before calling llama.eval()
-        if self.verbose:
+        elif self.verbose:
             print_verbose(
                 "candidates: reset model state..."
             )
@@ -1112,8 +1113,8 @@ class Model:
         token_probs_list = [
             (
                 self.llama._model.detokenize(
-                    [tok_id], special=True).decode('utf-8', errors='ignore'
-                ),
+                    [tok_id], special=True
+                ).decode('utf-8', errors='ignore'),
                 normalized_scores[i]
             )
             for i, tok_id in enumerate(top_k_indices)
