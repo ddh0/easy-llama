@@ -219,7 +219,7 @@ Llama3 = SamplerSettings(
     temp = 0.6
 )
 
-# found by experimentation
-MistralNemo = SamplerSettings(
-    repeat_penalty=1.05
+#https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
+Nemo = SamplerSettings(
+    temp=0.3
 )
