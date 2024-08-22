@@ -15,10 +15,8 @@ class SamplerSettings:
     """
     A SamplerSettings object specifies the sampling parameters that will be
     used to control text generation. It is passed as an optional parameter to
-    `Thread()`, `Model.generate()`, `Model.stream()`, and
-    `Model.stream_print()`.
-
-    See the docstring for `SamplerSettings.__init__` for more info
+    `Thread.__init__()`, `Model.generate()`, `Model.stream()`,
+    `Model.stream_print()`, etc.
     """
 
     param_types: dict[str, tuple[type]] = {
@@ -51,8 +49,8 @@ class SamplerSettings:
         to `DefaultSampling`.
 
         If a sampler parameter is explicitly set to `None`, it will be disabled.
-        When all samplers are disabled, the behaviour is equivalent to the preset
-        `SimpleSampling` (which is the unmodified probability distribution).
+        When all samplers are disabled, the behaviour is equivalent to the
+        preset `NoSampling` (which is the unmodified probability distribution).
 
         For greedy decoding, see the preset `GreedyDecoding`.
         """
@@ -220,6 +218,6 @@ Llama3 = SamplerSettings(
 )
 
 #https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
-Nemo = SamplerSettings(
-    temp=0.3
+Nemo = MistralNemo = SamplerSettings(
+    temp = 0.3
 )

@@ -24,15 +24,13 @@ ERROR_STYLE   = '\x1b[39m\x1b[91m'
 NoneType: type = type(None)
 
 class TypeAssertionError(Exception):
-    """`assert_type()` failed"""
+    "A call to `assert_type()` has failed"
 
-# for typing of softmax parameter `z`
 class _ArrayLike(Iterable):
-    pass
+    "Anything that can be interpreted as a numpy array"
 
-# for typing of Model.stream_print() parameter `file`
 class _SupportsWriteAndFlush(TextIO):
-    pass
+    "A file, stream, or buffer that supports writing and flushing"
 
 def softmax(
     z: _ArrayLike,

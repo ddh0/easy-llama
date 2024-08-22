@@ -79,18 +79,6 @@ def get_time_str():
     return time.strftime("%l:%M %p, %A, %B %e, %Y")
 
 
-# AdvancedFormat2({
-#     "system_prefix" : "<|start_header_id|>system<|end_header_id|>\n\n",
-#     "system_prompt" : system_prompt,
-#     "system_suffix" : _llama3_suffix_with_timestamp,
-#     "user_prefix"   : "<|start_header_id|>user<|end_header_id|>\n\n",
-#     "user_suffix"   : _llama3_suffix_with_timestamp,
-#     "bot_prefix"    : "<|start_header_id|>assistant<|end_header_id|>\n\n",
-#     "bot_suffix"    : _llama3_suffix_with_timestamp,
-#     "stops"         : [128001, 128008, 128009, 128011, 128012]
-# })
-
-
 blank: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",

@@ -14,20 +14,36 @@ import easy_llama as ez
 
 # `class ez.Model`
 
-A high-level abstraction of a llama model
+A high-level abstraction of a Llama model
 
 The following attributes are available:
-- `.bos_token` - The model's beginning-of-stream token ID
-- `.context_length` - The model's loaded context length
-- `.flash_attn` - Whether the model was loaded with `flash_attn=True`
-- `.eos_token` - The model's end-of-stream token ID
-- `.llama` - The underlying `llama_cpp.Llama` instance
-- `.metadata` - The GGUF metadata of the model
-- `.n_ctx_train` - The native context length of the model
-- `.rope_freq_base` - The model's loaded RoPE frequency base
-- `.rope_freq_base_train` - The model's native RoPE frequency base
-- `.tokens` - A list of all the tokens in the model's tokenizer
-- `.verbose` - Whether the model was loaded with `verbose=True`
+- verbose: Whether the model was loaded with `verbose=True`
+- metadata: A dictionary containing the GGUF metadata of the model
+- context_length: The currently loaded context length of the model, in tokens
+- n_ctx: Alias to context_length
+- llama: The underlying `llama_cpp.Llama` instance
+- vocab: A list of all tokens in the model's vocabulary
+- bos_token: The beginning-of-sequence token ID
+- eos_token: The end-of-sequence token ID
+- eot_token: The end-of-turn token ID (or `None` if not found)
+- nl_token: The newline token ID (or `None` if not found)
+- prefix_token: The infill prefix token ID (or `None` if not found)
+- middle_token: The infill middle token ID (or `None` if not found)
+- suffix_token: The infill suffix token ID (or `None` if not found)
+- cls_token: The classifier token ID (or `None` if not found)
+- sep_token: The separator token ID (or `None` if not found)
+- filename: The name of the file the model was loaded from
+- n_ctx_train: The native context length of the model
+- rope_freq_base_train: The native RoPE frequency base (theta) value
+- rope_freq_base: The currently loaded RoPE frequency base (theta) value
+- flash_attn: Whether the model was loaded with Flash Attention enabled
+- n_vocab: The number of tokens in the model's vocabulary
+- n_layer: The number of layers in the model
+- n_gpu_layers: The number of layers offloaded to the GPU (-1 for all layers)
+- ctx_scale: The ratio of `context_length`/`n_ctx_train`
+- type_k: The GGML data type used for the `K` cache. 1 == f16, q8_0 otherwise
+- type_v: The GGML data type used for the `V` cache. 1 == f16, q8_0 otherwise
+- n_gqa: The GQA (Grouped-Query Attention) factor of the model
 
 ## `Model.__init__()`
 

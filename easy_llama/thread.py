@@ -56,28 +56,46 @@ class Message(dict):
 
 class Thread:
     """
-    Provide functionality to facilitate easy interactions with a Model
-
-    This is just a brief overview of ez.Thread.
-    To see a full description of each method and its parameters,
-    call help(Thread), or see the relevant docstring.
+    Provide functionality to facilitate easy interactions with a Llama model
 
     The following methods are available:
-    - `.add_message()` - Add a message to `Thread.messages`
-    - `.as_string()` - Return this thread's complete message history as a string
-    - `.create_message()` - Create a message using the format of this thread
-    - `.inference_str_from_messages()` - Using the list of messages, return a string suitable for inference
-    - `.interact()` - Start an interactive, terminal-based chat session
-    - `.len_messages()` - Get the total length of all messages in tokens
-    - `.print_stats()` - Print stats about the context usage in this thread
-    - `.reset()` - Clear the list of messages
-    - `.send()` - Send a message in this thread
+    - create_message:
+        Create and return a message with the specified role and content
+    - len_messages:
+        Return the total length of all messages in tokens
+    - add_message:
+        Create a message and add it to the list of messages
+    - inference_str_from_messages:
+        Using the list of messages, construct a string suitable for inference
+    - send:
+        Send a message in this thread and return the generated response
+    - interact:
+        Start an interactive, terminal-based chat
+    - reset:
+        Reset the thread to its original state
+    - as_string:
+        Return the content of the thread as a single string
+    - print_stats:
+        Print brief statistics about this thread, including length in tokens,
+        max context length, percentage of context used, and total number of
+        messages
+    - summarize:
+        Generate a summary of this thread
+    - warmup:
+        Ingest the text of this thread into its model's cache, reducing the
+        latency of future generations
 
     The following attributes are available:
-    - `.format` - The format being used for messages in this thread
-    - `.messages` - The list of messages in this thread
-    - `.model` - The `ez.Model` instance used by this thread
-    - `.sampler` - The SamplerSettings object used in this thread
+    - model:
+        The `easy_llama.Model` instance used in this thread
+    - format:
+        A dictionary describing the way messages should be structured within
+        this thread (or an AdvancedFormat instance)
+    - sampler:
+        The `easy_llama.samplers.SamplerSettings` instance used in this thread,
+        which describes the sampler parameters used for generation
+    - messages:
+        The list of all messages in this thread
     """
 
     def __init__(

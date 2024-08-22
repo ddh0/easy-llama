@@ -37,34 +37,98 @@ class ExceededContextLengthException(Exception):
 
 class Model:
     """
-    A high-level abstraction of a llama model
-
-    This is just a brief overview of ez.Model.
-    To see a full description of each method and its parameters,
-    call help(Model), or see the relevant docstring.
+    A high-level abstraction of a Llama model
 
     The following methods are available:
-    - `.generate()` - Generate text
-    - `.get_length()` - Get the length of a given text in tokens
-    - `.ingest()` - Ingest text into the model's cache
-    - `.next_candidates()` - Get a list of the most likely next tokens (WIP)
-    - `.stream()` - Return a Generator that can stream text as it is generated
-    - `.stream_print()` - Print text as it is generated
-    - `.trim()` - Trim a given text to the model's context length
-    - `.unload()` - Unload the model from memory
-
+    - unload:
+        Unload the model from memory
+    - reload:
+        Re-load the model, optionally changing parameters
+    - load:
+        Load the model into memory
+    - is_loaded:
+        Return `True` if the model is fully loaded, `False` otherwise
+    - tokenize:
+        Tokenize the given text, from `str` to `list[int]`
+    - detokenize:
+        Detokenize the given text, from `list[int]` or `int` to `str`
+    - get_length:
+        Return the length of the given text as measured in tokens
+    - get_tokenization_mapping:
+        Return a mapping of token IDs to tokens for a given text
+    - print_tokenization_mapping:
+        Display the tokenization map for a given text
+    - generate:
+        Generate text from an input and return it all at once when finished
+    - stream:
+        Return a Generator that yields tokens as they are generated
+    - stream_print:
+        Stream tokens to a file as they are generated
+    - ingest:
+        Ingest the given text into the model's cache, reducing the latency of
+        future generations that start with the same text
+    - candidates:
+        Return a sorted list of candidates for the next token, along with
+        their normalized probabilities
+    - print_candidates:
+        Print a sorted list of candidates for the next token, along with
+        their normalized probabilities
+    
     The following attributes are available:
-    - `.bos_token` - The model's beginning-of-stream token ID
-    - `.context_length` - The model's loaded context length
-    - `.flash_attn` - Whether the model was loaded with `flash_attn=True`
-    - `.eos_token` - The model's end-of-stream token ID
-    - `.llama` - The underlying `llama_cpp.Llama` instance
-    - `.metadata` - The GGUF metadata of the model
-    - `.n_ctx_train` - The native context length of the model
-    - `.rope_freq_base` - The model's loaded RoPE frequency base
-    - `.rope_freq_base_train` - The model's native RoPE frequency base
-    - `.vocab` - A list of all the tokens in the model's vocabulary
-    - `.verbose` - Whether the model was loaded with `verbose=True`
+    - verbose:
+        Whether the model was loaded with `verbose=True`
+    - metadata:
+        A dictionary containing the GGUF metadata of the model
+    - context_length:
+        The currently loaded context length of the model, in tokens
+    - n_ctx:
+        Alias to context_length
+    - llama:
+        The underlying `llama_cpp.Llama` instance
+    - vocab:
+        A list of all tokens in the model's vocabulary
+    - bos_token:
+        The beginning-of-sequence token ID
+    - eos_token:
+        The end-of-sequence token ID
+    - eot_token:
+        The end-of-turn token ID (or `None` if not found)
+    - nl_token:
+        The newline token ID (or `None` if not found)
+    - prefix_token:
+        The infill prefix token ID (or `None` if not found)
+    - middle_token:
+        The infill middle token ID (or `None` if not found)
+    - suffix_token:
+        The infill suffix token ID (or `None` if not found)
+    - cls_token:
+        The classifier token ID (or `None` if not found)
+    - sep_token:
+        The separator token ID (or `None` if not found)
+    - filename:
+        The name of the file the model was loaded from
+    - n_ctx_train:
+        The native context length of the model
+    - rope_freq_base_train:
+        The native RoPE frequency base (theta) value
+    - rope_freq_base:
+        The currently loaded RoPE frequency base (theta) value
+    - flash_attn:
+        Whether the model was loaded with Flash Attention enabled
+    - n_vocab:
+        The number of tokens in the model's vocabulary
+    - n_layer:
+        The number of layers in the model
+    - n_gpu_layers:
+        The number of layers offloaded to the GPU (-1 for all layers)
+    - ctx_scale:
+        The ratio of `context_length`/`n_ctx_train`
+    - type_k:
+        The GGML data type used for the `K` cache. 1 == f16, q8_0 otherwise
+    - type_v:
+        The GGML data type used for the `V` cache. 1 == f16, q8_0 otherwise
+    - n_gqa:
+        The GQA (Grouped-Query Attention) factor of the model
     """
 
     def __init__(
