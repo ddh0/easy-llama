@@ -6,6 +6,7 @@ from ._version import __version__, __llama_cpp_version__
 
 import os
 import sys
+import uuid
 import numpy as np
 
 from .utils import (
@@ -13,7 +14,6 @@ from .utils import (
     QuickGGUFReader,
     print_warning,
     print_verbose,
-    _print_debug,
     assert_type,
     NoneType,
     softmax
@@ -26,9 +26,6 @@ from .samplers import SamplerSettings
 
 class ModelUnloadedException(Exception):
     """Exception raised when trying to use a model that has been unloaded"""
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
 
 
 class ExceededContextLengthException(Exception):
@@ -129,6 +126,8 @@ class Model:
         The GGML data type used for the `V` cache. 1 == f16, q8_0 otherwise
     - n_gqa:
         The GQA (Grouped-Query Attention) factor of the model
+    - uuid:
+        The UUID of the model. It is an instance of `uuid.UUID`
     """
 
     def __init__(
@@ -178,7 +177,7 @@ class Model:
         assert_type(offload_kqv, bool, 'offload_kqv', 'Model')
         assert_type(flash_attn, bool, 'flash_attn', 'Model')
         assert_type(quantize_kv_cache, bool, 'quantize_kv_cache', 'Model')
-        
+
         # save __init__ parameters for __repr__
         self._model_path = model_path
         self._context_length = context_length
@@ -188,7 +187,15 @@ class Model:
         self._verbose = self.verbose = verbose
         self._quantize_kv_cache = quantize_kv_cache
 
-        if 'do_not_load' in kwargs.keys():
+        _kwargs_keys = kwargs.keys() # only read once
+
+        if '__uuid' not in _kwargs_keys:
+            self.uuid = uuid.uuid4()
+        else:
+            # Model.reload() passes this kwarg to preserve the UUID
+            self.uuid = kwargs.get('__uuid')
+
+        if 'do_not_load' in _kwargs_keys:
             if kwargs.get('do_not_load') is True:
                  # only save __init__ params to be used later in self.load()
                 return
@@ -214,7 +221,8 @@ class Model:
         else:
             print_warning(
                 f"unexpected value for sys.byteorder: {sys.byteorder!r}, "
-                "expected 'little' for little-endian or 'big' for big-endian"
+                "expected 'little' for little-endian host or 'big' for "
+                "big-endian host"
             )
         
         self._model_file_size_bytes = os.stat(model_path).st_size
@@ -241,6 +249,8 @@ class Model:
             elif key.endswith('.attention.head_count_kv'):
                 n_kv_heads = int(self.metadata[key])
 
+        assert n_layer is not None
+
         if n_ctx_train is None:
             exc =  KeyError(
                 f"GGUF file metadata does not specify a context length "
@@ -253,7 +263,7 @@ class Model:
         if n_attn_heads is not None and n_kv_heads is not None:
             n_gqa = int(n_attn_heads / n_kv_heads)
         
-        rope_freq_base = Model._calculate_rope_freq_base(
+        rope_freq_base = __class__._calculate_rope_freq_base(
             n_ctx_train,
             context_length if context_length is not None else n_ctx_train,
             rope_freq_base_train
@@ -290,12 +300,15 @@ class Model:
             
             if ctx_scale >= 2: # anything below 'fair'
                 print_warning(
-                    f"context scale is x{ctx_scale} ({ctx_quality_hint})"
+                    f"context scale is x{ctx_scale:.2} ({ctx_quality_hint})"
                 )
 
         cpu_count = int(os.cpu_count()) # only read once
 
-        if n_layer is not None and (n_gpu_layers >= n_layer or n_gpu_layers < 0):
+        if n_gpu_layers < 0:
+            n_gpu_layers = n_layer
+
+        if n_gpu_layers >= n_layer:
             # if model is fully offloaded
             n_batch = 1024
         else:
@@ -351,7 +364,8 @@ class Model:
         
         if verbose:
             print_verbose(
-                "attempting to load model..."
+                f"attempting to load model, offloading "
+                f"{n_gpu_layers}/{n_layer} layers..."
             )
 
         self.llama: Llama = Llama(
@@ -370,7 +384,10 @@ class Model:
             flash_attn=flash_attn,             # use `3` for q4_1
             type_k=type_k,                     # use `2` for q4_0
             type_v=type_v,
-            verbose=verbose,
+            verbose=(
+                verbose if 'enable_llama_cpp_output' in _kwargs_keys
+                else False
+            ),
             **kwargs
         )
         
@@ -378,27 +395,30 @@ class Model:
         #       context length. here we update self.context_length to reflect
         #       this
         self.context_length = self.n_ctx = self.llama.n_ctx()
-        assert self.n_ctx == self.context_length
 
         if self.n_ctx < 512:
             print_warning(
                 f'the currently loaded context length is less than 512 tokens '
                 f'({self.n_ctx} < 512), sometimes this can cause problems in '
-                f'llama.cpp. if possible, increase the context length to at '
+                f'llama.cpp. consider increasing the context length to at '
                 f'least 512 tokens'
             )
 
         try:
             self.vocab: list[str] = self.metadata['tokenizer.ggml.tokens']
         except (KeyError, TypeError, ValueError):
-            self.vocab = None
             print_warning(
-                "could not set Model.vocab, defaulting to None"
+                "could not set Model.vocab, constructing manually..."
             )
+            self.vocab = [
+                self.llama._model.detokenize([i], special=True).decode(
+                    'utf-8', errors='ignore'
+                ) for i in range(self.llama._model.n_vocab())
+            ]
         try:
             self.bos_token = int(self.metadata['tokenizer.ggml.bos_token_id'])
         except (KeyError, TypeError, ValueError):
-            self.bos_token = int(self.llama.token_bos())
+            self.bos_token = int(self.llama._model.token_bos())
             if self.bos_token < 0:
                 self.bos_token = None
                 print_warning(
@@ -407,7 +427,7 @@ class Model:
         try:
             self.eos_token = int(self.metadata['tokenizer.ggml.eos_token_id'])
         except (KeyError, TypeError, ValueError):
-            self.eos_token = int(self.llama.token_eos())
+            self.eos_token = int(self.llama._model.token_eos())
             if self.eos_token < 0:
                 self.eos_token = None
                 print_warning(
@@ -419,105 +439,147 @@ class Model:
         self.eot_token = int(self.llama._model.token_eot())
         if self.eot_token < 0:
             self.eot_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.eot_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.eot_token, defaulting to None"
+            #    )
         self.nl_token  = int(self.llama._model.token_nl())
         if self.nl_token < 0:
             self.nl_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.nl_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.nl_token, defaulting to None"
+            #    )
         self.prefix_token = int(self.llama._model.token_prefix())
         if self.prefix_token < 0:
             self.prefix_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.prefix_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.prefix_token, defaulting to None"
+            #    )
         self.middle_token = int(self.llama._model.token_middle())
         if self.middle_token < 0:
             self.middle_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.middle_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.middle_token, defaulting to None"
+            #    )
         self.suffix_token = int(self.llama._model.token_suffix())
         if self.suffix_token < 0:
             self.suffix_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.suffix_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.suffix_token, defaulting to None"
+            #    )
         self.cls_token = int(self.llama._model.token_cls())
         if self.cls_token < 0:
             self.cls_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.cls_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.cls_token, defaulting to None"
+            #    )
         self.sep_token = int(self.llama._model.token_sep())
         if self.sep_token < 0:
             self.sep_token = None
-            if verbose:
-                print_verbose(
-                    "could not set Model.sep_token, defaulting to None"
-                )
+            #if verbose:
+            #    print_verbose(
+            #        "could not set Model.sep_token, defaulting to None"
+            #    )
         
-        # expose these values because they may be useful / informative
+        # Misc. attributes
+        _add_bos_token = self.llama._model.add_bos_token()
+        if _add_bos_token == 1:
+            self.add_bos_token = True
+        elif _add_bos_token == 0:
+            self.add_bos_token = False
+        else:
+            self.add_bos_token = None
+            print_warning(
+                "Model.add_bos_token is unknown, defaulting to None"
+            )
+        _add_eos_token = self.llama._model.add_eos_token()
+        if _add_eos_token == 1:
+            self.add_eos_token = True
+        elif _add_eos_token == 0:
+            self.add_eos_token = False
+        else:
+            self.add_eos_token = None
+            print_warning(
+                "Model.add_eos_token is unknown, defaulting to None"
+            )
+
         self.filename: str = os.path.basename(model_path)
         self.n_ctx_train: int = n_ctx_train
         self.rope_freq_base_train: float = rope_freq_base_train
         self.rope_freq_base: float = rope_freq_base
+        self.n_batch: int = n_batch
+        self.n_threads: int = n_threads
+        self.n_threads_batch: int = n_threads_batch
         self.flash_attn: bool = flash_attn
+        self.n_embd = self.llama._model.n_embd()
+        self.n_params = self.llama._model.n_params()
+        self.bpw = (8*self._model_file_size_bytes)/self.n_params
         self.n_vocab: int = len(self.vocab)
         self.n_layer: int = n_layer
-        self.n_gpu_layers: int = n_gpu_layers 
+        self.n_gpu_layers: int = n_gpu_layers
+        self.offload_kqv = offload_kqv
         self.ctx_scale: float = ctx_scale
+        self.is_native: bool = self.context_length <= self.n_ctx_train
         self.type_k: int = type_k
         self.type_v: int = type_v
         self.n_gqa: int = n_gqa
 
         if verbose:
             print_verbose("new Model instance with the following attributes:")
+            print_verbose(f"uuid                 == {self.uuid}")
             print_verbose(f"filename             == {self.filename}")
-            print_verbose(f"n_gpu_layers         == {n_gpu_layers}")
+            print_verbose(f"n_params             == {self.n_params}")
+            print_verbose(f"bpw                  == {self.bpw} ({
+                __class__._get_bpw_quality_hint(self.bpw)
+            })")
+            print_verbose(f"n_gpu_layers         == {self.n_gpu_layers}")
             print_verbose(f"n_layer              == {self.n_layer}")
-            print_verbose(f"offload_kqv          == {offload_kqv}")
-            print_verbose(f"flash_attn           == {flash_attn}")
-            print_verbose(f"n_gqa                == {n_gqa}")
-            print_verbose(f"type_k               == {'f16' if type_k == 1 else 'q8_0'}")
-            print_verbose(f"type_v               == {'f16' if type_v == 1 else 'q8_0'}")
-            print_verbose(f"n_batch              == {n_batch}")
-            print_verbose(f"n_threads            == {n_threads}")
-            print_verbose(f"n_threads_batch      == {n_threads_batch}")
-            print_verbose(f"n_ctx_train          == {n_ctx_train}")
+            print_verbose(f"offload_kqv          == {self.offload_kqv}")
+            print_verbose(f"flash_attn           == {self.flash_attn}")
+            print_verbose(f"n_gqa                == {self.n_gqa}")
+            print_verbose(f"type_k               == {self.type_k} ({
+                'f16' if self.type_k == 1 else 'q8_0'
+            })")
+            print_verbose(f"type_v               == {self.type_v} ({
+                'f16' if self.type_v == 1 else 'q8_0'
+            })")
+            print_verbose(f"n_batch              == {self.n_batch}")
+            print_verbose(f"n_threads            == {self.n_threads}")
+            print_verbose(f"n_threads_batch      == {self.n_threads_batch}")
+            print_verbose(f"n_ctx_train          == {self.n_ctx_train}")
             print_verbose(f"n_ctx                == {self.n_ctx}")
-            print_verbose(f"rope_freq_base_train == {rope_freq_base_train}")
-            print_verbose(f"rope_freq_base       == {rope_freq_base}")
-            print_verbose(f"ctx_scale            == {ctx_scale} ({ctx_quality_hint})")
+            print_verbose(f"rope_freq_base_train == {self.rope_freq_base_train}")
+            print_verbose(f"rope_freq_base       == {self.rope_freq_base}")
+            print_verbose(f"ctx_scale            == {self.ctx_scale} ({ctx_quality_hint})")
+            print_verbose(f"n_embd               == {self.n_embd}")
             print_verbose(f"n_vocab              == {self.n_vocab}")
             if self.bos_token is not None:
-                print_verbose(f"self.bos_token       == {self.bos_token}")
+                print_verbose(f"bos_token            == {self.bos_token}")
             if self.eos_token is not None:
-                print_verbose(f"self.eos_token       == {self.eos_token}")
+                print_verbose(f"eos_token            == {self.eos_token}")
             if self.eot_token is not None:
-                print_verbose(f"self.eot_token       == {self.eot_token}")
+                print_verbose(f"eot_token            == {self.eot_token}")
             if self.nl_token is not None:
-                print_verbose(f"self.nl_token        == {self.nl_token}")
+                print_verbose(f"nl_token             == {self.nl_token}")
             if self.prefix_token is not None:
-                print_verbose(f"self.prefix_token    == {self.prefix_token}")
+                print_verbose(f"prefix_token         == {self.prefix_token}")
             if self.middle_token is not None:
-                print_verbose(f"self.middle_token    == {self.middle_token}")
+                print_verbose(f"middle_token         == {self.middle_token}")
             if self.suffix_token is not None:
-                print_verbose(f"self.suffix_token    == {self.suffix_token}")
+                print_verbose(f"suffix_token         == {self.suffix_token}")
             if self.cls_token is not None:
-                print_verbose(f"self.cls_token       == {self.cls_token}")
+                print_verbose(f"cls_token            == {self.cls_token}")
             if self.sep_token is not None:
-                print_verbose(f"self.sep_token       == {self.sep_token}")
-    
+                print_verbose(f"sep_token            == {self.sep_token}")
+            if self.add_bos_token is not None:
+                print_verbose(f"add_bos_token        == {self.add_bos_token}")
+            if self.add_eos_token is not None:
+                print_verbose(f"add_eos_token        == {self.add_eos_token}")
 
     @staticmethod
     def _calculate_rope_freq_base(
@@ -555,6 +617,24 @@ class Model:
         #   return (ctx_scale**2)*rope_freq_base_train
         # experimental formula B:
         #   return (ctx_scale**(2**(1/4)))*rope_freq_base_train
+    
+
+    @staticmethod
+    def _get_bpw_quality_hint(bpw: float) -> str:
+        # good fair poor bad terrible (ctx)
+        # native great good bad terrible (bpw)
+        if 0.0 < bpw < 2.0:
+            return 'terrible'
+        elif 2.0 <= bpw < 4.0:
+            return 'bad'
+        elif 4.0 <= bpw < 5.0:
+            return 'good'
+        elif 5.0 <= bpw < 16.0:
+            return 'great'
+        elif bpw >= 16.0:
+            return 'native'
+        else:
+            raise RuntimeError
 
     
     def __repr__(self) -> str:
@@ -599,32 +679,20 @@ class Model:
         return self.generate(prompt=prompt, stops=stops, sampler=sampler)
     
 
-    def _print_debug(self) -> None:
-        if not self.is_loaded():
-            raise ModelUnloadedException(
-                "_print_debug: Cannot debug a model that is not fully loaded"
+    def __eq__(self, value: object, /) -> bool:
+        if not isinstance(value, __class__):
+            return NotImplemented
+        if not (hasattr(self, 'uuid') and hasattr(value, 'uuid')):
+            raise AttributeError(
+                "At least one of the models being compared is missing the "
+                "`.uuid` attribute"
             )
-        print(
-            "Model: ---------------------------------------------------------",
-            file=sys.stderr
-        )
-        _print_debug(self)
-        print(
-            "Llama: ---------------------------------------------------------",
-            file=sys.stderr
-        )
-        _print_debug(self.llama)
-        print(
-            "_LlamaModel: ---------------------------------------------------",
-            file=sys.stderr
-        )
-        _print_debug(self.llama._model)
-        print(
-            "llama_model_p: -------------------------------------------------",
-            file=sys.stderr
-        )
-        _print_debug(self.llama._model.model)
+        return self.uuid == value.uuid
+    
 
+    def __hash__(self, /) -> int:
+        return hash(self.uuid)
+    
 
     def unload(self):
         """
@@ -663,6 +731,7 @@ class Model:
 
         Any parameters unspecified will be unchanged
         """
+        __uuid = self.uuid
         self.unload()
         self.__init__(
             model_path = self._model_path,
@@ -689,7 +758,8 @@ class Model:
             verbose = (
                 self._verbose if verbose is None
                 else verbose
-            )
+            ),
+            __uuid = __uuid  # do not change UUID on reload
         )
         assert_model_is_loaded(self)
     
@@ -1155,7 +1225,7 @@ class Model:
             print_verbose(
                 "candidates: eval..."
             )
-        self.llama.eval(prompt_tokens)
+        self.llama.eval(prompt_tokens) # single forward pass
         
         scores = self.llama.scores[len(prompt_tokens) - 1]
 

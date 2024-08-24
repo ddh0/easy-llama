@@ -107,18 +107,6 @@ def print_info(text: str) -> None:
 def print_warning(text: str) -> None:
     print("easy_llama: warning:", text, file=sys.stderr, flush=True)
 
-def _print_debug(
-        obj: object,
-        prefix: str='\t',
-        file: _SupportsWriteAndFlush = sys.stderr
-) -> None:
-    print(f"{prefix}{type(obj)=}", file=file)
-    print(f"{prefix}{repr(obj)=}", file=file)
-    print(f"{prefix}{id(obj)=}", file=file)
-    print(f"{prefix}{hex(id(obj))=}", file=file)
-    print(f"{prefix}{sys.getsizeof(obj)=}", file=file)
-    file.flush()
-
 def assert_type(
     obj: object,
     expected_type: type | tuple[type],

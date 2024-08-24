@@ -166,7 +166,7 @@ class Thread:
 
         if self.model.verbose:
             print_verbose("new Thread instance with the following attributes:")
-            print_verbose(f"model                     == {self.model}")
+            print_verbose(f"model.uuid                == {self.model.uuid}")
             print_verbose(f"format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
             print_verbose(f"format['system_prompt']   == {truncate(repr(self.format['system_prompt']))}")
             print_verbose(f"format['system_suffix']   == {truncate(repr(self.format['system_suffix']))}")
