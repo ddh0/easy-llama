@@ -32,6 +32,15 @@ class _ArrayLike(Iterable):
 class _SupportsWriteAndFlush(TextIO):
     "A file, stream, or buffer that supports writing and flushing"
 
+class UnreachableException(Exception):
+    """The code has reached an unreachable state"""
+    def __init__(self):
+        super().__init__(
+            "the code has reached a location that was thought to be "
+            "unreachable. please report this issue to the developer at this "
+            "link: https://github.com/ddh0/easy-llama/issues/new/choose"
+        )
+
 def softmax(
     z: _ArrayLike,
     T: Optional[float] = None,
@@ -99,13 +108,13 @@ def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
 def print_verbose(text: str) -> None:
-    print("easy_llama: verbose:", text, file=sys.stderr, flush=True)
+    print("easy_llama:", text, file=sys.stderr, flush=True)
 
 def print_info(text: str) -> None:
     print("easy_llama: info:", text, file=sys.stderr, flush=True)
 
 def print_warning(text: str) -> None:
-    print("easy_llama: warning:", text, file=sys.stderr, flush=True)
+    print("easy_llama: WARNING:", text, file=sys.stderr, flush=True)
 
 def assert_type(
     obj: object,

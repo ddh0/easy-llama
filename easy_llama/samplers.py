@@ -196,6 +196,30 @@ HighTempSampling = SamplerSettings(
     temp = 1.2
 )
 
+# https://arxiv.org/abs/1904.09751
+LowTopPSampling = SamplerSettings(
+    top_k=None,
+    top_p=0.98,
+    min_p=None,
+    temp=None
+)
+
+# https://arxiv.org/abs/1904.09751
+TopPSampling = SamplerSettings(
+    top_k=None,
+    top_p=0.9,
+    min_p=None,
+    temp=None
+)
+
+# https://arxiv.org/abs/1904.09751
+StrictTopPSampling = SamplerSettings(
+    top_k=None,
+    top_p=0.5,
+    min_p=None,
+    temp=None
+)
+
 #
 # Samplers below this line are for specific models / model families
 #

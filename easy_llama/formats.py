@@ -166,13 +166,7 @@ llama2chat: dict[str, str | list] = {
     "stops": ['[INST]', '[/INST]']
 }
 
-# https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
-#
-# for llama 3 instruct models, use the following string for `-p` in llama.cpp,
-# along with `-e` to escape newlines correctly
-#
-# '<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant called "Llama 3".<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhi<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n'
-#
+# https://llama.meta.com/docs/model-cards-and-prompt-formats/llama3_1/
 llama3: dict[str, str | list] = {
     "system_prefix": "<|start_header_id|>system<|end_header_id|>\n\n",
     "system_prompt": 'You are a helpful AI assistant called "Llama 3".',

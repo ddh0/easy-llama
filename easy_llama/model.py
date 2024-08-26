@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 from ._version import __version__, __llama_cpp_version__
 
-"""Submodule containing the Model class to work with language models"""
+"""Submodule containing the Model class to work with Llama models"""
 
 import os
 import sys
@@ -11,11 +11,13 @@ import numpy as np
 
 from .utils import (
     _SupportsWriteAndFlush,
+    UnreachableException,
     QuickGGUFReader,
     print_warning,
     print_verbose,
     assert_type,
     NoneType,
+    truncate,
     softmax
 )
 
@@ -72,62 +74,60 @@ class Model:
         their normalized probabilities
     
     The following attributes are available:
-    - verbose:
+    - verbose: `bool`
         Whether the model was loaded with `verbose=True`
-    - metadata:
+    - metadata: `dict`
         A dictionary containing the GGUF metadata of the model
     - context_length:
         The currently loaded context length of the model, in tokens
-    - n_ctx:
+    - n_ctx: `int`
         Alias to context_length
-    - llama:
-        The underlying `llama_cpp.Llama` instance
-    - vocab:
+    - llama: `llama_cpp.Llama`
+        The underlying Llama instance
+    - vocab: `list[str]`
         A list of all tokens in the model's vocabulary
-    - bos_token:
+    - bos_token: `int`
         The beginning-of-sequence token ID
-    - eos_token:
+    - eos_token: `int`
         The end-of-sequence token ID
-    - eot_token:
+    - eot_token: `int`
         The end-of-turn token ID (or `None` if not found)
-    - nl_token:
+    - nl_token: `int`
         The newline token ID (or `None` if not found)
-    - prefix_token:
+    - prefix_token: `int`
         The infill prefix token ID (or `None` if not found)
-    - middle_token:
+    - middle_token: `int`
         The infill middle token ID (or `None` if not found)
-    - suffix_token:
+    - suffix_token: `int`
         The infill suffix token ID (or `None` if not found)
-    - cls_token:
+    - cls_token: `int`
         The classifier token ID (or `None` if not found)
-    - sep_token:
+    - sep_token: `int`
         The separator token ID (or `None` if not found)
-    - filename:
+    - filename: `str`
         The name of the file the model was loaded from
-    - n_ctx_train:
+    - n_ctx_train: `int`
         The native context length of the model
-    - rope_freq_base_train:
+    - rope_freq_base_train: `float`
         The native RoPE frequency base (theta) value
-    - rope_freq_base:
+    - rope_freq_base: `float`
         The currently loaded RoPE frequency base (theta) value
-    - flash_attn:
+    - flash_attn: `bool`
         Whether the model was loaded with Flash Attention enabled
-    - n_vocab:
+    - n_vocab: `int`
         The number of tokens in the model's vocabulary
-    - n_layer:
+    - n_layer: `int`
         The number of layers in the model
-    - n_gpu_layers:
+    - n_gpu_layers: `int`
         The number of layers offloaded to the GPU (-1 for all layers)
-    - ctx_scale:
-        The ratio of `context_length`/`n_ctx_train`
-    - type_k:
+    - type_k: `int`
         The GGML data type used for the `K` cache. 1 == f16, q8_0 otherwise
-    - type_v:
+    - type_v: `int`
         The GGML data type used for the `V` cache. 1 == f16, q8_0 otherwise
-    - n_gqa:
+    - n_gqa: `int`
         The GQA (Grouped-Query Attention) factor of the model
-    - uuid:
-        The UUID of the model. It is an instance of `uuid.UUID`
+    - uuid: `uuid.UUID`
+        A randomly generated UUID, unique to this specific model instance
     """
 
     def __init__(
@@ -147,18 +147,25 @@ class Model:
         The model must be in GGUF format.
 
         The following parameters are optional:
-        - context_length: The context length at which to load the model, in tokens
-        - n_gpu_layers: The number of layers to be offloaded to the GPU
-        - offload_kqv: Whether the KQV cache (context) should be offloaded
-        - flash_attn: Whether to use Flash Attention
-        - quantize_kv_cache: Whether to use q8_0 values for KV cache
-        - verbose: Whether to print additional backend information
+        - context_length: `int`
+            The context length at which to load the model, in tokens
+        - n_gpu_layers: `int`
+            The number of layers to be offloaded to the GPU
+        - offload_kqv: `bool`
+            Whether the KQV cache (context) should be offloaded
+        - flash_attn: `bool`
+            Whether to use Flash Attention
+        - quantize_kv_cache: `bool`
+            Whether to use q8_0 values for KV cache
+        - verbose: `bool`
+            Whether to print additional backend information
 
-        If keyword argument `do_not_load` is explicitly set to `True`, the
-        Model instance will be constructed in an unloaded state. To load the
-        Model into memory, call `Model.load()` before usage.
-
-        Additional `kwargs` are passed to the `llama_cpp.Llama` constructor.
+        The following additional keyword arguments are also accepted:
+        - do_not_load: `bool`
+            If `True`, construct the model instance but do not load it into
+            memory yet. Call `Model.load()` before using the model
+        - debug: `bool`
+            If `True`, print additional backend information from llama.cpp
         """
 
         assert_type(verbose, bool, 'verbose', 'Model')        
@@ -204,10 +211,6 @@ class Model:
             print_verbose(f"easy_llama package version: {__version__}")
             print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
 
-        # if context_length <= 0, use n_ctx_train
-        if isinstance(context_length, int) and context_length <= 0:
-            context_length = None
-
         if sys.byteorder == 'big':
             print_warning(
                 "host is big-endian, please ensure your GGUF file is also "
@@ -228,11 +231,16 @@ class Model:
         self._model_file_size_bytes = os.stat(model_path).st_size
         self.metadata = QuickGGUFReader.load_metadata(model_path)
 
+        _debug = False
+        if 'debug' in _kwargs_keys:
+            _debug = bool(kwargs.get('debug'))
+
+        if verbose and not _debug:
+            __class__._print_metadata(self.metadata)
+
         n_ctx_train = None
         rope_freq_base_train = None
         n_layer = None
-        ctx_scale = None
-        ctx_quality_hint = None
         n_attn_heads = None
         n_kv_heads = None
         n_gqa = None
@@ -249,11 +257,18 @@ class Model:
             elif key.endswith('.attention.head_count_kv'):
                 n_kv_heads = int(self.metadata[key])
 
-        assert n_layer is not None
+        if n_layer is None:
+            exc =  KeyError(
+                f"GGUF file metadata does not specify n_layer"
+            )
+            exc.add_note(
+                f"GGUF file is at {self._model_path!r}"
+            )
+            raise exc
 
         if n_ctx_train is None:
             exc =  KeyError(
-                f"GGUF file metadata does not specify a context length "
+                f"GGUF file metadata does not specify a context length"
             )
             exc.add_note(
                 f"GGUF file is at {self._model_path!r}"
@@ -263,56 +278,55 @@ class Model:
         if n_attn_heads is not None and n_kv_heads is not None:
             n_gqa = int(n_attn_heads / n_kv_heads)
         
+        if context_length <= 0:
+            context_length = None
+        
         rope_freq_base = __class__._calculate_rope_freq_base(
             n_ctx_train,
             context_length if context_length is not None else n_ctx_train,
             rope_freq_base_train
         )
 
-        if rope_freq_base_train is None or context_length is None or context_length <= n_ctx_train:
-            # no need to do context scaling, load model normally
-
-            if context_length is None:
-                self.context_length = self.n_ctx = n_ctx_train
-                ctx_scale = 1.0
-            else:
-                self.context_length = self.n_ctx = context_length
-                ctx_scale = context_length/n_ctx_train
-            ctx_quality_hint = 'native'
-
-        elif context_length > n_ctx_train:
-            # multiply rope_freq_base according to requested context length
-            # because context length > n_ctx_train and rope freq base is known
-
-            self.context_length = self.n_ctx = context_length
-            ctx_scale = context_length/n_ctx_train
-
-            if 1 < ctx_scale < 1.5:
-                ctx_quality_hint = 'good'
-            elif 1.5 <= ctx_scale < 2:
-                ctx_quality_hint = 'fair'
-            elif 2 <= ctx_scale < 4:
-                ctx_quality_hint = 'poor'
-            elif 4 <= ctx_scale < 8:
-                ctx_quality_hint = 'bad'
-            else: # x8 or more
-                ctx_quality_hint = 'terrible'
-            
-            if ctx_scale >= 2: # anything below 'fair'
+        if context_length is None:
+            if n_ctx_train > 32768:
                 print_warning(
-                    f"context scale is x{ctx_scale:.2} ({ctx_quality_hint})"
+                    f"you did not specify a context length, and the native "
+                    f"context length of this model is very large "
+                    f"({n_ctx_train}). defaulting to 32768 to avoid "
+                    f"out-of-memory errors. you should specify a higher "
+                    f"context length if you need it"
                 )
+                self.context_length = self.n_ctx = 32768
+            else:
+                self.context_length = self.n_ctx = n_ctx_train
+
+        elif context_length <= n_ctx_train:
+            self.context_length = self.n_ctx = context_length
+        
+        elif context_length > n_ctx_train:
+            print_warning(
+                f"you have specified a context length that is greater than "
+                f"the natively supported context length of this model "
+                f"({context_length} > {n_ctx_train}). the model will still "
+                f"work, but the quality of output may be subpar. consider "
+                f"decreasing the context length to {n_ctx_train} or lower "
+                f"for best results"
+            )
+            self.context_length = self.n_ctx = context_length
+        
+        else:
+            raise UnreachableException
 
         cpu_count = int(os.cpu_count()) # only read once
 
-        if n_gpu_layers < 0:
+        if n_gpu_layers < 0 or n_gpu_layers > n_layer:
             n_gpu_layers = n_layer
 
-        if n_gpu_layers >= n_layer:
-            # if model is fully offloaded
+        if n_gpu_layers == n_layer:
+            # fully offloaded
             n_batch = 1024
         else:
-            # if model is not fully offloaded
+            # partially offloaded
             n_batch = 512
         
         # NOTE: the optimal n_threads value (for text generation) is equal
@@ -327,22 +341,24 @@ class Model:
         n_threads_batch = cpu_count
 
         if flash_attn and n_gpu_layers == 0:
+            flash_attn = False
             print_warning(
                 "disabling flash_attn because n_gpu_layers == 0"
             )
-            flash_attn = False
         
         if quantize_kv_cache:
             # use q8_0 for K, V
-            # llama.cpp requires flash_attn for V quantization
-            type_k = 8
-            type_v = 8 if flash_attn else 1
-            if verbose:
-                if flash_attn:
-                    print_verbose(
+            if flash_attn:
+                type_k = 8
+                type_v = 8
+                if verbose:
+                   print_verbose(
                         "using q8_0 KV cache"
                     )
-                else:
+            else:           # llama.cpp requires flash_attn for V quantization
+                type_k = 8
+                type_v = 1
+                if verbose:
                     print_verbose(
                         "using q8_0 K cache, f16 V cache"
                     )
@@ -350,10 +366,6 @@ class Model:
                         "to quantize V cache, flash_attn must be enabled"
                     )
         else:
-            if verbose:
-                print_verbose(
-                    "using f16 KV cache"
-                )
             # use f16 for K, V (default)
             type_k = 1
             type_v = 1
@@ -367,28 +379,30 @@ class Model:
                 f"attempting to load model, offloading "
                 f"{n_gpu_layers}/{n_layer} layers..."
             )
+        
+        # llama.cpp needs -ngl set to `-1`, not just n_layer
+        if n_gpu_layers >= n_layer:
+            _llama_ngl = -1
+        else:
+            _llama_ngl = n_gpu_layers
 
-        self.llama: Llama = Llama(
+        self.llama = Llama(
             model_path=model_path,
             n_ctx=self.context_length,
-            n_gpu_layers=n_gpu_layers,         # KV cache quantization is
-            use_mmap=True,                     # controlled by the `type_k`
-            use_mlock=False,                   # and `type_v` parameters.
-            logits_all=False,                  # not all combinations are
-            n_batch=n_batch,                   # supported.
-            n_threads=n_threads,               #
-            n_threads_batch=n_threads_batch,   # use `1` for f16 (default)
-            rope_freq_base=rope_freq_base,     # use `8` for q8_0
-            mul_mat_q=True,                    # use `7` for q5_1
-            offload_kqv=offload_kqv,           # use `6` for q5_0
-            flash_attn=flash_attn,             # use `3` for q4_1
-            type_k=type_k,                     # use `2` for q4_0
+            n_gpu_layers=_llama_ngl,
+            use_mmap=True,
+            use_mlock=False,
+            logits_all=False,
+            n_batch=n_batch,
+            n_threads=n_threads,
+            n_threads_batch=n_threads_batch,
+            rope_freq_base=rope_freq_base,
+            mul_mat_q=True,
+            offload_kqv=offload_kqv,
+            flash_attn=flash_attn,
+            type_k=type_k,
             type_v=type_v,
-            verbose=(
-                verbose if 'enable_llama_cpp_output' in _kwargs_keys
-                else False
-            ),
-            **kwargs
+            verbose=_debug
         )
         
         # NOTE: llama.cpp uses the nearest multiple of 32 as the actual
@@ -399,7 +413,7 @@ class Model:
         if self.n_ctx < 512:
             print_warning(
                 f'the currently loaded context length is less than 512 tokens '
-                f'({self.n_ctx} < 512), sometimes this can cause problems in '
+                f'({self.n_ctx} < 512). sometimes this can cause problems in '
                 f'llama.cpp. consider increasing the context length to at '
                 f'least 512 tokens'
             )
@@ -435,56 +449,34 @@ class Model:
                 )
 
         # These special tokens are optional
-        # if a negative value is returned as a token, it is not defined
+
         self.eot_token = int(self.llama._model.token_eot())
         if self.eot_token < 0:
             self.eot_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.eot_token, defaulting to None"
-            #    )
+
         self.nl_token  = int(self.llama._model.token_nl())
         if self.nl_token < 0:
             self.nl_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.nl_token, defaulting to None"
-            #    )
+
         self.prefix_token = int(self.llama._model.token_prefix())
         if self.prefix_token < 0:
             self.prefix_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.prefix_token, defaulting to None"
-            #    )
+
         self.middle_token = int(self.llama._model.token_middle())
         if self.middle_token < 0:
             self.middle_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.middle_token, defaulting to None"
-            #    )
+
         self.suffix_token = int(self.llama._model.token_suffix())
         if self.suffix_token < 0:
             self.suffix_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.suffix_token, defaulting to None"
-            #    )
+
         self.cls_token = int(self.llama._model.token_cls())
         if self.cls_token < 0:
             self.cls_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.cls_token, defaulting to None"
-            #    )
+
         self.sep_token = int(self.llama._model.token_sep())
         if self.sep_token < 0:
             self.sep_token = None
-            #if verbose:
-            #    print_verbose(
-            #        "could not set Model.sep_token, defaulting to None"
-            #    )
         
         # Misc. attributes
         _add_bos_token = self.llama._model.add_bos_token()
@@ -497,6 +489,7 @@ class Model:
             print_warning(
                 "Model.add_bos_token is unknown, defaulting to None"
             )
+        
         _add_eos_token = self.llama._model.add_eos_token()
         if _add_eos_token == 1:
             self.add_eos_token = True
@@ -523,63 +516,68 @@ class Model:
         self.n_layer: int = n_layer
         self.n_gpu_layers: int = n_gpu_layers
         self.offload_kqv = offload_kqv
-        self.ctx_scale: float = ctx_scale
         self.is_native: bool = self.context_length <= self.n_ctx_train
         self.type_k: int = type_k
         self.type_v: int = type_v
         self.n_gqa: int = n_gqa
 
         if verbose:
-            print_verbose("new Model instance with the following attributes:")
-            print_verbose(f"uuid                 == {self.uuid}")
-            print_verbose(f"filename             == {self.filename}")
-            print_verbose(f"n_params             == {self.n_params}")
-            print_verbose(f"bpw                  == {self.bpw} ({
-                __class__._get_bpw_quality_hint(self.bpw)
-            })")
-            print_verbose(f"n_gpu_layers         == {self.n_gpu_layers}")
-            print_verbose(f"n_layer              == {self.n_layer}")
-            print_verbose(f"offload_kqv          == {self.offload_kqv}")
-            print_verbose(f"flash_attn           == {self.flash_attn}")
-            print_verbose(f"n_gqa                == {self.n_gqa}")
-            print_verbose(f"type_k               == {self.type_k} ({
-                'f16' if self.type_k == 1 else 'q8_0'
-            })")
-            print_verbose(f"type_v               == {self.type_v} ({
-                'f16' if self.type_v == 1 else 'q8_0'
-            })")
-            print_verbose(f"n_batch              == {self.n_batch}")
-            print_verbose(f"n_threads            == {self.n_threads}")
-            print_verbose(f"n_threads_batch      == {self.n_threads_batch}")
-            print_verbose(f"n_ctx_train          == {self.n_ctx_train}")
-            print_verbose(f"n_ctx                == {self.n_ctx}")
-            print_verbose(f"rope_freq_base_train == {self.rope_freq_base_train}")
-            print_verbose(f"rope_freq_base       == {self.rope_freq_base}")
-            print_verbose(f"ctx_scale            == {self.ctx_scale} ({ctx_quality_hint})")
-            print_verbose(f"n_embd               == {self.n_embd}")
-            print_verbose(f"n_vocab              == {self.n_vocab}")
-            if self.bos_token is not None:
-                print_verbose(f"bos_token            == {self.bos_token}")
-            if self.eos_token is not None:
-                print_verbose(f"eos_token            == {self.eos_token}")
+            print_verbose(
+                f"{'new' if '__uuid' not in _kwargs_keys else 'reloaded'} "
+                f"Model instance with the following attributes:"
+            )
+            print_verbose(f"   uuid                 == {self.uuid}")
+            print_verbose(f"   filename             == {self.filename}")
+            print_verbose(f"   n_params             == {self.n_params}")
+            print_verbose(
+                f"   bpw                  == {self.bpw} "
+                f"({__class__._get_bpw_quality_hint(self.bpw)})"
+            )
+            print_verbose(f"   n_gpu_layers         == {self.n_gpu_layers}")
+            print_verbose(f"   n_layer              == {self.n_layer}")
+            print_verbose(f"   offload_kqv          == {self.offload_kqv}")
+            print_verbose(f"   flash_attn           == {self.flash_attn}")
+            print_verbose(f"   n_gqa                == {self.n_gqa}")
+            print_verbose(
+                f"   type_k               == {self.type_k} "
+                f"({'f16' if self.type_k == 1 else 'q8_0'})"
+            )
+            print_verbose(
+                f"   type_v               == {self.type_v} "
+                f"({'f16' if self.type_v == 1 else 'q8_0'})"
+            )
+            print_verbose(f"   n_batch              == {self.n_batch}")
+            print_verbose(
+                f"   n_threads            == {self.n_threads}/{cpu_count}"
+            )
+            print_verbose(
+                f"   n_threads_batch      == {self.n_threads_batch}/{cpu_count}"
+            )
+            print_verbose(f"   n_ctx_train          == {self.n_ctx_train}")
+            print_verbose(f"   n_ctx                == {self.n_ctx}")
+            print_verbose(f"   rope_freq_base_train == {self.rope_freq_base_train}")
+            print_verbose(f"   rope_freq_base       == {self.rope_freq_base}")
+            print_verbose(f"   n_embd               == {self.n_embd}")
+            print_verbose(f"   n_vocab              == {self.n_vocab}")
+            print_verbose(f"   bos_token            == {self.bos_token}")
+            print_verbose(f"   eos_token            == {self.eos_token}")
             if self.eot_token is not None:
-                print_verbose(f"eot_token            == {self.eot_token}")
+                print_verbose(f"   eot_token            == {self.eot_token}")
             if self.nl_token is not None:
-                print_verbose(f"nl_token             == {self.nl_token}")
+                print_verbose(f"   nl_token             == {self.nl_token}")
             if self.prefix_token is not None:
-                print_verbose(f"prefix_token         == {self.prefix_token}")
+                print_verbose(f"   prefix_token         == {self.prefix_token}")
             if self.middle_token is not None:
-                print_verbose(f"middle_token         == {self.middle_token}")
+                print_verbose(f"   middle_token         == {self.middle_token}")
             if self.suffix_token is not None:
-                print_verbose(f"suffix_token         == {self.suffix_token}")
+                print_verbose(f"   suffix_token         == {self.suffix_token}")
             if self.cls_token is not None:
-                print_verbose(f"cls_token            == {self.cls_token}")
+                print_verbose(f"   cls_token            == {self.cls_token}")
             if self.sep_token is not None:
-                print_verbose(f"sep_token            == {self.sep_token}")
-            if self.add_bos_token is not None:
-                print_verbose(f"add_bos_token        == {self.add_bos_token}")
-            if self.add_eos_token is not None:
-                print_verbose(f"add_eos_token        == {self.add_eos_token}")
+                print_verbose(f"   sep_token            == {self.sep_token}")
+            print_verbose(f"   add_bos_token        == {self.add_bos_token}")
+            print_verbose(f"   add_eos_token        == {self.add_eos_token}")
+
 
     @staticmethod
     def _calculate_rope_freq_base(
@@ -612,17 +610,15 @@ class Model:
         return ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
 
         # traditional formula:
-        #   return ctx_scale*rope_freq_base_train
+        #   return (n_ctx_load/n_ctx_train)*rope_freq_base_train
         # experimental formula A:
-        #   return (ctx_scale**2)*rope_freq_base_train
+        #   return ((n_ctx_load/n_ctx_train)**2)*rope_freq_base_train
         # experimental formula B:
-        #   return (ctx_scale**(2**(1/4)))*rope_freq_base_train
+        #   return ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
     
 
     @staticmethod
     def _get_bpw_quality_hint(bpw: float) -> str:
-        # good fair poor bad terrible (ctx)
-        # native great good bad terrible (bpw)
         if 0.0 < bpw < 2.0:
             return 'terrible'
         elif 2.0 <= bpw < 4.0:
@@ -634,7 +630,21 @@ class Model:
         elif bpw >= 16.0:
             return 'native'
         else:
-            raise RuntimeError
+            raise UnreachableException
+    
+
+    @staticmethod
+    def _print_metadata(
+        metadata: dict,
+        file: _SupportsWriteAndFlush = sys.stderr
+    ) -> None:
+        max_len_key = max(len(k) for k in metadata.keys())
+        print(f'easy_llama: read model metadata from GGUF file header:', file=file)
+        for k, v in metadata.items():
+            print(
+                f'easy_llama:    {k:<{max_len_key}} : {truncate(repr(v))}',
+                file=file
+            )
 
     
     def __repr__(self) -> str:
@@ -797,7 +807,10 @@ class Model:
         assert_model_is_loaded(self)
         tokens = self.llama._model.tokenize(
             text.encode('utf-8'),
-            add_bos=bool(self.llama._model.add_bos_token()),
+            add_bos=(
+                self.add_bos_token if self.add_bos_token is not None
+                else True
+            ),
             special=True
         )
         # remove duplicate BOS tokens at the start of the text
@@ -947,6 +960,14 @@ class Model:
                 f"generate: recieved prompt with {input_length} tokens"
             )
 
+        stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
+        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stopping_criteria = None
+        if stop_token_ids != []:
+            def stop_on_token_ids(tokens, *args, **kwargs):
+                return tokens[-1] in stop_token_ids
+            stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
+
         if self.verbose:
             print_verbose(f'generate: using the following sampler settings:')
             print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
@@ -957,14 +978,6 @@ class Model:
             print_verbose(f'frequency_penalty == {sampler.frequency_penalty}')
             print_verbose(f'presence_penalty  == {sampler.presence_penalty}')
             print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
-
-        stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
-        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
-        stopping_criteria = None
-        if stop_token_ids != []:
-            def stop_on_token_ids(tokens, *args, **kwargs):
-                return tokens[-1] in stop_token_ids
-            stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
 
         assert_model_is_loaded(self)
         return self.llama.create_completion(
@@ -1049,6 +1062,14 @@ class Model:
                 f"stream: recieved prompt with {input_length} tokens"
             )
 
+        stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
+        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stopping_criteria = None
+        if stop_token_ids != []:
+            def stop_on_token_ids(tokens, *args, **kwargs):
+                return tokens[-1] in stop_token_ids
+            stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
+
         if self.verbose:
             print_verbose(f'stream: using the following sampler settings:')
             print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
@@ -1059,14 +1080,6 @@ class Model:
             print_verbose(f'frequency_penalty == {sampler.frequency_penalty}')
             print_verbose(f'presence_penalty  == {sampler.presence_penalty}')
             print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
-        
-        stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
-        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
-        stopping_criteria = None
-        if stop_token_ids != []:
-            def stop_on_token_ids(tokens, *args, **kwargs):
-                return tokens[-1] in stop_token_ids
-            stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
         
         assert_model_is_loaded(self)
         return self.llama.create_completion(
@@ -1175,8 +1188,8 @@ class Model:
     def candidates(
         self,
         prompt: str,
-        k: int = 40,  # default top_k sampling parameter. use 0 or lower for n_vocab
-        temp: Optional[float] = None  # 0.0 or negative values OK
+        k: int = 40,
+        temp: Optional[float] = None
     ) -> list[tuple[str, np.floating]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
@@ -1194,7 +1207,8 @@ class Model:
             k = self.n_vocab
         if not 1 <= k <= self.n_vocab:
             raise ValueError(
-                f"candidates: k should be between 1 and {self.n_vocab} inclusive"
+                f"candidates: k should be between 1 and {self.n_vocab} "
+                f"inclusive"
             )
 
         prompt_tokens = self.tokenize(prompt)
@@ -1274,7 +1288,7 @@ class Model:
         file = sys.stdout if file is None else file
         for _tuple in self.candidates(prompt=prompt, k=k, temp=temp):
             print(
-                f"token {_tuple[0]!r:<16} has probability "
+                f"token {_tuple[0]!r:<32} has probability "
                 f"{_tuple[1] * 100 :>7.3f} %",
                 file=file,
             )
@@ -1307,7 +1321,8 @@ def assert_model_is_loaded(model) -> None:
         )
     elif not hasattr(model.llama._model, 'model'):
         exc = ModelUnloadedException(
-            "llama_cpp._internals._LlamaModel instance has no attribute 'model'"
+            "llama_cpp._internals._LlamaModel instance has no attribute "
+            "'model'"
         )
     elif model.llama._model.model is None:
         exc = ModelUnloadedException(

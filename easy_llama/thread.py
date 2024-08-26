@@ -166,22 +166,22 @@ class Thread:
 
         if self.model.verbose:
             print_verbose("new Thread instance with the following attributes:")
-            print_verbose(f"model.uuid                == {self.model.uuid}")
-            print_verbose(f"format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
-            print_verbose(f"format['system_prompt']   == {truncate(repr(self.format['system_prompt']))}")
-            print_verbose(f"format['system_suffix']   == {truncate(repr(self.format['system_suffix']))}")
-            print_verbose(f"format['user_prefix']     == {truncate(repr(self.format['user_prefix']))}")
-            print_verbose(f"format['user_suffix']     == {truncate(repr(self.format['user_suffix']))}")
-            print_verbose(f"format['bot_prefix']      == {truncate(repr(self.format['bot_prefix']))}")
-            print_verbose(f"format['bot_suffix']      == {truncate(repr(self.format['bot_suffix']))}")
-            print_verbose(f"format['stops']           == {truncate(repr(self.format['stops']))}")
-            print_verbose(f"sampler.top_k             == {self.sampler.top_k}")
-            print_verbose(f"sampler.top_p             == {self.sampler.top_p}")
-            print_verbose(f"sampler.min_p             == {self.sampler.min_p}")
-            print_verbose(f"sampler.temp              == {self.sampler.temp}")
-            print_verbose(f"sampler.frequency_penalty == {self.sampler.frequency_penalty}")
-            print_verbose(f"sampler.presence_penalty  == {self.sampler.presence_penalty}")
-            print_verbose(f"sampler.repeat_penalty    == {self.sampler.repeat_penalty}")
+            print_verbose(f"   model.uuid                == {self.model.uuid}")
+            print_verbose(f"   format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
+            print_verbose(f"   format['system_prompt']   == {truncate(repr(self.format['system_prompt']))}")
+            print_verbose(f"   format['system_suffix']   == {truncate(repr(self.format['system_suffix']))}")
+            print_verbose(f"   format['user_prefix']     == {truncate(repr(self.format['user_prefix']))}")
+            print_verbose(f"   format['user_suffix']     == {truncate(repr(self.format['user_suffix']))}")
+            print_verbose(f"   format['bot_prefix']      == {truncate(repr(self.format['bot_prefix']))}")
+            print_verbose(f"   format['bot_suffix']      == {truncate(repr(self.format['bot_suffix']))}")
+            print_verbose(f"   format['stops']           == {truncate(repr(self.format['stops']))}")
+            print_verbose(f"   sampler.top_k             == {self.sampler.top_k}")
+            print_verbose(f"   sampler.top_p             == {self.sampler.top_p}")
+            print_verbose(f"   sampler.min_p             == {self.sampler.min_p}")
+            print_verbose(f"   sampler.temp              == {self.sampler.temp}")
+            print_verbose(f"   sampler.frequency_penalty == {self.sampler.frequency_penalty}")
+            print_verbose(f"   sampler.presence_penalty  == {self.sampler.presence_penalty}")
+            print_verbose(f"   sampler.repeat_penalty    == {self.sampler.repeat_penalty}")
 
 
     def __repr__(self) -> str:
@@ -441,7 +441,7 @@ class Thread:
 
                 print()
                 try:
-                    command = input(f'{_error_style}  ! {_dim_style}')
+                    command = input(f'{RESET_ALL}  ! {_dim_style}')
                 except KeyboardInterrupt:
                     print('\n')
                     continue
@@ -476,34 +476,42 @@ class Thread:
                 
                 elif command.lower() in ['remove', 'rem', 'delete', 'del']:
                     print()
-                    old_len = len(self.messages)
-                    del self.messages[-1]
-                    assert len(self.messages) == (old_len - 1)
-                    print('[removed last message]\n')
-
-                elif command.lower() in ['last', 'repeat']:
-                    last_msg = self.messages[-1]
-                    if last_msg['role'] == 'system':
-                        print(f"\n{_special_style}{last_msg['content']}{RESET_ALL}\n")
-                    elif last_msg['role'] == 'user':
-                        print(f"\n{_user_style}{last_msg['content']}{RESET_ALL}\n")
-                    elif last_msg['role'] == 'bot':
-                        print(f"\n{_bot_style}{last_msg['content']}{RESET_ALL}\n")
+                    if len(self.messages) == 0:
+                        print(f'{_error_style}[no previous message]{RESET_ALL}\n')
                     else:
-                        print(f"\n{_error_style}{last_msg['content']}{RESET_ALL}\n")
+                        del self.messages[-1]
+                        print('[removed last message]\n')
+
+                elif command.lower() in ['last', 'repeat', 'what?']:
+                    print()
+                    if len(self.messages) == 0:
+                        print(f'{_error_style}[no previous message]{RESET_ALL}\n')
+                    else:
+                        last_msg = self.messages[-1]
+                        if last_msg['role'] == 'system':
+                            print(f"{_special_style}{last_msg['content']}{RESET_ALL}\n")
+                        elif last_msg['role'] == 'user':
+                            print(f"{_user_style}{last_msg['content']}{RESET_ALL}\n")
+                        elif last_msg['role'] == 'bot':
+                            print(f"{_bot_style}{last_msg['content']}{RESET_ALL}\n")
+                        else:
+                            print(f"{_error_style}{last_msg['content']}{RESET_ALL}\n")
                 
                 elif command.lower() in ['refill', 'reprint', 'lost', 'find']:
                     cls()
                     print()
-                    for msg in self.messages:
-                        if msg['role'] == 'system':
-                            print(f"{_special_style}{msg['content']}{RESET_ALL}\n")
-                        elif msg['role'] == 'user':
-                            print(f"{_user_style}{msg['content']}{RESET_ALL}\n")
-                        elif msg['role'] == 'bot':
-                            print(f"{_bot_style}{msg['content']}{RESET_ALL}\n")
-                        else:
-                            print(f"{_error_style}{msg['content']}{RESET_ALL}\n")
+                    if len(self.messages) == 0:
+                        print(f'{_error_style}[no previous message]{RESET_ALL}\n')
+                    else:
+                        for msg in self.messages:
+                            if msg['role'] == 'system':
+                                print(f"{_special_style}{msg['content']}{RESET_ALL}\n")
+                            elif msg['role'] == 'user':
+                                print(f"{_user_style}{msg['content']}{RESET_ALL}\n")
+                            elif msg['role'] == 'bot':
+                                print(f"{_bot_style}{msg['content']}{RESET_ALL}\n")
+                            else:
+                                print(f"{_error_style}{msg['content']}{RESET_ALL}\n")
                         
                 elif command.lower() in ['inf', 'inference', 'inf_str']:
                     print(f'\n"""{self.inference_str_from_messages()}"""\n')
@@ -520,7 +528,7 @@ class Thread:
                 
                 elif command.lower() in ['sum', 'summ', 'summary', 'summarize']:
                     print('\nGenerating summary...\n')
-                    self.summarize()
+                    print(self.summarize())
                     print()
                 
                 elif command.lower() in ['msgs', 'messages', 'msg']:
