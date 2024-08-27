@@ -4,15 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>easy-llama web-UI</title>
+    <!-- 
+    ./marked.min.is is originally from: https://cdn.jsdelivr.net/npm/marked/marked.min.js
+
+    it is used to parse markdown within bot messages
+    -->
+    <script src="marked.min.js"></script>
     <style>
 
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #111111; /* Dark grey background */
-            color: #fff; /* White text */
-            padding-bottom: 150px; /* Add padding to prevent overlap with fixed input box */
+            background-color: #111111;
+            color: #fff;
+            padding-bottom: 150px;
         }
 
         .container {
@@ -30,17 +36,17 @@
             border: 1px solid #00000000;
             border-radius: 5px;
             padding: 10px;
-            background-color: #303030; /* Dark grey background for conversation */
+            background-color: #303030;
             margin-bottom: 20px;
-            height: 60vh; /* Increase the height */
-            overflow-y: auto; /* Enable scrolling */
+            height: 60vh;
+            overflow-y: auto;
         }
 
         .message {
             margin: 10px 0;
             padding: 10px;
             border-radius: 5px;
-            color: #fff; /* White text for messages */
+            color: #fff;
         }
 
         .user-message {
@@ -56,14 +62,14 @@
         }
 
         form {
-            position: fixed; /* Make the form fixed */
+            position: fixed;
             bottom: 0;
-            width: 80%; /* Match the container width */
-            left: 10%; /* Center the form */
+            width: 80%;
+            left: 10%;
             display: flex;
             flex-direction: column;
-            justify-content: center; /* Center the form horizontally */
-            align-items: center; /* Center the form vertically */
+            justify-content: center;
+            align-items: center;
             padding: 10px;
         }
 
@@ -72,10 +78,10 @@
             padding: 10px;
             border: 0px solid #00000000;
             border-radius: 5px;
-            resize: vertical;
+            resize: none;
             margin-bottom: 10px;
-            background-color: #303030; /* Dark grey background for textarea */
-            color: #fff; /* White text for textarea */
+            background-color: #303030;
+            color: #fff;
         }
 
         button {
@@ -88,7 +94,7 @@
         }
 
         button:hover {
-            background-color: #1f3722;
+            background-color: #446f48;
         }
 
         .button-group {
@@ -115,10 +121,10 @@
             const conversation = document.getElementById('conversation');
             const userMessage = document.createElement('div');
             userMessage.className = 'message user-message';
-            userMessage.innerText = prompt;
+            userMessage.innerText = escapeHtml(prompt);
             conversation.appendChild(userMessage);
-
-            // Clear the input textarea
+            
+            // Clear prompt input text box
             form.reset();
 
             // Create a new bot message element
@@ -128,6 +134,8 @@
 
             // Scroll to the bottom of the conversation
             conversation.scrollTop = conversation.scrollHeight;
+
+            let accumulatedText = '';
 
             fetch('/submit', {
                 method: 'POST',
@@ -141,16 +149,24 @@
                 const decoder = new TextDecoder('utf-8');
 
                 function readStream() {
-                    reader.read().then(({ done, value }) => {
-                        if (done) {
-                            return;
-                        }
-                        const chunk = decoder.decode(value, { stream: true });
-                        botMessage.innerText += chunk;
-                        conversation.scrollTop = conversation.scrollHeight;
-                        readStream();
-                    });
-                }
+                reader.read().then(({ done, value }) => {
+                    if (done) {
+                        return;
+                    }
+                    const chunk = decoder.decode(value, { stream: true });
+                    accumulatedText += chunk;
+
+                    // Trim and normalize the text content
+                    const normalizedText = accumulatedText.replace(/[ \t]+/g, ' ').trim();
+
+                    // Re-parse and render the normalized content
+                    const renderedContent = marked.parse(normalizedText);
+                    botMessage.innerHTML = renderedContent; // Update the innerHTML with the rendered content
+
+                    conversation.scrollTop = conversation.scrollHeight;
+                    readStream();
+                });
+            }
 
                 readStream();
             })
@@ -159,22 +175,36 @@
             });
         }
 
-    document.getElementById('resetButton').addEventListener('click', function(event) {
-        fetch('/reset', {
-            method: 'POST',
-        })
-        .then(response => {
-            if (response.ok) {
-                // Clear the conversation div
-                document.getElementById('conversation').innerHTML = '';
-            } else {
-                console.error('Error:', response.statusText);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
-    });
+        // Wrap the reset button event listener in a function
+        function setupResetButton() {
+            document.getElementById('resetButton').addEventListener('click', function(event) {
+                fetch('/reset', {
+                    method: 'POST',
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Clear the conversation div
+                        document.getElementById('conversation').innerHTML = '';
+                    } else {
+                        console.error('Error:', response.statusText);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&")
+                .replace(/</g, "<")
+                .replace(/>/g, ">")
+                .replace(/"/g, "\"")
+                .replace(/'/g, "'");
+        }
+
+        window.onload = setupResetButton;
 
     </script>
 </head>
@@ -190,5 +220,11 @@
             <button type="button" id="resetButton">reset</button>
         </div>
     </form>
+    <script>
+        marked.setOptions({
+            pedantic: false, // Allow more relaxed parsing
+            gfm: true       // Enable GitHub Flavored Markdown
+        });
+    </script>
 </body>
 </html>
