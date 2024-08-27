@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.76'
+__version__ = '0.1.77'
 
 from setuptools import setup
 
@@ -9,7 +9,7 @@ setup(
     name='easy_llama',
     version=__version__,
     description='Text generation in Python, as easy as possible',
-    long_description="""For more information, visit the project's GitHub repository:\nhttps://github.com/ddh0/easy-llama""",
+    long_description="For more information, visit the project's GitHub repository:\nhttps://github.com/ddh0/easy-llama",
     url='https://github.com/ddh0/easy-llama/',
     author='Dylan Halladay',
     author_email='dylanhalladay02@icloud.com',
@@ -18,6 +18,7 @@ setup(
     install_requires=[
         'llama_cpp_python',
         'numpy',
+        'Flask'
     ],
     classifiers=[
         'Development Status :: 4 - Beta',

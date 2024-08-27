@@ -1,6 +1,5 @@
 # model.py
 # https://github.com/ddh0/easy-llama/
-from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing the Model class to work with Llama models"""
 
@@ -12,6 +11,7 @@ import numpy as np
 from .utils import (
     _SupportsWriteAndFlush,
     UnreachableException,
+    print_version_info,
     QuickGGUFReader,
     print_warning,
     print_verbose,
@@ -208,8 +208,7 @@ class Model:
                 return
         
         if verbose:
-            print_verbose(f"easy_llama package version: {__version__}")
-            print_verbose(f"llama_cpp package version: {__llama_cpp_version__}")
+            print_version_info(file=sys.stderr)
 
         if sys.byteorder == 'big':
             print_warning(

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>easy-llama web-UI</title>
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #111111; /* Dark grey background */
+            color: #fff; /* White text */
+            padding-bottom: 150px; /* Add padding to prevent overlap with fixed input box */
+        }
+
+        .container {
+            width: 90%;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .conversation {
+            border: 1px solid #00000000;
+            border-radius: 5px;
+            padding: 10px;
+            background-color: #303030; /* Dark grey background for conversation */
+            margin-bottom: 20px;
+            height: 60vh; /* Increase the height */
+            overflow-y: auto; /* Enable scrolling */
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            color: #fff; /* White text for messages */
+        }
+
+        .user-message {
+            font-family: verdana;
+            background-color: #36a44d;
+            align-self: flex-end;
+        }
+
+        .bot-message {
+            font-family: verdana;
+            background-color: #369fa4;
+            align-self: flex-start;
+        }
+
+        form {
+            position: fixed; /* Make the form fixed */
+            bottom: 0;
+            width: 80%; /* Match the container width */
+            left: 10%; /* Center the form */
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Center the form horizontally */
+            align-items: center; /* Center the form vertically */
+            padding: 10px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 0px solid #00000000;
+            border-radius: 5px;
+            resize: vertical;
+            margin-bottom: 10px;
+            background-color: #303030; /* Dark grey background for textarea */
+            color: #fff; /* White text for textarea */
+        }
+
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #5e9764;
+            color: #ffffff;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #1f3722;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }   
+
+        .button-group button {
+            flex: 1;
+            margin: 0 5px;
+        }
+
+    </style>
+    <script>
+
+        function submitForm(event) {
+            event.preventDefault(); // Prevent the default form submission
+            const form = event.target;
+            const formData = new FormData(form);
+            const prompt = formData.get('prompt');
+
+            // Append user message to the conversation
+            const conversation = document.getElementById('conversation');
+            const userMessage = document.createElement('div');
+            userMessage.className = 'message user-message';
+            userMessage.innerText = prompt;
+            conversation.appendChild(userMessage);
+
+            // Clear the input textarea
+            form.reset();
+
+            // Create a new bot message element
+            const botMessage = document.createElement('div');
+            botMessage.className = 'message bot-message';
+            conversation.appendChild(botMessage);
+
+            // Scroll to the bottom of the conversation
+            conversation.scrollTop = conversation.scrollHeight;
+
+            fetch('/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams(formData),
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            return;
+                        }
+                        const chunk = decoder.decode(value, { stream: true });
+                        botMessage.innerText += chunk;
+                        conversation.scrollTop = conversation.scrollHeight;
+                        readStream();
+                    });
+                }
+
+                readStream();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+    document.getElementById('resetButton').addEventListener('click', function(event) {
+        fetch('/reset', {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                // Clear the conversation div
+                document.getElementById('conversation').innerHTML = '';
+            } else {
+                console.error('Error:', response.statusText);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    });
+
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>welcome to the easy-llama web-UI</h1>
+        <div id="conversation" class="conversation"></div>
+    </div>
+    <form id="promptForm" onsubmit="submitForm(event)">
+        <textarea id="prompt" name="prompt" rows="5" placeholder="type your message here..."></textarea>
+        <div class="button-group">
+            <button type="submit">send message!</button>
+            <button type="button" id="resetButton">reset</button>
+        </div>
+    </form>
+</body>
+</html>
