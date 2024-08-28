@@ -9,7 +9,7 @@ import html
 
 import easy_llama as ez
 
-from flask            import Flask, render_template, request, Response
+from flask import Flask, render_template, request, Response
 
 assert_type = ez.utils.assert_type
 
@@ -50,7 +50,7 @@ class WebUI:
     def __init__(self, thread: ez.thread.Thread):
         assert_type(thread, ez.Thread, 'thread', 'Server')
         self.thread = thread
-        self.app = Flask(__name__, static_folder='./templates', static_url_path='')
+        self.app = Flask(__name__, static_folder='.', static_url_path='')
         self._cancel_flag = False
     
 
@@ -69,7 +69,7 @@ class WebUI:
         )
     
 
-    def start(self, host: str, port: int = 5000):
+    def start(self, host: str, port: int = 8080):
         assert_type(host, str, 'host', 'Server.start()')
         assert_type(port, int, 'port', 'Server.start()')
         print(_WEBUI_WARNING, file=sys.stderr, flush=True)
