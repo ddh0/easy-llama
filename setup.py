@@ -14,7 +14,9 @@ setup(
     author='Dylan Halladay',
     author_email='dylanhalladay02@icloud.com',
     license='The Unlicense',
+    include_package_data=True,
     packages=['easy_llama'],
+    package_data={'': ['assets/*.*']},
     install_requires=[
         'llama_cpp_python',
         'numpy',

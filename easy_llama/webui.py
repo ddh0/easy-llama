@@ -50,7 +50,7 @@ class WebUI:
     def __init__(self, thread: ez.thread.Thread):
         assert_type(thread, ez.Thread, 'thread', 'Server')
         self.thread = thread
-        self.app = Flask(__name__, static_folder='.', static_url_path='')
+        self.app = Flask(__name__, static_folder='./assets', static_url_path='')
         self._cancel_flag = False
     
 
