@@ -60,15 +60,12 @@ class WebUI:
         c = (thread_len_tokens/max_ctx_len) * 100
         ctx_used_pct = int(c) + (c > int(c)) # round up to next integer
         _fn = self.thread.model.filename
-        model_name = _fn #if self.thread.model.metadata['general.name'] in ['', None] else _fn
+        meta_name = self.thread.model.metadata['general.name']
+        model_name = _fn if meta_name in ['', None] else meta_name
         bpw = f"{self.thread.model.bpw:.2f}"
         model_display_str = f"{model_name} @ {bpw} bits per weight"
         return (
-            f"chatting with: {model_display_str}\n"
-            f"\n"
-            f"{thread_len_tokens} / {max_ctx_len} tokens\n"
-            f"{ctx_used_pct}% of context used\n"
-            f"{len(self.thread.messages)} messages"
+            f"{model_name}: {thread_len_tokens} / {max_ctx_len} tokens used"
         )
     
 
