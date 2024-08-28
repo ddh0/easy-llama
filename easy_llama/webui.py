@@ -3,6 +3,7 @@
 
 """The easy-llama WebUI"""
 
+import os
 import sys
 import json
 import html
@@ -50,8 +51,14 @@ class WebUI:
     def __init__(self, thread: ez.thread.Thread):
         assert_type(thread, ez.Thread, 'thread', 'Server')
         self.thread = thread
-        self.app = Flask(__name__, static_folder='./assets', static_url_path='')
         self._cancel_flag = False
+        self._assets_folder = os.path.join(os.path.dirname(__file__), 'assets')
+        self.app = Flask(
+            __name__,
+            static_folder=self._assets_folder,
+            template_folder=self._assets_folder,
+            static_url_path=''
+        )
     
 
     def _get_stats_string(self) -> str:
@@ -92,7 +99,7 @@ class WebUI:
 
             def generate():
                 self.thread.add_message('user', prompt)
-                print(f'{GREEN}{escaped_prompt}{RESET}')
+                print(f'{GREEN}{prompt}{RESET}')
                 token_generator = self.thread.model.stream(
                     self.thread.inference_str_from_messages(),
                     stops=self.thread.format['stops'],
