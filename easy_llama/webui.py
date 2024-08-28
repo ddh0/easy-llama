@@ -77,6 +77,13 @@ class WebUI:
     
 
     def start(self, host: str, port: int = 8080):
+        """
+        - host `str`:
+            The local IP address from which to host the WebUI. For example,
+            `'127.0.0.0.1'` or `'0.0.0.0'`
+        - port `int`:
+            The local port from which to host the WebUI. Defaults to `8080`
+        """
         assert_type(host, str, 'host', 'Server.start()')
         assert_type(port, int, 'port', 'Server.start()')
         print(_WEBUI_WARNING, file=sys.stderr, flush=True)
@@ -133,6 +140,16 @@ class WebUI:
         @self.app.route('/get_placeholder_text', methods=['GET'])
         def get_placeholder_text():
             return json.dumps({'placeholder_text': self._get_stats_string()}), 200, {'ContentType': 'application/json'}
+        
+        @self.app.route('/remove', methods=['POST'])
+        def remove():
+            if len(self.thread.messages) >= 1:
+                self.thread.messages.pop(-1)
+                _log('removed last message')
+                return '', 200
+            else:
+                _log('no previous message to remove')
+                return '', 418 # I'm a teapot
         
         self.thread.model.load()
         self.thread.warmup()

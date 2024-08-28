@@ -101,27 +101,6 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
     });
 }
 
-// Wrap the reset button event listener in a function
-function setupResetButton() {
-    document.getElementById('resetButton').addEventListener('click', function(event) {
-        fetch('/reset', {
-            method: 'POST',
-        })
-        .then(response => {
-            if (response.ok) {
-                // Clear the conversation div
-                document.getElementById('conversation').innerHTML = '';
-                updatePlaceholderText();
-            } else {
-                console.error('Not OK: setupResetButton:', response.statusText);
-            }
-        })
-        .catch(error => {
-            console.error('Caught error: setupResetButton:', error);
-        });
-    });
-}
-
 function updatePlaceholderText() {
     fetch('/get_placeholder_text')
         .then(response => response.json())
@@ -157,4 +136,50 @@ function cancelGeneration() {
         })
 }
 
-window.onload = setupResetButton;
+// this is called when the page is (re-)loaded
+function pageSetup() {
+
+    document.getElementById('resetButton').addEventListener('click', function(event) {
+        fetch('/reset', {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                // Clear the conversation div
+                document.getElementById('conversation').innerHTML = '';
+                updatePlaceholderText();
+            } else {
+                console.error('Not OK: setupResetButton:', response.statusText);
+            }
+        })
+        .catch(error => {
+            console.error('Caught error: setupResetButton:', error);
+        });
+    });
+
+    document.getElementById("removeButton").addEventListener('click', function(event) {
+
+        // get most recent message bubble
+        const messages = document.querySelectorAll('.message');
+        const lastMessage = messages[messages.length - 1];
+    
+        // trigger the `remove()` route on the server
+        fetch('/remove', {
+        method: 'POST',
+        })
+        .then(response => {
+        if (response.ok) {
+            lastMessage.remove(); // remove last message bubble
+            updatePlaceholderText();
+        } else {
+            console.error('Not OK: removeButton:', response.statusText);
+        }
+        })
+        .catch(error => {
+        console.error('Caught error: removeButton:', error);
+        });
+    });
+
+}
+
+window.onload = pageSetup;

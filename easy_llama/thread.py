@@ -821,7 +821,7 @@ class Thread:
                     'Hello. Take a moment to read the following conversation '
                     'carefully. When you\'re done, write a single paragraph '
                     'that explains all of the most relevant details.'
-                    f'\n\n```{messages_str}```\n\n'
+                    f'\n\n```\n{messages_str}\n```\n\n'
                     'Now that you\'ve read the above conversation, please '
                     'provide a summary in the form of a single paragraph.'
                 ).as_string() + \
