@@ -9,19 +9,35 @@ import html
 
 import easy_llama as ez
 
-from easy_llama.utils import assert_type
 from flask            import Flask, render_template, request, Response
 
+assert_type = ez.utils.assert_type
 
-_WARNING = \
+GREEN = ez.utils.USER_STYLE
+BLUE = ez.utils.BOT_STYLE
+YELLOW = ez.utils.SPECIAL_STYLE
+RED = ez.utils.ERROR_STYLE
+RESET = ez.utils.RESET_ALL
+
+_WEBUI_WARNING = \
 """
-###############################################################
+################################################################
 
-   the easy-llama WebUI is not meant for production use
+    the easy-llama WebUI is not meant for production use
 
                   it may be insecure
 
-###############################################################
+################################################################
+"""
+
+_EXPOSED_HOST_WARNING = \
+"""
+================================================================
+
+    you are hosting from 0.0.0.0 which exposes the WebUI to    
+              other devices over the network 
+
+================================================================
 """
 
 
@@ -56,11 +72,11 @@ class WebUI:
         )
     
 
-    def start(self, host: str, port: int):
+    def start(self, host: str, port: int = 5000):
         assert_type(host, str, 'host', 'Server.start()')
         assert_type(port, int, 'port', 'Server.start()')
-        print(_WARNING, file=sys.stderr, flush=True)
-        _log(f"starting from thread '{self.thread.uuid}'")
+        print(_WEBUI_WARNING, file=sys.stderr, flush=True)
+        _log(f"starting from thread '{self.thread.uuid}' at {host}:{port}")
 
         @self.app.route('/')
         def home():
@@ -68,8 +84,9 @@ class WebUI:
         
         @self.app.route('/cancel', methods=['POST'])
         def cancel():
+            _log('hit cancel endpoint')
             self._cancel_flag = True
-            return 200, ''
+            return '', 200
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
@@ -78,7 +95,7 @@ class WebUI:
 
             def generate():
                 self.thread.add_message('user', prompt)
-                print(f'{ez.utils.USER_STYLE}{escaped_prompt}{ez.utils.RESET_ALL}')
+                print(f'{GREEN}{escaped_prompt}{RESET}')
                 token_generator = self.thread.model.stream(
                     self.thread.inference_str_from_messages(),
                     stops=self.thread.format['stops'],
@@ -89,9 +106,12 @@ class WebUI:
                     if not self._cancel_flag:
                         tok_text = token['choices'][0]['text']
                         response += tok_text
+                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
                         yield tok_text
                     else:
+                        _log('cancel generation')
                         self._cancel_flag = False # reset flag
+                        print()
                         return '', 418 # I'm a teapot
                 print()
                 self.thread.add_message('bot', response)
@@ -103,7 +123,7 @@ class WebUI:
         @self.app.route('/reset', methods=['POST'])
         def reset():
             self.thread.reset()
-            _log(f'thread with UUID {self.thread.uuid} was reset')
+            _log(f"thread with UUID '{self.thread.uuid}' was reset")
             return '', 200
         
         @self.app.route('/get_placeholder_text', methods=['GET'])
@@ -113,4 +133,12 @@ class WebUI:
         self.thread.model.load()
         self.thread.warmup()
 
-        self.app.run(host=host, port=port)
+        if host in ['0.0.0.0']:
+            print(_EXPOSED_HOST_WARNING, file=sys.stderr, flush=True)
+        
+        try:
+            self.app.run(host=host, port=port)
+        except Exception as exc:
+            _log(f'{RED}exception in WebUI.app.run(), unloading model now{RESET}')
+            self.thread.model.unload()
+            raise exc
