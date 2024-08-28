@@ -4,6 +4,7 @@
 """Submodule containing the Thread class, used for interaction with a Model"""
 
 import sys
+import uuid
 
 from .utils    import (
     _SupportsWriteAndFlush,
@@ -96,6 +97,8 @@ class Thread:
         which describes the sampler parameters used for generation
     - messages:
         The list of all messages in this thread
+    - uuid: `uuid.UUID`
+        A randomly generated UUID, unique to this specific thread instance
     """
 
     def __init__(
@@ -163,9 +166,11 @@ class Thread:
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_prompt'])
         ] if self._messages is None else self._messages
+        self.uuid = uuid.uuid4()
 
         if self.model.verbose:
-            print_verbose("new Thread instance with the following attributes:")
+            print_verbose(f"new Thread instance with the following attributes:")
+            print_verbose(f"   uuid                      == {self.uuid}")
             print_verbose(f"   model.uuid                == {self.model.uuid}")
             print_verbose(f"   format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
             print_verbose(f"   format['system_prompt']   == {truncate(repr(self.format['system_prompt']))}")
