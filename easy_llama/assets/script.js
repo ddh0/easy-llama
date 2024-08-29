@@ -3,17 +3,17 @@ let isGenerating = false;
 function setIsGeneratingState(state) {
     targetState = state;
     const sendButton = document.querySelector('button[type="submit"]');
-    const resetButton = document.getElementById('resetButton')
+    const resetButton = document.getElementById('resetButton');
 
     if (targetState) {
         sendButton.textContent = 'cancel';
         sendButton.classList.add('cancel-button');
-        resetButton.disabled = true
+        resetButton.disabled = true;
         updatePlaceholderText();
     } else {
         sendButton.textContent = 'send message';
         sendButton.classList.remove('cancel-button');
-        resetButton.disabled = false
+        resetButton.disabled = false;
         updatePlaceholderText();
     }
 }
@@ -26,20 +26,20 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
 
     if (isGenerating) {   // if already generating, cancel was clicked
 
-        console.log('cancel button clicked')
+        console.log('cancel button clicked');
         cancelGeneration();       
 
         // get most recent message bubble
         const messages = document.querySelectorAll('.message');
         const lastMessage = messages[messages.length - 1];
-        lastMessage.remove() // remove cancelled message bubble
+        lastMessage.remove(); // remove cancelled message bubble
 
         updatePlaceholderText();
 
         return
     } else {
         if (prompt == '') {
-            console.log('will not submit empty prompt')
+            console.log('will not submit empty prompt');
             return;           // TODO: generate new bot message
         }
     }
@@ -135,19 +135,19 @@ function cancelGeneration() {
         method: 'POST'
     })
     .then(response => {
-            if (response.ok ) {
+            if (response.ok) {
                 setIsGeneratingState(false);
                 return;
             } else {
                 console.error('Not OK: cancelGeneration:', response.statusText);
             }
-        })
+        });
 }
 
 // this is called when the page is (re-)loaded
 window.onload = function pageSetup() {
 
-    console.log('do pageSetup()')
+    console.log('do pageSetup()');
 
     document.getElementById('resetButton').addEventListener('click', function(event) {
         fetch('/reset', {
@@ -193,8 +193,8 @@ window.onload = function pageSetup() {
 }
 
 function setDocumentBodyHeight() { 
-    document.body.height = window.innerHeight
-    console.log('set document body height')
+    document.body.height = window.innerHeight;
+    console.log('set document body height');
 }
 
-window.onresize = setDocumentBodyHeight
+window.onresize = setDocumentBodyHeight;
