@@ -1,38 +1,46 @@
 let isGenerating = false;
 
 function setIsGeneratingState(state) {
-    isGenerating = state;
+    targetState = state;
     const sendButton = document.querySelector('button[type="submit"]');
     const resetButton = document.getElementById('resetButton')
 
-    if (state) {
+    if (targetState) {
         sendButton.textContent = 'cancel';
         sendButton.classList.add('cancel-button');
         resetButton.disabled = true
-        resetButton.setAttribute('background-color', '#666666')
         updatePlaceholderText();
     } else {
         sendButton.textContent = 'send message';
         sendButton.classList.remove('cancel-button');
         resetButton.disabled = false
-        resetButton.setAttribute('background-color', '#4b724b')
         updatePlaceholderText();
     }
 }
 
 function submitForm(event) { // this is called when `send message` OR `cancel` is clicked
-    event.preventDefault(); // Prevent the default form submission
+    event.preventDefault();
     const form = event.target;
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
 
-    if (isGenerating) {
-        cancelGeneration();       // if already generating, cancel was clicked
+    if (isGenerating) {   // if already generating, cancel was clicked
+
+        console.log('cancel button clicked')
+        cancelGeneration();       
+
+        // get most recent message bubble
+        const messages = document.querySelectorAll('.message');
+        const lastMessage = messages[messages.length - 1];
+        lastMessage.remove() // remove cancelled message bubble
+
         updatePlaceholderText();
+
         return
     } else {
         if (prompt == '') {
-            return;           // do not submit empty prompts
+            console.log('will not submit empty prompt')
+            return;           // TODO: generate new bot message
         }
     }
 
@@ -102,14 +110,14 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
 }
 
 function updatePlaceholderText() {
-    fetch('/get_placeholder_text')
+    fetch('/get_stats')
         .then(response => response.json())
         .then(data => {
             const promptInput = document.getElementById('prompt');
-            promptInput.placeholder = data.placeholder_text;
+            promptInput.placeholder = data.text;
         })
         .catch(error => {
-            console.error('Error fetching placeholder text:', error);
+            console.error('Error fetching context usage stats:', error);
         });
 }
 
@@ -137,7 +145,9 @@ function cancelGeneration() {
 }
 
 // this is called when the page is (re-)loaded
-function pageSetup() {
+window.onload = function pageSetup() {
+
+    console.log('do pageSetup()')
 
     document.getElementById('resetButton').addEventListener('click', function(event) {
         fetch('/reset', {
@@ -149,11 +159,11 @@ function pageSetup() {
                 document.getElementById('conversation').innerHTML = '';
                 updatePlaceholderText();
             } else {
-                console.error('Not OK: setupResetButton:', response.statusText);
+                console.error('Bad response from /reset:', response.statusText);
             }
         })
         .catch(error => {
-            console.error('Caught error: setupResetButton:', error);
+            console.error('setupResetButton:', error);
         });
     });
 
@@ -172,14 +182,19 @@ function pageSetup() {
             lastMessage.remove(); // remove last message bubble
             updatePlaceholderText();
         } else {
-            console.error('Not OK: removeButton:', response.statusText);
+            console.error('Bad response from /remove:', response.statusText);
         }
         })
         .catch(error => {
-        console.error('Caught error: removeButton:', error);
+        console.error('removeButton:', error);
         });
     });
 
 }
 
-window.onload = pageSetup;
+function setDocumentBodyHeight() { 
+    document.body.height = window.innerHeight
+    console.log('set document body height')
+}
+
+window.onresize = setDocumentBodyHeight

@@ -64,16 +64,7 @@ class WebUI:
     def _get_stats_string(self) -> str:
         thread_len_tokens = self.thread.len_messages()
         max_ctx_len = self.thread.model.context_length
-        c = (thread_len_tokens/max_ctx_len) * 100
-        ctx_used_pct = int(c) + (c > int(c)) # round up to next integer
-        _fn = self.thread.model.filename
-        meta_name = self.thread.model.metadata['general.name']
-        model_name = _fn if meta_name in ['', None] else meta_name
-        bpw = f"{self.thread.model.bpw:.2f}"
-        model_display_str = f"{model_name} @ {bpw} bits per weight"
-        return (
-            f"{model_name}: {thread_len_tokens} / {max_ctx_len} tokens used"
-        )
+        return f"{thread_len_tokens} / {max_ctx_len} tokens used"
     
 
     def start(self, host: str, port: int = 8080):
@@ -120,9 +111,9 @@ class WebUI:
                         print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
                         yield tok_text
                     else:
+                        print()
                         _log('cancel generation')
                         self._cancel_flag = False # reset flag
-                        print()
                         return '', 418 # I'm a teapot
                 print()
                 self.thread.add_message('bot', response)
@@ -137,9 +128,9 @@ class WebUI:
             _log(f"thread with UUID '{self.thread.uuid}' was reset")
             return '', 200
         
-        @self.app.route('/get_placeholder_text', methods=['GET'])
+        @self.app.route('/get_stats', methods=['GET'])
         def get_placeholder_text():
-            return json.dumps({'placeholder_text': self._get_stats_string()}), 200, {'ContentType': 'application/json'}
+            return json.dumps({'text': self._get_stats_string()}), 200, {'ContentType': 'application/json'}
         
         @self.app.route('/remove', methods=['POST'])
         def remove():

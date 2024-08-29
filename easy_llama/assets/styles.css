@@ -53,14 +53,12 @@ h1 {
     font-family: verdana;
     background-color: #306b33;
     align-self: flex-end;
-    margin-right: 10px;
 }
 
 .bot-message {
     font-family: verdana;
     background-color: #31696c;
     align-self: flex-start;
-    margin-left: 10px;
 }
 
 form {
