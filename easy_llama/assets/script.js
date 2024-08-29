@@ -8,7 +8,7 @@ function setIsGeneratingState(targetState) {
     const sendButton = document.querySelector('button[type="submit"]');
     const resetButton = document.getElementById('resetButton');
 
-    if (isGenerating) {
+    if (targetState) {
         sendButton.textContent = 'cancel';
         sendButton.classList.add('cancel-button');
         resetButton.disabled = true;
