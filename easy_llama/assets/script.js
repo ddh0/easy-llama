@@ -1,11 +1,14 @@
+// script.js
+// https://github.com/ddh0/easy-llama/
+
 let isGenerating = false;
 
-function setIsGeneratingState(state) {
-    targetState = state;
+function setIsGeneratingState(targetState) {
+
     const sendButton = document.querySelector('button[type="submit"]');
     const resetButton = document.getElementById('resetButton');
 
-    if (targetState) {
+    if (isGenerating) {
         sendButton.textContent = 'cancel';
         sendButton.classList.add('cancel-button');
         resetButton.disabled = true;
@@ -16,6 +19,8 @@ function setIsGeneratingState(state) {
         resetButton.disabled = false;
         updatePlaceholderText();
     }
+
+    isGenerating = targetState;
 }
 
 function submitForm(event) { // this is called when `send message` OR `cancel` is clicked
