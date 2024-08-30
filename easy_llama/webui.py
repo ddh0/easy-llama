@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import html
+from cryptography.fernet import Fernet
 
 import easy_llama as ez
 
@@ -42,6 +43,22 @@ _EXPOSED_HOST_WARNING = \
 """
 
 
+def generate_key() -> bytes:
+    return Fernet.generate_key()
+
+
+def encrypt(key: bytes, message: str) -> bytes:
+    cipher_suite = Fernet(key)
+    encrypted_message = cipher_suite.encrypt(message.encode())
+    return encrypted_message
+
+
+def decrypt(key: bytes, encrypted_message: bytes) -> str:
+    cipher_suite = Fernet(key)
+    decrypted_message = cipher_suite.decrypt(encrypted_message)
+    return decrypted_message.decode()
+
+
 def _log(text: str) -> None:
     print(f'easy_llama: WebUI: {text}', file=sys.stderr, flush=True)
 
@@ -59,6 +76,7 @@ class WebUI:
             template_folder=self._assets_folder,
             static_url_path=''
         )
+        self._session_key = generate_key()
     
 
     def _get_stats_string(self) -> str:
@@ -86,6 +104,7 @@ class WebUI:
         
         @self.app.route('/cancel', methods=['POST'])
         def cancel():
+            print()
             _log('hit cancel endpoint')
             self._cancel_flag = True
             return '', 200
@@ -112,7 +131,7 @@ class WebUI:
                         yield tok_text
                     else:
                         print()
-                        _log('cancel generation')
+                        _log('cancel generation. teapot')
                         self._cancel_flag = False # reset flag
                         return '', 418 # I'm a teapot
                 print()
@@ -139,17 +158,23 @@ class WebUI:
                 _log('removed last message')
                 return '', 200
             else:
-                _log('no previous message to remove')
+                _log('no previous message to remove. teapot')
                 return '', 418 # I'm a teapot
         
+        _log('loading model')
         self.thread.model.load()
+        _log('warming up thread')
         self.thread.warmup()
 
         if host in ['0.0.0.0']:
             print(_EXPOSED_HOST_WARNING, file=sys.stderr, flush=True)
         
         try:
-            self.app.run(host=host, port=port)
+            _log('now running Flask')
+            self.app.run(
+                host=host,
+                port=port
+            )
         except Exception as exc:
             _log(f'{RED}exception in WebUI.app.run(), unloading model now{RESET}')
             self.thread.model.unload()

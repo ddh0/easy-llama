@@ -1,9 +1,14 @@
+/*
+styles.css
+https://github.com/ddh0/easy-llama/
+*/
+
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #111111;
-    color: white;
+    background-color: #000000;
+    color: #eeeeee;
     padding-bottom: 0px;
     display: flex;
     flex-direction: column;
@@ -11,13 +16,13 @@ body {
 }
 
 pre {
-    background-color: #223b3c;
-    color: #bababa;
-    white-space-collapse: preserve;
+    background-color: #182a2b;
+    color: #bebebe;
+    overflow-wrap: anywhere;
 }
 
 .container {
-    width: 100%;
+    width: 100svw;
     height: auto;
     margin: 10px;
     padding: 0px;
@@ -30,73 +35,104 @@ h1 {
     text-align: left;
 }
 
+a {
+    color: #a0c5ff;
+}
+
+a:visited {
+    color: #a0c5ff;
+}
+
 .conversation {
-    background-color: #222222;
+    background-color: #161616;
     margin-top: -10px;
     margin-bottom: 20px;
-    height: 80vh;
+    height: 80svh;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
 }
 
 .message {
+    font-family: verdana;
     font-size: small;
+    overflow-wrap: anywhere;
+    min-width: 2rem;
+    min-height: 6rex;
     margin: 10px;
-    padding: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 3px;
+    padding-bottom: 3px;
     border-radius: 15px;
-    color: white;
+    color: #eeeeee;
     max-width: 70%;
 }
 
 .user-message {
-    font-family: verdana;
-    background-color: #306b33;
+    background-color: #367739;
     align-self: flex-end;
 }
 
 .bot-message {
-    font-family: verdana;
-    background-color: #31696c;
+    background-color: #266366;
     align-self: flex-start;
 }
 
 form {
     position: fixed;
-    margin-top: 80vh;
-    height: 20vh;
-    width: 80%;
+    margin-top: 80svh;
+    height: 20svh;
+    width: 100svw;
     display: flex;
-    flex-direction: column;
     justify-content: center;
     align-items: center;
     padding: 3px;
-    border-color: #00000000;
+    border: none;
 }
 
 textarea {
-    width: 100%;
+    position: absolute;
+    overflow-wrap: anywhere;
+    top: 10px;
+    bottom: 10px;
+    width: 80%;
     height: 25%;
     padding: 10px;
-    border-color: #00000000;
-    border-radius: 3px;
+    border-radius: 2px;
+    border: none;
     resize: none;
     margin-bottom: 10px;
-    background-color: #222222;
-    color: white;
+    background-color: #161616;
+    color: #eeeeee;
     font-size: 16px;  /* this is necessary to prevent iOS safari from zooming in on the input box */
 }
 
+/* these 4 rules do the same thing on different browsers */
+textarea::placeholder {
+    color: #404040;
+}
+textarea::-webkit-input-placeholder {
+    color: #404040;
+}
+textarea::-moz-placeholder {
+    color: #404040;
+}
+textarea:-ms-input-placeholder {
+    color: #404040;
+}
+
 button {
+    font-size: 80%;
     padding: 10px;
     border: none;
     text-wrap: nowrap;
     text-overflow: ellipsis;
     max-width: 30ch;
-    max-height: 2.5lh;
+    max-height: 5rex;
     border-radius: 3px;
     background-color: #4b724b;
-    color: #ffffff;
+    color: #eeeeee;
     cursor: pointer;
 }
 
@@ -105,8 +141,8 @@ button:hover {
 }
 
 .button-group {
+    margin-top: 8rex;
     text-align: center;
-    display: flex;
     justify-content: space-between;
 }
 
@@ -117,23 +153,43 @@ button:hover {
     margin-inline: 5px;
 }
 
-.cancel-button {
+.disabled-button {
+    background-color: #404040 !important ;
+    cursor: not-allowed !important;
+}
+
+.disabled-button:hover {
+    background-color: #404040 !important ;
+}
+
+.red-button {
     background-color: #6b3045;
 }
 
-.cancel-button:hover {
+.red-button:hover {
+    background-color: #4e2131;
+}
+
+#resetButton {
+    background-color: #6b3045;
+}
+
+#resetButton:hover {
     background-color: #4e2131;
 }
 
 #removeButton {
-    padding: 10px;
-    border: none;
-    border-radius: 3px;
-    background-color: #6b3045;
-    color: #ffffff;
-    cursor: pointer;
+    background-color: #726642;
 }
-  
+
 #removeButton:hover {
-    background-color: #4e2131;
+    background-color: #534a2f;
+}
+
+#newBotMessageButton {
+    background-color: #3a5d5e;
+}
+
+#newBotMessageButton:hover {
+    background-color: #284344;
 }

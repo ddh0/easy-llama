@@ -5,18 +5,30 @@ let isGenerating = false;
 
 function setIsGeneratingState(targetState) {
 
-    const sendButton = document.querySelector('button[type="submit"]');
     const resetButton = document.getElementById('resetButton');
+    const removeButton = document.getElementById('removeButton');
+    const submitButton = document.getElementById('submitButton');
+    const newBotMessageButton = document.getElementById('newBotMessageButton')
 
     if (targetState) {
-        sendButton.textContent = 'cancel';
-        sendButton.classList.add('cancel-button');
+        submitButton.textContent = 'cancel generation';
+        submitButton.classList.add('red-button');
+        resetButton.classList.add('disabled-button');
         resetButton.disabled = true;
+        removeButton.classList.add('disabled-button');
+        removeButton.disabled = true;
+        newBotMessageButton.classList.add('disabled-button');
+        newBotMessageButton.disabled = true;
         updatePlaceholderText();
     } else {
-        sendButton.textContent = 'send message';
-        sendButton.classList.remove('cancel-button');
+        submitButton.textContent = 'send message';
+        submitButton.classList.remove('red-button');
+        resetButton.classList.remove('disabled-button');
         resetButton.disabled = false;
+        removeButton.classList.remove('disabled-button');
+        removeButton.disabled = false;
+        newBotMessageButton.classList.remove('disabled-button');
+        newBotMessageButton.disabled = false;
         updatePlaceholderText();
     }
 
@@ -53,7 +65,7 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
     const conversation = document.getElementById('conversation');
     const userMessage = document.createElement('div');
     userMessage.className = 'message user-message';
-    userMessage.innerText = escapeHtml(prompt);
+    userMessage.innerHTML = marked.parse(prompt); // TODO: render markdown in user message bubble
     conversation.appendChild(userMessage);
 
     // Clear prompt input text box
@@ -98,7 +110,7 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
                 const renderedContent = marked.parse(normalizedText);
                 botMessage.innerHTML = renderedContent; // Update the innerHTML with the rendered content
 
-                conversation.scrollTop = conversation.scrollHeight;
+                // conversation.scrollTop = conversation.scrollHeight;
                 readStream();
             }).catch(error => {
                 console.error('Error reading stream:', error);

@@ -1,9 +1,12 @@
+<!-- index.html -->
+<!-- https://github.com/ddh0/easy-llama/ -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>easy-llama web-UI</title>
+    <title>WebUI</title>
     <!-- 
     ./marked.min.js is originally from: https://cdn.jsdelivr.net/npm/marked/marked.min.js
 
@@ -18,11 +21,12 @@
         <div id="conversation" class="conversation"></div>
     </div>
     <form id="promptForm" onsubmit="submitForm(event)">
-        <textarea id="prompt" name="prompt" placeholder="Type your message..."></textarea>
+        <textarea id="prompt" name="prompt" placeholder="type a message here..."></textarea>
         <div class="button-group">
+            <button type="button" id="newBotMessageButton">new bot message</button>
+            <button type="button" id="resetButton">restart chat</button>
+            <button type="button" id="removeButton">remove last message</button>
             <button type="submit" id="submitButton">send message</button>
-            <button type="button" id="resetButton">reset</button>
-            <button type="button" id="removeButton">remove</button>
         </div>
     </form>
     <script>
