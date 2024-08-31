@@ -6,14 +6,12 @@
 import os
 import sys
 import json
-import html
-from cryptography.fernet import Fernet
 
 import easy_llama as ez
+from easy_llama.utils import assert_type
 
 from flask import Flask, render_template, request, Response
 
-assert_type = ez.utils.assert_type
 
 GREEN = ez.utils.USER_STYLE
 BLUE = ez.utils.BOT_STYLE
@@ -43,22 +41,6 @@ _EXPOSED_HOST_WARNING = \
 """
 
 
-def generate_key() -> bytes:
-    return Fernet.generate_key()
-
-
-def encrypt(key: bytes, message: str) -> bytes:
-    cipher_suite = Fernet(key)
-    encrypted_message = cipher_suite.encrypt(message.encode())
-    return encrypted_message
-
-
-def decrypt(key: bytes, encrypted_message: bytes) -> str:
-    cipher_suite = Fernet(key)
-    decrypted_message = cipher_suite.decrypt(encrypted_message)
-    return decrypted_message.decode()
-
-
 def _log(text: str) -> None:
     print(f'easy_llama: WebUI: {text}', file=sys.stderr, flush=True)
 
@@ -69,17 +51,16 @@ class WebUI:
         assert_type(thread, ez.Thread, 'thread', 'Server')
         self.thread = thread
         self._cancel_flag = False
-        self._assets_folder = os.path.join(os.path.dirname(__file__), 'assets')
+        _assets_folder = os.path.join(os.path.dirname(__file__), 'assets')
         self.app = Flask(
             __name__,
-            static_folder=self._assets_folder,
-            template_folder=self._assets_folder,
+            static_folder=_assets_folder,
+            template_folder=_assets_folder,
             static_url_path=''
         )
-        self._session_key = generate_key()
     
 
-    def _get_stats_string(self) -> str:
+    def _get_context_string(self) -> str:
         thread_len_tokens = self.thread.len_messages()
         max_ctx_len = self.thread.model.context_length
         return f"{thread_len_tokens} / {max_ctx_len} tokens used"
@@ -119,7 +100,6 @@ class WebUI:
             if prompt in ['', None]:
                 _log('do not submit empty prompt')
                 return '', 418
-            escaped_prompt = html.escape(prompt)
 
             def generate():
                 self.thread.add_message('user', prompt)
@@ -154,9 +134,9 @@ class WebUI:
             _log(f"thread with UUID '{self.thread.uuid}' was reset")
             return '', 200
         
-        @self.app.route('/get_stats', methods=['GET'])
-        def get_placeholder_text():
-            return json.dumps({'text': self._get_stats_string()}), 200, {'ContentType': 'application/json'}
+        @self.app.route('/get_context_string', methods=['GET'])
+        def get_context_string():
+            return json.dumps({'text': self._get_context_string()}), 200, {'ContentType': 'application/json'}
         
         @self.app.route('/remove', methods=['POST'])
         def remove():

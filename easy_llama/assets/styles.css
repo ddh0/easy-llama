@@ -58,7 +58,6 @@ a:visited {
 
 .message {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: small;
     overflow-wrap: anywhere;
     min-width: 2rem;
     /* min-height: 6rex; */
@@ -83,6 +82,7 @@ a:visited {
 }
 
 form {
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
     position: fixed;
     margin-top: 80svh;
     height: 20svh;
@@ -95,6 +95,7 @@ form {
 }
 
 textarea {
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
     position: absolute;
     overflow-wrap: anywhere;
     top: 10px;

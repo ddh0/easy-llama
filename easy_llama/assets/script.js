@@ -168,13 +168,13 @@ function submitForm(event) {
 }
 
 function updatePlaceholderText() {
-    fetch('/get_stats')
+    fetch('/get_context_string')
         .then(response => response.json())
         .then(data => {
             promptInput.placeholder = data.text;
         })
         .catch(error => {
-            console.error('Error fetching context usage stats:', error);
+            console.error('Error fetching context usage string:', error);
         });
 }
 
