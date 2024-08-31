@@ -3,13 +3,15 @@
 
 let isGenerating = false;
 
-function setIsGeneratingState(targetState) {
+const conversation = document.getElementById('conversation');
+const resetButton = document.getElementById('resetButton');
+const removeButton = document.getElementById('removeButton');
+const submitButton = document.getElementById('submitButton');
+const newBotMessageButton = document.getElementById('newBotMessageButton');
+const swipeButton = document.getElementById('swipeButton');
+const promptInput = document.getElementById('prompt');
 
-    const resetButton = document.getElementById('resetButton');
-    const removeButton = document.getElementById('removeButton');
-    const submitButton = document.getElementById('submitButton');
-    const newBotMessageButton = document.getElementById('newBotMessageButton');
-    const swipeButton = document.getElementById('swipeButton');
+function setIsGeneratingState(targetState) {
 
     if (targetState) {
         submitButton.textContent = 'cancel generation';
@@ -22,7 +24,6 @@ function setIsGeneratingState(targetState) {
         newBotMessageButton.disabled = true;
         swipeButton.classList.add('disabled-button')
         swipeButton.disabled = true;
-        updatePlaceholderText();
     } else {
         submitButton.textContent = 'send message';
         submitButton.classList.remove('red-button');
@@ -41,7 +42,6 @@ function setIsGeneratingState(targetState) {
 }
 
 function getMostRecentMessage() {
-    const conversation = document.getElementById('conversation');
     const lastMessage = conversation.firstChild;
     if (lastMessage) {
          return lastMessage 
@@ -51,7 +51,6 @@ function getMostRecentMessage() {
 }
 
 function appendNewMessage(message) {
-    const conversation = document.getElementById('conversation');
     let mostRecentMessage = getMostRecentMessage();
     if (mostRecentMessage) {
         conversation.insertBefore(message, mostRecentMessage);
@@ -62,7 +61,6 @@ function appendNewMessage(message) {
 
 function removeLastMessage() {
 
-    // get most recent message bubble
     const lastMessage = getMostRecentMessage();
 
     // trigger the `remove()` route on the server
@@ -82,7 +80,7 @@ function removeLastMessage() {
     });
 }
 
-function submitForm(event) { // this is called when `send message` OR `cancel` is clicked
+function submitForm(event) {
     event.preventDefault();
     const form = event.target;
     const formData = new FormData(form);
@@ -98,7 +96,6 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
         if (lastMessage) {
             lastMessage.remove(); // remove cancelled message bubble
         }
-        updatePlaceholderText();
         return
     } else {
         if (prompt == '') {
@@ -108,7 +105,6 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
     }
 
     // Append user message to the conversation
-    const conversation = document.getElementById('conversation');
     const userMessage = document.createElement('div');
     userMessage.className = 'message user-message';
     userMessage.innerHTML = marked.parse(prompt);
@@ -175,7 +171,6 @@ function updatePlaceholderText() {
     fetch('/get_stats')
         .then(response => response.json())
         .then(data => {
-            const promptInput = document.getElementById('prompt');
             promptInput.placeholder = data.text;
         })
         .catch(error => {
@@ -183,7 +178,7 @@ function updatePlaceholderText() {
         });
 }
 
-function escapeHtml(unsafe) {
+function escapeHtml(unsafe) { // currently unused
     return unsafe
         .replace(/&/g, "&")
         .replace(/</g, "<")
@@ -302,6 +297,11 @@ window.onload = function pageSetup() {
             removeLastMessage();
             newBotMessage();
         }
+    });
+
+    marked.setOptions({
+        pedantic: false,  // more relaxed parsing
+        gfm: true         // github-flavored markdown
     });
 
 }
