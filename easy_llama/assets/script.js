@@ -9,7 +9,7 @@ function setIsGeneratingState(targetState) {
     const removeButton = document.getElementById('removeButton');
     const submitButton = document.getElementById('submitButton');
     const newBotMessageButton = document.getElementById('newBotMessageButton');
-    const swipeButton = document.getElementById('newBotMessageButton');
+    const swipeButton = document.getElementById('swipeButton');
 
     if (targetState) {
         submitButton.textContent = 'cancel generation';
