@@ -40,6 +40,48 @@ function setIsGeneratingState(targetState) {
     isGenerating = targetState;
 }
 
+function getMostRecentMessage() {
+    const conversation = document.getElementById('conversation');
+    const lastMessage = conversation.firstChild;
+    if (lastMessage) {
+         return lastMessage 
+    } else {
+        return null
+    }
+}
+
+function appendNewMessage(message) {
+    const conversation = document.getElementById('conversation');
+    let mostRecentMessage = getMostRecentMessage();
+    if (mostRecentMessage) {
+        conversation.insertBefore(message, mostRecentMessage);
+    } else {
+        conversation.append(message);
+    }
+}
+
+function removeLastMessage() {
+
+    // get most recent message bubble
+    const lastMessage = getMostRecentMessage();
+
+    // trigger the `remove()` route on the server
+    fetch('/remove', {
+    method: 'POST',
+    })
+    .then(response => {
+        if (response.ok) {
+            lastMessage.remove(); // remove last message bubble
+            updatePlaceholderText();
+        } else {
+            console.error('Bad response from /remove:', response.statusText);
+        }
+    })
+    .catch(error => {
+        console.error('removeButton:', error);
+    });
+}
+
 function submitForm(event) { // this is called when `send message` OR `cancel` is clicked
     event.preventDefault();
     const form = event.target;
@@ -52,12 +94,11 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
         cancelGeneration();       
 
         // get most recent message bubble
-        const messages = document.querySelectorAll('.message');
-        const lastMessage = messages[messages.length - 1];
-        lastMessage.remove(); // remove cancelled message bubble
-
+        let lastMessage = getMostRecentMessage()
+        if (lastMessage) {
+            lastMessage.remove(); // remove cancelled message bubble
+        }
         updatePlaceholderText();
-
         return
     } else {
         if (prompt == '') {
@@ -70,8 +111,8 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
     const conversation = document.getElementById('conversation');
     const userMessage = document.createElement('div');
     userMessage.className = 'message user-message';
-    userMessage.innerHTML = marked.parse(prompt); // TODO: render markdown in user message bubble
-    conversation.appendChild(userMessage);
+    userMessage.innerHTML = marked.parse(prompt);
+    appendNewMessage(userMessage);
 
     // Clear prompt input text box
     form.reset();
@@ -79,7 +120,7 @@ function submitForm(event) { // this is called when `send message` OR `cancel` i
     // Create a new bot message element
     const botMessage = document.createElement('div');
     botMessage.className = 'message bot-message';
-    conversation.appendChild(botMessage);
+    appendNewMessage(botMessage);
 
     // Scroll to the bottom of the conversation
     conversation.scrollTop = conversation.scrollHeight;
@@ -173,7 +214,7 @@ function newBotMessage(event) {
         // Create a new bot message element
         const botMessage = document.createElement('div');
         botMessage.className = 'message bot-message';
-        conversation.appendChild(botMessage);
+        appendNewMessage(botMessage);
 
         // Scroll to the bottom of the conversation
         conversation.scrollTop = conversation.scrollHeight;
@@ -222,36 +263,12 @@ function newBotMessage(event) {
     }
 }
 
-function removeLastMessage() {
-
-    // get most recent message bubble
-    const messages = document.querySelectorAll('.message');
-    const lastMessage = messages[messages.length - 1];
-
-    // trigger the `remove()` route on the server
-    fetch('/remove', {
-    method: 'POST',
-    })
-    .then(response => {
-        if (response.ok) {
-            lastMessage.remove(); // remove last message bubble
-            updatePlaceholderText();
-        } else {
-            console.error('Bad response from /remove:', response.statusText);
-        }
-    })
-    .catch(error => {
-        console.error('removeButton:', error);
-    });
-}
-
 function resetConversation() {
     fetch('/reset', {
         method: 'POST',
     })
     .then(response => {
         if (response.ok) {
-            // Clear the conversation div
             document.getElementById('conversation').innerHTML = '';
             updatePlaceholderText();
         } else {
