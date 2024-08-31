@@ -8,6 +8,7 @@ import uuid
 
 from .utils    import (
     _SupportsWriteAndFlush,
+    UnreachableException,
     print_verbose,
     assert_type,
     RESET_ALL,
@@ -294,8 +295,27 @@ class Thread:
 
     def inference_str_from_messages(self) -> str:
         """
+        Alias to `.inf_str()` for backward compatability
+        """
+        return self.inf_str()
+    
+
+    def inference_str_for_role(
+            self,
+            role: str = Literal['system', 'user', 'bot']
+    ) -> str:
+        """
+        Alias to `.inf_str()` for backward compatability
+        """
+        return self.inf_str_for_role(role=role)
+    
+
+    def inf_str(self) -> str:
+        """
         Using the list of messages, construct a string suitable for inference,
-        respecting the format of this thread.
+        respecting the format of this thread. It is assumed that the incoming
+        generation is for the role of `bot`. To get an inference string for
+        `user` or `system` messages, see `inf_str_for_role`.
         """
 
         inf_str = ''
@@ -310,6 +330,68 @@ class Thread:
         inf_str += self.format['bot_prefix']
 
         return inf_str
+    
+
+    def inf_str_for_role(self, role: str = Literal['system', 'user', 'bot']):
+        """
+        Using the list of messages, construct a string suitable for inference,
+        respecting the format of this thread. The `role` parameter specifies
+        whether the following generated text is from `system`, `user`, or `bot`
+        . If `role` is `bot`, the behaviour is equivalent to
+        `inference_str_from_messages`.
+        """
+
+        assert_type(role, str, 'role', 'inf_str_for_role')
+        role = role.lower()
+        if role not in ['system', 'user', 'bot']:
+            raise ValueError(
+                "inf_str_for_role: `role` must be 'system', 'user', or 'bot'"
+            )
+        
+        # i can't think of a reason you would ever need to generate a system
+        # message on the fly, but i might as well give the user the option
+        
+        inf_str = ''
+
+        if role == 'system':
+            if len(self.messages) == 0:
+                return self.format['system_prefix']
+            
+            for message in reversed(self.messages):
+                msg_str = message.as_string()
+                inf_str = msg_str + inf_str
+
+            inf_str += self.format['system_prefix']
+
+            return inf_str
+            
+        elif role == 'user':
+            if len(self.messages) == 0:
+                return self.format['user_prefix']
+            
+            for message in reversed(self.messages):
+                msg_str = message.as_string()
+                inf_str = msg_str + inf_str
+
+            inf_str += self.format['user_prefix']
+
+            return inf_str
+        
+        elif role == 'bot':
+            if len(self.messages) == 0:
+                return self.format['bot_prefix']
+            
+            for message in reversed(self.messages):
+                msg_str = message.as_string()
+                inf_str = msg_str + inf_str
+
+            inf_str += self.format['bot_prefix']
+
+            return inf_str
+        
+        else:
+            raise UnreachableException
+
 
 
     def send(self, prompt: str) -> str:

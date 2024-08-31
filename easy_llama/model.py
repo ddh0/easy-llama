@@ -74,59 +74,59 @@ class Model:
         their normalized probabilities
     
     The following attributes are available:
-    - verbose: `bool`
+    - verbose `bool`:
         Whether the model was loaded with `verbose=True`
-    - metadata: `dict`
+    - metadata `dict`:
         A dictionary containing the GGUF metadata of the model
-    - context_length:
+    - context_length `int`:
         The currently loaded context length of the model, in tokens
-    - n_ctx: `int`
+    - n_ctx `int`:
         Alias to context_length
-    - llama: `llama_cpp.Llama`
+    - llama `llama_cpp.Llama`:
         The underlying Llama instance
-    - vocab: `list[str]`
+    - vocab `list[str]`:
         A list of all tokens in the model's vocabulary
-    - bos_token: `int`
+    - bos_token `int`:
         The beginning-of-sequence token ID
-    - eos_token: `int`
+    - eos_token `int`:
         The end-of-sequence token ID
-    - eot_token: `int`
+    - eot_token `int`:
         The end-of-turn token ID (or `None` if not found)
-    - nl_token: `int`
+    - nl_token `int`:
         The newline token ID (or `None` if not found)
-    - prefix_token: `int`
+    - prefix_token `int`:
         The infill prefix token ID (or `None` if not found)
-    - middle_token: `int`
+    - middle_token `int`:
         The infill middle token ID (or `None` if not found)
-    - suffix_token: `int`
+    - suffix_token `int`:
         The infill suffix token ID (or `None` if not found)
-    - cls_token: `int`
+    - cls_token `int`:
         The classifier token ID (or `None` if not found)
-    - sep_token: `int`
+    - sep_token `int`:
         The separator token ID (or `None` if not found)
-    - filename: `str`
+    - filename `str`:
         The name of the file the model was loaded from
-    - n_ctx_train: `int`
+    - n_ctx_train `int`:
         The native context length of the model
-    - rope_freq_base_train: `float`
+    - rope_freq_base_train `float`:
         The native RoPE frequency base (theta) value
-    - rope_freq_base: `float`
+    - rope_freq_base `float`:
         The currently loaded RoPE frequency base (theta) value
-    - flash_attn: `bool`
+    - flash_attn `bool`:
         Whether the model was loaded with Flash Attention enabled
-    - n_vocab: `int`
+    - n_vocab `int`:
         The number of tokens in the model's vocabulary
-    - n_layer: `int`
+    - n_layer `int`:
         The number of layers in the model
-    - n_gpu_layers: `int`
+    - n_gpu_layers `int`:
         The number of layers offloaded to the GPU (-1 for all layers)
-    - type_k: `int`
+    - type_k `int`:
         The GGML data type used for the `K` cache. 1 == f16, q8_0 otherwise
-    - type_v: `int`
+    - type_v `int`:
         The GGML data type used for the `V` cache. 1 == f16, q8_0 otherwise
-    - n_gqa: `int`
+    - n_gqa `int`:
         The GQA (Grouped-Query Attention) factor of the model
-    - uuid: `uuid.UUID`
+    - uuid `uuid.UUID`:
         A randomly generated UUID, unique to this specific model instance
     """
 
@@ -147,24 +147,24 @@ class Model:
         The model must be in GGUF format.
 
         The following parameters are optional:
-        - context_length: `int`
+        - context_length:
             The context length at which to load the model, in tokens
-        - n_gpu_layers: `int`
+        - n_gpu_layers:
             The number of layers to be offloaded to the GPU
-        - offload_kqv: `bool`
+        - offload_kqv:
             Whether the KQV cache (context) should be offloaded
-        - flash_attn: `bool`
+        - flash_attn:
             Whether to use Flash Attention
-        - quantize_kv_cache: `bool`
+        - quantize_kv_cache:
             Whether to use q8_0 values for KV cache
-        - verbose: `bool`
-            Whether to print additional backend information
+        - verbose:
+            Whether to print additional backend information. `bool`
 
         The following additional keyword arguments are also accepted:
-        - do_not_load: `bool`
+        - do_not_load:
             If `True`, construct the model instance but do not load it into
             memory yet. Call `Model.load()` before using the model
-        - debug: `bool`
+        - debug:
             If `True`, print additional backend information from llama.cpp
         """
 
@@ -1188,14 +1188,21 @@ class Model:
         self,
         prompt: str,
         k: int = 40,
-        temp: Optional[float] = None
+        temp: Optional[float] = None,
+        raw_token_ids: bool = False
     ) -> list[tuple[str, np.floating]]:
         """
         Given prompt `str` and k `int`, return a sorted list of the
         top k candidates for most likely next token, along with their
-        normalized probabilities.
+        normalized probabilities (logprobs).
 
-        Optionally apply temperature `temp` to the probabilities.
+        The following parameters are optional:
+        - temp: The temperature to apply to the distribution
+        - raw_token_ids: If `True`, return raw token IDs instead of text tokens
+
+        If parameter `k` is <= 0, the probabilities for all tokens in the
+        vocabulary will be returned. Vocabulary sizes are often in the
+        hundred-thousands.
         """
 
         assert_type(prompt, str, 'prompt', 'candidates')
@@ -1204,6 +1211,10 @@ class Model:
         assert_model_is_loaded(self)
         if k <= 0:
             k = self.n_vocab
+            if self.verbose:
+                print_verbose(
+                    f"candidates: k <= 0, using n_vocab ({self.n_vocab})"
+                )
         if not 1 <= k <= self.n_vocab:
             raise ValueError(
                 f"candidates: k should be between 1 and {self.n_vocab} "
@@ -1227,7 +1238,7 @@ class Model:
                 f"leaves no room for any new tokens to be generated"
             )
 
-        # It is necessary to reset the model before calling llama.eval()
+        # it is necessary to reset the model before calling llama.eval()
         elif self.verbose:
             print_verbose(
                 "candidates: reset model state..."
@@ -1256,8 +1267,8 @@ class Model:
             )
         normalized_scores = softmax(z=top_k_scores, T=temp)
 
-        # Detokenize only the top k tokens
-        token_probs_list = [
+        # consider only the top k tokens
+        logprobs = [
             (
                 self.llama._model.detokenize(
                     [tok_id], special=True
@@ -1265,12 +1276,17 @@ class Model:
                 normalized_scores[i]
             )
             for i, tok_id in enumerate(top_k_indices)
+        ] if not raw_token_ids else [
+            (
+                tok_id,
+                normalized_scores[i]
+            ) for i, tok_id in enumerate(top_k_indices)
         ]
 
-        # Sort the top k tokens by probability
-        token_probs_list.sort(key=lambda x: x[1], reverse=True)
+        # sort by probability
+        logprobs.sort(key=lambda x: x[1], reverse=True)
 
-        return token_probs_list
+        return logprobs
 
 
     def print_candidates(
@@ -1278,14 +1294,26 @@ class Model:
         prompt: str,
         k: int = 40,
         temp: Optional[float] = None,
+        raw_token_ids: bool = False,
         file: _SupportsWriteAndFlush = None,
     ) -> None:
         """
-        Like `Model.candidates()`, but print the values instead
-        of returning them
+        Given prompt `str` and k `int`, print a sorted list of the
+        top k candidates for most likely next token, along with their
+        normalized probabilities (logprobs).
+
+        The following parameters are optional:
+        - temp: The temperature to apply to the distribution
+        - raw_token_ids: If `True`, print raw token IDs instead of text tokens
+
+        If parameter `k` is <= 0, the probabilities for all tokens in the
+        vocabulary will be printed. Vocabulary sizes are often in the
+        hundred-thousands.
         """
         file = sys.stdout if file is None else file
-        for _tuple in self.candidates(prompt=prompt, k=k, temp=temp):
+        for _tuple in self.candidates(
+            prompt=prompt, k=k, temp=temp, raw_token_ids=raw_token_ids
+        ):
             print(
                 f"token {_tuple[0]!r:<32} has probability "
                 f"{_tuple[1] * 100 :>7.3f} %",
@@ -1328,9 +1356,7 @@ def assert_model_is_loaded(model) -> None:
             "llama_cpp._internals._LlamaModel.model is None"
         )
     else:
-        exc = ModelUnloadedException(     # likely unreachable
-            "model is not loaded"
-        )
+        raise UnreachableException
     
     if not isinstance(model, Model):
         exc.add_note(

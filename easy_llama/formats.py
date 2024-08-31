@@ -435,9 +435,19 @@ natural: dict[str, str | list] = {
 }
 
 # https://docs.cohere.com/docs/prompting-command-r
+#
+# NOTE: Command models benefit from special attention to the recommended prompt
+#       format and techniques outlined in Cohere's documentation. The default
+#       prompt format below will work OK, but ideally should be customized
+#       for your specific use case according to the specific format shown in
+#       the documentation.
+#
 command: dict[str, str | list] = {
     "system_prefix": "<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>",
-    "system_prompt": "",
+    "system_prompt": "You are a large language model called Command R built "
+    "by the company Cohere. You act as a brilliant, sophisticated, "
+    "AI-assistant chatbot trained to assist human users by providing "
+    "thorough responses.",
     "system_suffix": "<|END_OF_TURN_TOKEN|>",
     "user_prefix": "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>",
     "user_suffix": "<|END_OF_TURN_TOKEN|>",

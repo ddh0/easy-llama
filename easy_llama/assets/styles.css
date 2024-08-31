@@ -193,3 +193,11 @@ button:hover {
 #newBotMessageButton:hover {
     background-color: #284344;
 }
+
+#swipeButton {
+    background-color: #563a5e;
+}
+
+#swipeButton:hover {
+    background-color: #3e2844;
+}

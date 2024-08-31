@@ -111,7 +111,14 @@ class WebUI:
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
+            _log('hit submit endpoint')
+            if self._cancel_flag:
+                _log('refuse to continue submission because cancel flag is set')
+                return '', 418
             prompt = request.form['prompt']
+            if prompt in ['', None]:
+                _log('do not submit empty prompt')
+                return '', 418
             escaped_prompt = html.escape(prompt)
 
             def generate():
@@ -160,6 +167,35 @@ class WebUI:
             else:
                 _log('no previous message to remove. teapot')
                 return '', 418 # I'm a teapot
+        
+        @self.app.route('/trigger', methods=['POST'])
+        def trigger():
+            _log('hit trigger endpoint')
+            if self._cancel_flag:
+                _log('refuse to trigger because cancel flag is set')
+                return '', 418
+            def generate():
+                token_generator = self.thread.model.stream(
+                    self.thread.inf_str(),
+                    stops=self.thread.format['stops'],
+                    sampler=self.thread.sampler
+                )
+                response = ''
+                for token in token_generator:
+                    if not self._cancel_flag:
+                        tok_text = token['choices'][0]['text']
+                        response += tok_text
+                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
+                        yield tok_text
+                    else:
+                        print()
+                        _log('cancel generation. teapot')
+                        self._cancel_flag = False # reset flag
+                        return '', 418 # I'm a teapot
+                print()
+                self.thread.add_message('bot', response)
+
+            return Response(generate(), mimetype='text/plain')
         
         _log('loading model')
         self.thread.model.load()
