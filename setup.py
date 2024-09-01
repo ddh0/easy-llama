@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.81'
+__version__ = '0.1.82'
 
 from setuptools import setup
 
@@ -25,6 +25,7 @@ setup(
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
+        'Framework :: Flask',
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
         'License :: Public Domain',  
@@ -37,5 +38,5 @@ setup(
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
         'Topic :: Scientific/Engineering :: Artificial Intelligence'
-    ],
+    ]
 )

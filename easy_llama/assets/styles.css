@@ -16,6 +16,8 @@ body {
 }
 
 pre {
+    border-radius: 5px;
+    padding: 7px;
     white-space: pre;
     word-wrap: normal;
     background-color: #0d1919;

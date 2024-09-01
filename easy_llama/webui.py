@@ -19,36 +19,32 @@ YELLOW = ez.utils.SPECIAL_STYLE
 RED = ez.utils.ERROR_STYLE
 RESET = ez.utils.RESET_ALL
 
-_WEBUI_WARNING = \
-"""
-################################################################
+WARNING = \
+f"""{RED}
+###############################################################################
+{RESET}
+                          please keep in mind
 
-    the easy-llama WebUI is not meant for production use
+            the easy-llama WebUI is not meant for production use
 
-                  it may be insecure
+                   it is only intended for personal use
 
-################################################################
-"""
+         the connection between client and server is not encrypted
 
-_EXPOSED_HOST_WARNING = \
-"""
-================================================================
+                 and all messages are sent in cleartext
 
-    you are hosting from 0.0.0.0 which exposes the WebUI to    
-              other devices over the network 
+     if you expose the WebUI to the internet, you do so at your own risk
 
-================================================================
-"""
-
-
-def _log(text: str) -> None:
-    print(f'easy_llama: WebUI: {text}', file=sys.stderr, flush=True)
+                          you have been warned
+{RED}
+###############################################################################
+{RESET}"""
 
 
 class WebUI:
 
     def __init__(self, thread: ez.thread.Thread):
-        assert_type(thread, ez.Thread, 'thread', 'Server')
+        assert_type(thread, ez.Thread, 'thread', 'WebUI')
         self.thread = thread
         self._cancel_flag = False
         _assets_folder = os.path.join(os.path.dirname(__file__), 'assets')
@@ -58,6 +54,10 @@ class WebUI:
             template_folder=_assets_folder,
             static_url_path=''
         )
+    
+
+    def _log(self, text: str) -> None:
+        print(f'easy_llama: WebUI {self.thread.uuid}: {text}', file=sys.stderr, flush=True)
     
 
     def _get_context_string(self) -> str:
@@ -70,14 +70,14 @@ class WebUI:
         """
         - host `str`:
             The local IP address from which to host the WebUI. For example,
-            `'127.0.0.0.1'` or `'0.0.0.0'`
+            `'127.0.0.0.1'` or `'10.0.0.140'`
         - port `int`:
-            The local port from which to host the WebUI. Defaults to `8080`
+            The port on which to host the WebUI. Defaults to `8080`
         """
-        assert_type(host, str, 'host', 'Server.start()')
-        assert_type(port, int, 'port', 'Server.start()')
-        print(_WEBUI_WARNING, file=sys.stderr, flush=True)
-        _log(f"starting from thread '{self.thread.uuid}' at {host}:{port}")
+        assert_type(host, str, 'host', 'WebUI.start')
+        assert_type(port, int, 'port', 'WebUI.start')
+        print(WARNING, file=sys.stderr, flush=True)
+        self._log(f"starting server at {host}:{port}")
 
         @self.app.route('/')
         def home():
@@ -85,27 +85,27 @@ class WebUI:
         
         @self.app.route('/cancel', methods=['POST'])
         def cancel():
-            print()
-            _log('hit cancel endpoint')
+            print('', file=sys.stderr)
+            self._log('hit cancel endpoint')
             self._cancel_flag = True
             return '', 200
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
-            _log('hit submit endpoint')
+            self._log('hit submit endpoint')
             if self._cancel_flag:
-                _log('refuse to continue submission because cancel flag is set')
+                self._log('refuse to continue submission because cancel flag is set')
                 return '', 418
             prompt = request.form['prompt']
             if prompt in ['', None]:
-                _log('do not submit empty prompt')
+                self._log('do not submit empty prompt')
                 return '', 418
 
             def generate():
                 self.thread.add_message('user', prompt)
-                print(f'{GREEN}{prompt}{RESET}')
+                print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
                 token_generator = self.thread.model.stream(
-                    self.thread.inference_str_from_messages(),
+                    self.thread.inf_str(),
                     stops=self.thread.format['stops'],
                     sampler=self.thread.sampler
                 )
@@ -114,14 +114,14 @@ class WebUI:
                     if not self._cancel_flag:
                         tok_text = token['choices'][0]['text']
                         response += tok_text
-                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
+                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True, file=sys.stderr)
                         yield tok_text
                     else:
-                        print()
-                        _log('cancel generation. teapot')
+                        print('', file=sys.stderr)
+                        self._log('cancel generation. teapot')
                         self._cancel_flag = False # reset flag
                         return '', 418 # I'm a teapot
-                print()
+                print('', file=sys.stderr)
                 self.thread.add_message('bot', response)
 
             if prompt not in ['', None]:
@@ -131,7 +131,7 @@ class WebUI:
         @self.app.route('/reset', methods=['POST'])
         def reset():
             self.thread.reset()
-            _log(f"thread with UUID '{self.thread.uuid}' was reset")
+            self._log(f"thread with UUID '{self.thread.uuid}' was reset")
             return '', 200
         
         @self.app.route('/get_context_string', methods=['GET'])
@@ -142,17 +142,17 @@ class WebUI:
         def remove():
             if len(self.thread.messages) >= 1:
                 self.thread.messages.pop(-1)
-                _log('removed last message')
+                self._log('removed last message')
                 return '', 200
             else:
-                _log('no previous message to remove. teapot')
+                self._log('no previous message to remove. teapot')
                 return '', 418 # I'm a teapot
         
         @self.app.route('/trigger', methods=['POST'])
         def trigger():
-            _log('hit trigger endpoint')
+            self._log('hit trigger endpoint')
             if self._cancel_flag:
-                _log('refuse to trigger because cancel flag is set')
+                self._log('refuse to trigger because cancel flag is set')
                 return '', 418
             def generate():
                 token_generator = self.thread.model.stream(
@@ -169,29 +169,33 @@ class WebUI:
                         yield tok_text
                     else:
                         print()
-                        _log('cancel generation. teapot')
+                        self._log('cancel generation. teapot')
                         self._cancel_flag = False # reset flag
                         return '', 418 # I'm a teapot
-                print()
+                print('', file=sys.stderr)
                 self.thread.add_message('bot', response)
 
             return Response(generate(), mimetype='text/plain')
         
-        _log('loading model')
+        self._log('loading model')
         self.thread.model.load()
-        _log('warming up thread')
+        self._log('warming up thread')
         self.thread.warmup()
-
-        if host in ['0.0.0.0']:
-            print(_EXPOSED_HOST_WARNING, file=sys.stderr, flush=True)
         
         try:
-            _log('now running Flask')
+            self._log('now running Flask')
             self.app.run(
                 host=host,
                 port=port
             )
         except Exception as exc:
-            _log(f'{RED}exception in WebUI.app.run(), unloading model now{RESET}')
+            self._log(f'{RED}exception in Flask, unloading model now{RESET}')
             self.thread.model.unload()
             raise exc
+        
+        print('', file=sys.stderr)
+        self._log('Flask server stopped')
+        self._log('----- final thread stats -----')
+        self.thread.print_stats()
+        self._log('------------------------------')
+        self.thread.model.unload()

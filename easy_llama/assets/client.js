@@ -1,4 +1,4 @@
-// script.js
+// client.js
 // https://github.com/ddh0/easy-llama/
 
 let isGenerating = false;
@@ -41,13 +41,8 @@ function setIsGeneratingState(targetState) {
     isGenerating = targetState;
 }
 
-function getMostRecentMessage() {
-    const lastMessage = conversation.firstChild;
-    if (lastMessage) {
-         return lastMessage 
-    } else {
-        return null
-    }
+function getMostRecentMessage() { 
+    return conversation.firstChild; // node or null
 }
 
 function appendNewMessage(message) {
@@ -63,13 +58,12 @@ function removeLastMessage() {
 
     const lastMessage = getMostRecentMessage();
 
-    // trigger the `remove()` route on the server
     fetch('/remove', {
     method: 'POST',
     })
     .then(response => {
         if (response.ok) {
-            lastMessage.remove(); // remove last message bubble
+            lastMessage.remove();
             updatePlaceholderText();
         } else {
             console.error('Bad response from /remove:', response.statusText);
@@ -91,7 +85,6 @@ function submitForm(event) {
         console.log('cancel button clicked');
         cancelGeneration();       
 
-        // get most recent message bubble
         let lastMessage = getMostRecentMessage()
         if (lastMessage) {
             lastMessage.remove(); // remove cancelled message bubble
@@ -146,12 +139,13 @@ function submitForm(event) {
                 accumulatedText += chunk;
 
                 // we don't want to parse extra whitespace in markdown
-                const normalizedText = accumulatedText.replace(/[ \t]+/g, ' ').trim();
+                //const normalizedText = accumulatedText.replace(/[ \t]+/g, ' ').trim();
+                //const normalizedText = accumulatedText.trim();
 
-                const renderedContent = marked.parse(normalizedText);
+                //const renderedContent = marked.parse(normalizedText);
+                const renderedContent = marked.parse(accumulatedText);
                 botMessage.innerHTML = renderedContent;
-
-                // conversation.scrollTop = conversation.scrollHeight;
+                
                 readStream();
             }).catch(error => {
                 console.error('Error reading stream:', error);
