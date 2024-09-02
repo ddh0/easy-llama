@@ -664,16 +664,19 @@ class Model:
     
 
     def __del__(self):
-       self.unload()
+       if self.is_loaded():
+        self.unload()
     
 
     def __enter__(self):
-        self.load()
+        if not self.is_loaded():
+            self.load()
         return self
 
 
     def __exit__(self, *_):
-        self.unload()
+        if self.is_loaded():
+            self.unload()
     
 
     def __call__(
@@ -1274,8 +1277,7 @@ class Model:
                     [tok_id], special=True
                 ).decode('utf-8', errors='ignore'),
                 normalized_scores[i]
-            )
-            for i, tok_id in enumerate(top_k_indices)
+            ) for i, tok_id in enumerate(top_k_indices)
         ] if not raw_token_ids else [
             (
                 tok_id,
@@ -1310,14 +1312,13 @@ class Model:
         vocabulary will be printed. Vocabulary sizes are often in the
         hundred-thousands.
         """
-        file = sys.stdout if file is None else file
         for _tuple in self.candidates(
             prompt=prompt, k=k, temp=temp, raw_token_ids=raw_token_ids
         ):
             print(
                 f"token {_tuple[0]!r:<32} has probability "
                 f"{_tuple[1] * 100 :>7.3f} %",
-                file=file,
+                file=sys.stdout if file is None else file,
             )
 
 

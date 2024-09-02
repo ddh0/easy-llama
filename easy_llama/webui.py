@@ -41,6 +41,10 @@ f"""{RED}
 {RESET}"""
 
 
+def _newline() -> None:
+    print('', end='\n', file=sys.stderr, flush=True)
+
+
 class WebUI:
 
     def __init__(self, thread: ez.thread.Thread):
@@ -54,10 +58,22 @@ class WebUI:
             template_folder=_assets_folder,
             static_url_path=''
         )
+        # variables used for logging to console
+        self._log_host = None
+        self._log_port = None
     
 
     def _log(self, text: str) -> None:
-        print(f'easy_llama: WebUI {self.thread.uuid}: {text}', file=sys.stderr, flush=True)
+        if any(i is None for i in [self._log_host, self._log_port]):
+            ez.utils.print_verbose(text)
+        else:
+            print(
+                f'easy_llama: WebUI @ '
+                f'{YELLOW}{self._log_host}{RESET}:'
+                f'{YELLOW}{self._log_port}{RESET}: {text}',
+                file=sys.stderr,
+                flush=True
+            )
     
 
     def _get_context_string(self) -> str:
@@ -76,8 +92,14 @@ class WebUI:
         """
         assert_type(host, str, 'host', 'WebUI.start')
         assert_type(port, int, 'port', 'WebUI.start')
-        print(WARNING, file=sys.stderr, flush=True)
-        self._log(f"starting server at {host}:{port}")
+        self._log_host = None
+        self._log_port = None
+        self._log(f"starting WebUI instance:")
+        self._log(f"   thread.uuid           == {self.thread.uuid}")
+        self._log(f"   host                  == {host}")
+        self._log(f"   port                  == {port}")
+        self._log_host = host
+        self._log_port = port
 
         @self.app.route('/')
         def home():
@@ -85,17 +107,15 @@ class WebUI:
         
         @self.app.route('/cancel', methods=['POST'])
         def cancel():
-            print('', file=sys.stderr)
-            self._log('hit cancel endpoint')
+            _newline()
+            self._log('hit cancel endpoint - flag is set')
             self._cancel_flag = True
             return '', 200
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
+            self._cancel_flag = False
             self._log('hit submit endpoint')
-            if self._cancel_flag:
-                self._log('refuse to continue submission because cancel flag is set')
-                return '', 418
             prompt = request.form['prompt']
             if prompt in ['', None]:
                 self._log('do not submit empty prompt')
@@ -117,11 +137,11 @@ class WebUI:
                         print(f'{BLUE}{tok_text}{RESET}', end='', flush=True, file=sys.stderr)
                         yield tok_text
                     else:
-                        print('', file=sys.stderr)
-                        self._log('cancel generation. teapot')
+                        print(file=sys.stderr)
+                        self._log('cancel generation from /submit. teapot')
                         self._cancel_flag = False # reset flag
                         return '', 418 # I'm a teapot
-                print('', file=sys.stderr)
+                _newline()
                 self.thread.add_message('bot', response)
 
             if prompt not in ['', None]:
@@ -131,7 +151,7 @@ class WebUI:
         @self.app.route('/reset', methods=['POST'])
         def reset():
             self.thread.reset()
-            self._log(f"thread with UUID '{self.thread.uuid}' was reset")
+            self._log(f"thread was reset")
             return '', 200
         
         @self.app.route('/get_context_string', methods=['GET'])
@@ -151,9 +171,7 @@ class WebUI:
         @self.app.route('/trigger', methods=['POST'])
         def trigger():
             self._log('hit trigger endpoint')
-            if self._cancel_flag:
-                self._log('refuse to trigger because cancel flag is set')
-                return '', 418
+            self._cancel_flag = False
             def generate():
                 token_generator = self.thread.model.stream(
                     self.thread.inf_str(),
@@ -169,7 +187,7 @@ class WebUI:
                         yield tok_text
                     else:
                         print()
-                        self._log('cancel generation. teapot')
+                        self._log('cancel generation from /trigger. teapot')
                         self._cancel_flag = False # reset flag
                         return '', 418 # I'm a teapot
                 print('', file=sys.stderr)
@@ -177,10 +195,16 @@ class WebUI:
 
             return Response(generate(), mimetype='text/plain')
         
-        self._log('loading model')
-        self.thread.model.load()
+        if not self.thread.model.is_loaded():
+            self._log('loading model')
+            self.thread.model.load()
+        else:
+            self._log('model is already loaded')
+        
         self._log('warming up thread')
         self.thread.warmup()
+
+        print(WARNING, file=sys.stderr, flush=True)
         
         try:
             self._log('now running Flask')
@@ -189,13 +213,9 @@ class WebUI:
                 port=port
             )
         except Exception as exc:
-            self._log(f'{RED}exception in Flask, unloading model now{RESET}')
-            self.thread.model.unload()
+            self._log(f'{RED}exception in Flask: {exc}{RESET}')
             raise exc
         
-        print('', file=sys.stderr)
-        self._log('Flask server stopped')
-        self._log('----- final thread stats -----')
-        self.thread.print_stats()
-        self._log('------------------------------')
-        self.thread.model.unload()
+        self._log_host = None
+        self._log_port = None
+        _newline()

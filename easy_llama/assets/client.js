@@ -22,7 +22,7 @@ function setIsGeneratingState(targetState) {
         removeButton.disabled = true;
         newBotMessageButton.classList.add('disabled-button');
         newBotMessageButton.disabled = true;
-        swipeButton.classList.add('disabled-button')
+        swipeButton.classList.add('disabled-button');
         swipeButton.disabled = true;
     } else {
         submitButton.textContent = 'send message';
@@ -33,7 +33,7 @@ function setIsGeneratingState(targetState) {
         removeButton.disabled = false;
         newBotMessageButton.classList.remove('disabled-button');
         newBotMessageButton.disabled = false;
-        swipeButton.classList.remove('disabled-button')
+        swipeButton.classList.remove('disabled-button');
         swipeButton.disabled = false;
         updatePlaceholderText();
     }
@@ -47,7 +47,7 @@ function getMostRecentMessage() {
 
 function appendNewMessage(message) {
     let mostRecentMessage = getMostRecentMessage();
-    if (mostRecentMessage) {
+    if (mostRecentMessage !== null) {
         conversation.insertBefore(message, mostRecentMessage);
     } else {
         conversation.append(message);
@@ -57,6 +57,10 @@ function appendNewMessage(message) {
 function removeLastMessage() {
 
     const lastMessage = getMostRecentMessage();
+
+    if (lastMessage === null) {
+        return
+    }
 
     fetch('/remove', {
     method: 'POST',
@@ -80,18 +84,15 @@ function submitForm(event) {
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
 
-    if (isGenerating) {   // if already generating, cancel was clicked
+    if (isGenerating) {
 
+        // if already generating, cancel was clicked
         console.log('cancel button clicked');
-        cancelGeneration();       
-
-        let lastMessage = getMostRecentMessage()
-        if (lastMessage) {
-            lastMessage.remove(); // remove cancelled message bubble
-        }
+        cancelGeneration();  
         return
+
     } else {
-        if (prompt == '') {
+        if ('' == prompt) {
             console.log('will not submit empty prompt');
             return;
         }
@@ -135,18 +136,12 @@ function submitForm(event) {
                     setIsGeneratingState(false);
                     return;
                 }
-                const chunk = decoder.decode(value, { stream: true });
-                accumulatedText += chunk;
 
-                // we don't want to parse extra whitespace in markdown
-                //const normalizedText = accumulatedText.replace(/[ \t]+/g, ' ').trim();
-                //const normalizedText = accumulatedText.trim();
+                accumulatedText += decoder.decode(value, { stream: true });
+                botMessage.innerHTML = marked.parse(accumulatedText);
 
-                //const renderedContent = marked.parse(normalizedText);
-                const renderedContent = marked.parse(accumulatedText);
-                botMessage.innerHTML = renderedContent;
-                
                 readStream();
+
             }).catch(error => {
                 console.error('Error reading stream:', error);
                 setIsGeneratingState(false);
@@ -188,6 +183,10 @@ function cancelGeneration() {
     .then(response => {
             if (response.ok) {
                 setIsGeneratingState(false);
+                const lastMessage = getMostRecentMessage();
+                if (lastMessage === null) { return } else {
+                    lastMessage.remove();
+                }
                 return;
             } else {
                 console.error('Not OK: cancelGeneration:', response.statusText);
@@ -195,7 +194,7 @@ function cancelGeneration() {
         });
 }
 
-function newBotMessage(event) {
+function newBotMessage() {
 
     // do not trigger generation if already generating
     if (isGenerating) { return } else {
@@ -224,19 +223,14 @@ function newBotMessage(event) {
                     reader.read().then(({ done, value }) => {
                         if (done) {
                             setIsGeneratingState(false);
-                            return;
+                            return
                         }
-                        const chunk = decoder.decode(value, { stream: true });
-                        accumulatedText += chunk;
+
+                        accumulatedText += decoder.decode(value, { stream: true });
+                        botMessage.innerHTML = marked.parse(accumulatedText);
         
-                        // we don't want to parse extra whitespace in markdown
-                        const normalizedText = accumulatedText.replace(/[ \t]+/g, ' ').trim();
-        
-                        const renderedContent = marked.parse(normalizedText);
-                        botMessage.innerHTML = renderedContent;
-        
-                        // conversation.scrollTop = conversation.scrollHeight;
                         readStream();
+
                     }).catch(error => {
                         console.error('Error reading stream:', error);
                         setIsGeneratingState(false);
@@ -279,6 +273,8 @@ window.onload = function pageSetup() {
 
     document.getElementById("newBotMessageButton").addEventListener('click', newBotMessage);
 
+    // SHIFT + ENTER -> newline
+    // ENTER         -> submit form
     document.getElementById('prompt').addEventListener('keydown', function(event) {
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
@@ -286,8 +282,12 @@ window.onload = function pageSetup() {
         }
     });
 
-    document.getElementById('swipeButton').addEventListener('click', function(event) {
-        if (isGenerating) { return } else {
+    document.getElementById('swipeButton').addEventListener('click', function() {
+        if (isGenerating) {
+            return
+            //cancelGeneration();
+            //newBotMessage();
+        } else {
             removeLastMessage();
             newBotMessage();
         }
