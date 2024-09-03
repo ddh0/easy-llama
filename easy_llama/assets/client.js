@@ -3,6 +3,16 @@
 
 let isGenerating = false;
 
+function encode(text) {
+    // base64
+    return btoa(text);
+}
+
+function decode(base64) {
+    // base64
+    return atob(base64);
+}
+
 const conversation = document.getElementById('conversation');
 const resetButton = document.getElementById('resetButton');
 const removeButton = document.getElementById('removeButton');
@@ -83,6 +93,7 @@ function submitForm(event) {
     const form = event.target;
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
+    const encodedPrompt = encode(prompt)
 
     if (isGenerating) {
 
@@ -121,10 +132,7 @@ function submitForm(event) {
 
     fetch('/submit', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(formData),
+        body: encodedPrompt
     })
     .then(response => {
         const reader = response.body.getReader();
@@ -137,7 +145,9 @@ function submitForm(event) {
                     return;
                 }
 
-                accumulatedText += decoder.decode(value, { stream: true });
+                accumulatedText += decode(decoder.decode(
+                    value, { stream: true }
+                ));
                 botMessage.innerHTML = marked.parse(accumulatedText);
 
                 readStream();
@@ -160,7 +170,7 @@ function updatePlaceholderText() {
     fetch('/get_context_string')
         .then(response => response.json())
         .then(data => {
-            promptInput.placeholder = data.text;
+            promptInput.placeholder = decode(data.text);
         })
         .catch(error => {
             console.error('Error fetching context usage string:', error);
@@ -189,7 +199,9 @@ function cancelGeneration() {
                 }
                 return;
             } else {
-                console.error('Not OK: cancelGeneration:', response.statusText);
+                console.error(
+                    'Not OK: cancelGeneration:', response.statusText
+                );
             }
         });
 }
@@ -226,7 +238,9 @@ function newBotMessage() {
                             return
                         }
 
-                        accumulatedText += decoder.decode(value, { stream: true });
+                        accumulatedText += decode(decoder.decode(
+                            value, { stream: true }
+                        ));
                         botMessage.innerHTML = marked.parse(accumulatedText);
         
                         readStream();
@@ -240,7 +254,9 @@ function newBotMessage() {
                 readStream();
 
             } else {
-                console.error('Bad response from /trigger:', response.statusText);
+                console.error(
+                    'Bad response from /trigger:', response.statusText
+                );
             }
         });
     }
@@ -267,31 +283,43 @@ window.onload = function pageSetup() {
 
     console.log('do pageSetup()');
 
-    document.getElementById('resetButton').addEventListener('click', resetConversation);
+    document.getElementById('resetButton').addEventListener(
+        'click', resetConversation
+    );
 
-    document.getElementById("removeButton").addEventListener('click', removeLastMessage);
+    document.getElementById("removeButton").addEventListener(
+        'click', removeLastMessage
+    );
 
-    document.getElementById("newBotMessageButton").addEventListener('click', newBotMessage);
+    document.getElementById("newBotMessageButton").addEventListener(
+        'click', newBotMessage
+    );
 
     // SHIFT + ENTER -> newline
     // ENTER         -> submit form
-    document.getElementById('prompt').addEventListener('keydown', function(event) {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            document.getElementById('promptForm').dispatchEvent(new Event('submit'));
+    document.getElementById('prompt').addEventListener('keydown',
+        function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                document.getElementById('promptForm').dispatchEvent(
+                    new Event('submit'
+                ));
+            }
         }
-    });
+    );
 
-    document.getElementById('swipeButton').addEventListener('click', function() {
-        if (isGenerating) {
-            return
-            //cancelGeneration();
-            //newBotMessage();
-        } else {
-            removeLastMessage();
-            newBotMessage();
+    document.getElementById('swipeButton').addEventListener('click',
+        function() {
+            if (isGenerating) {
+                return
+                //cancelGeneration();
+                //newBotMessage();
+            } else {
+                removeLastMessage();
+                newBotMessage();
+            }
         }
-    });
+    );
 
     marked.setOptions({
         pedantic: false,  // more relaxed parsing

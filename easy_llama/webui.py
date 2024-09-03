@@ -4,8 +4,10 @@
 """The easy-llama WebUI"""
 
 import os
+import bz2
 import sys
 import json
+import base64
 
 import easy_llama as ez
 from easy_llama.utils import assert_type
@@ -23,26 +25,40 @@ WARNING = \
 f"""{RED}
 ###############################################################################
 {RESET}
+
                           please keep in mind
 
-            the easy-llama WebUI is not meant for production use
+        the easy-llama WebUI is not guaranteed to be secure whatsoever
 
-                   it is only intended for personal use
-
-         the connection between client and server is not encrypted
-
-                 and all messages are sent in cleartext
+             it is not intended to be exposed to the internet
 
      if you expose the WebUI to the internet, you do so at your own risk
 
                           you have been warned
+
 {RED}
 ###############################################################################
 {RESET}"""
 
+USING_SELF_SIGNED_SSL_CERT_WARNING = \
+f"{YELLOW}you have set `ssl=True` which tells the WebUI to generate and " + \
+f"use a self-signed SSL certificate. this enables secure communication " + \
+f"between client and server, but your browser will probably show you a " + \
+f"scary warning about a self-signed certificate. you may safely ignore " + \
+f"this warning and proceed to the WebUI.{RESET}"
+
 
 def _newline() -> None:
     print('', end='\n', file=sys.stderr, flush=True)
+
+
+def encode(text):
+    data = (text).encode('utf-8')
+    return base64.b64encode(data).decode('utf-8')
+
+
+def decode(base64_str):
+    return base64.b64decode(base64_str).decode('utf-8')
 
 
 class WebUI:
@@ -74,7 +90,7 @@ class WebUI:
                 file=sys.stderr,
                 flush=True
             )
-    
+        
 
     def _get_context_string(self) -> str:
         thread_len_tokens = self.thread.len_messages()
@@ -82,14 +98,18 @@ class WebUI:
         return f"{thread_len_tokens} / {max_ctx_len} tokens used"
     
 
-    def start(self, host: str, port: int = 8080):
+    def start(self, host: str, port: int = 8080, ssl: bool = False):
         """
         - host `str`:
             The local IP address from which to host the WebUI. For example,
             `'127.0.0.0.1'` or `'10.0.0.140'`
         - port `int`:
             The port on which to host the WebUI. Defaults to `8080`
+        - ssl `bool`:
+            Whether to generate and use a self-signed SSL certificate to
+            encrypt traffic between client and server
         """
+        print(WARNING, file=sys.stderr, flush=True)
         assert_type(host, str, 'host', 'WebUI.start')
         assert_type(port, int, 'port', 'WebUI.start')
         self._log_host = None
@@ -116,7 +136,7 @@ class WebUI:
         def submit():
             self._cancel_flag = False
             self._log('hit submit endpoint')
-            prompt = request.form['prompt']
+            prompt = decode(request.data)
             if prompt in ['', None]:
                 self._log('do not submit empty prompt')
                 return '', 418
@@ -135,7 +155,7 @@ class WebUI:
                         tok_text = token['choices'][0]['text']
                         response += tok_text
                         print(f'{BLUE}{tok_text}{RESET}', end='', flush=True, file=sys.stderr)
-                        yield tok_text
+                        yield encode(tok_text)
                     else:
                         print(file=sys.stderr)
                         self._log('cancel generation from /submit. teapot')
@@ -156,7 +176,11 @@ class WebUI:
         
         @self.app.route('/get_context_string', methods=['GET'])
         def get_context_string():
-            return json.dumps({'text': self._get_context_string()}), 200, {'ContentType': 'application/json'}
+            return json.dumps(
+                {
+                    'text': encode(self._get_context_string())
+                }
+            ), 200, {'ContentType': 'application/json'}
         
         @self.app.route('/remove', methods=['POST'])
         def remove():
@@ -184,7 +208,7 @@ class WebUI:
                         tok_text = token['choices'][0]['text']
                         response += tok_text
                         print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
-                        yield tok_text
+                        yield encode(tok_text)
                     else:
                         print()
                         self._log('cancel generation from /trigger. teapot')
@@ -204,13 +228,15 @@ class WebUI:
         self._log('warming up thread')
         self.thread.warmup()
 
-        print(WARNING, file=sys.stderr, flush=True)
+        if ssl:
+            ez.utils.print_verbose(USING_SELF_SIGNED_SSL_CERT_WARNING)
         
         try:
             self._log('now running Flask')
             self.app.run(
                 host=host,
-                port=port
+                port=port,
+                ssl_context='adhoc' if ssl else None
             )
         except Exception as exc:
             self._log(f'{RED}exception in Flask: {exc}{RESET}')
