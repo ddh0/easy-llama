@@ -135,6 +135,10 @@ function submitForm(event) {
         body: encodedPrompt
     })
     .then(response => {
+
+        // account for user message in placeholder text
+        updatePlaceholderText();
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
 

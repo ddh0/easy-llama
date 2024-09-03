@@ -60,7 +60,7 @@ a:visited {
 
 .message {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    overflow: auto;
+    /* overflow: auto; */
     min-width: 2rem;
     /* min-height: 6rex; */
     margin: 10px;
