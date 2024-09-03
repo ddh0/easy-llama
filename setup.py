@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.84'
+__version__ = '0.1.85'
 
 from setuptools import setup
 
@@ -20,7 +20,8 @@ setup(
     install_requires=[
         'llama_cpp_python',
         'numpy',
-        'Flask'
+        'Flask',
+        'cryptography'
     ],
     classifiers=[
         'Development Status :: 4 - Beta',

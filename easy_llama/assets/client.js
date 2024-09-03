@@ -3,6 +3,9 @@
 
 let isGenerating = false;
 
+const GlobalEncoder = new TextEncoder;
+const GlobalDecoder = new TextDecoder;
+
 function encode(text) {
     // base64
     return btoa(text);
@@ -11,6 +14,16 @@ function encode(text) {
 function decode(base64) {
     // base64
     return atob(base64);
+}
+
+function bytesToBase64(bytes) {
+    const binaryString = String.fromCharCode.apply(null, bytes);
+    return btoa(binaryString);
+}
+
+function base64ToBytes(base64) {
+    const binString = atob(base64);
+    return Uint8Array.from(binString, (m) => m.codePointAt(0));
 }
 
 const conversation = document.getElementById('conversation');
@@ -93,12 +106,10 @@ function submitForm(event) {
     const form = event.target;
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
-    const encodedPrompt = encode(prompt)
 
     if (isGenerating) {
 
         // if already generating, cancel was clicked
-        console.log('cancel button clicked');
         cancelGeneration();  
         return
 
@@ -132,7 +143,7 @@ function submitForm(event) {
 
     fetch('/submit', {
         method: 'POST',
-        body: encodedPrompt
+        body: bytesToBase64(GlobalEncoder.encode(prompt))
     })
     .then(response => {
 
@@ -140,22 +151,22 @@ function submitForm(event) {
         updatePlaceholderText();
 
         const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
 
         function readStream() {
+
             reader.read().then(({ done, value }) => {
                 if (done) {
                     setIsGeneratingState(false);
                     return;
                 }
 
-                accumulatedText += decode(decoder.decode(
+                thisToken = decode(GlobalDecoder.decode(
                     value, { stream: true }
                 ));
+                accumulatedText += thisToken;
                 botMessage.innerHTML = marked.parse(accumulatedText);
 
                 readStream();
-
             }).catch(error => {
                 console.error('Error reading stream:', error);
                 setIsGeneratingState(false);
@@ -233,7 +244,6 @@ function newBotMessage() {
         .then(response => {
             if (response.ok) {
                 const reader = response.body.getReader();
-                const decoder = new TextDecoder('utf-8');
         
                 function readStream() {
                     reader.read().then(({ done, value }) => {
@@ -241,8 +251,8 @@ function newBotMessage() {
                             setIsGeneratingState(false);
                             return
                         }
-
-                        accumulatedText += decode(decoder.decode(
+                        
+                        accumulatedText += decode(GlobalDecoder.decode(
                             value, { stream: true }
                         ));
                         botMessage.innerHTML = marked.parse(accumulatedText);
@@ -283,9 +293,7 @@ function resetConversation() {
     });
 }
 
-window.onload = function pageSetup() {
-
-    console.log('do pageSetup()');
+window.onload = function() {
 
     document.getElementById('resetButton').addEventListener(
         'click', resetConversation
@@ -332,7 +340,6 @@ window.onload = function pageSetup() {
 
 }
 
-window.onresize = function setDocumentBodyHeight() { 
+window.onresize = function() { 
     document.body.height = window.innerHeight;
-    console.log('set document body height');
 }

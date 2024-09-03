@@ -9,9 +9,16 @@ import json
 import base64
 
 import easy_llama as ez
+from datetime import datetime, timedelta, UTC
 from easy_llama.utils import assert_type
 
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from flask import Flask, render_template, request, Response
+from cryptography.hazmat.primitives.serialization import Encoding
 
 
 GREEN = ez.utils.USER_STYLE
@@ -39,25 +46,91 @@ f"""{RED}
 ###############################################################################
 {RESET}"""
 
-USING_SELF_SIGNED_SSL_CERT_WARNING = \
-f"{YELLOW}you have set `ssl=True` which tells the WebUI to generate and " + \
-f"use a self-signed SSL certificate. this enables secure communication " + \
-f"between client and server, but your browser will probably show you a " + \
-f"scary warning about a self-signed certificate. you may safely ignore " + \
-f"this warning and proceed to the WebUI.{RESET}"
+SSL_CERT_FIRST_TIME_WARNING = \
+f"{YELLOW}you have just generated a new self-signed SSL certificate and " + \
+f"key. your browser will probably warn you about an untrusted " + \
+f"certificate. this is expected and you may safely proceed to the WebUI. " + \
+f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
+
+ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
 
 
 def _newline() -> None:
     print('', end='\n', file=sys.stderr, flush=True)
 
 
-def encode(text):
+def encode(text: str) -> str:
     data = (text).encode('utf-8')
     return base64.b64encode(data).decode('utf-8')
 
 
-def decode(base64_str):
-    return base64.b64decode(base64_str).decode('utf-8')
+def decode(text: str) -> str:
+    return base64.b64decode(text).decode('utf-8')
+
+
+def generate_self_signed_ssl_cert() -> None:
+
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+
+    public_key = private_key.public_key()
+
+    # these values are required
+    name = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "XY"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "DUMMY_STATE"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "DUMMY_LOCALITY"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "EZLLAMA LLC"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+    ])
+
+    builder = x509.CertificateBuilder(
+        subject_name=name,
+        issuer_name=name,
+        public_key=public_key,
+        serial_number=x509.random_serial_number(),
+        not_valid_before=datetime.now(tz=UTC),
+        not_valid_after=datetime.now(tz=UTC) + timedelta(days=36500),
+    )
+
+    builder = builder.add_extension(
+        x509.SubjectAlternativeName([x509.DNSName("localhost")]),
+        critical=False,
+    )
+
+    # sign the certificate with the private key
+    certificate = builder.sign(
+        private_key=private_key,
+        algorithm=hashes.SHA256(),
+    )
+
+    # save key
+    with open(f"{ASSETS_FOLDER}/key.pem", "wb") as f:
+        f.write(private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        ))
+
+    # save cert
+    with open(f"{ASSETS_FOLDER}/cert.pem", "wb") as f:
+        f.write(certificate.public_bytes(Encoding.PEM))
+
+
+def check_for_ssl_cert() -> bool:
+    fns = [
+        f'{ASSETS_FOLDER}/cert.pem',
+        f'{ASSETS_FOLDER}/key.pem'
+    ]
+    if all(os.path.exists(fn) for fn in fns):
+        return True
+    else:
+        for fn in fns:
+            if os.path.exists(fn):
+                os.remove(fn)
+        return False
 
 
 class WebUI:
@@ -66,11 +139,10 @@ class WebUI:
         assert_type(thread, ez.Thread, 'thread', 'WebUI')
         self.thread = thread
         self._cancel_flag = False
-        _assets_folder = os.path.join(os.path.dirname(__file__), 'assets')
         self.app = Flask(
             __name__,
-            static_folder=_assets_folder,
-            template_folder=_assets_folder,
+            static_folder=ASSETS_FOLDER,
+            template_folder=ASSETS_FOLDER,
             static_url_path=''
         )
         # variables used for logging to console
@@ -120,6 +192,14 @@ class WebUI:
         self._log_host = host
         self._log_port = port
 
+        if ssl:
+            if check_for_ssl_cert():
+                self._log('re-using previously generated SSL certificate')
+            else:
+                self._log('generating self-signed SSL certifcate')
+                generate_self_signed_ssl_cert()
+                ez.utils.print_verbose(SSL_CERT_FIRST_TIME_WARNING)
+
         @self.app.route('/')
         def home():
             return render_template('index.html')
@@ -150,16 +230,25 @@ class WebUI:
                 )
                 response = ''
                 for token in token_generator:
+
                     if not self._cancel_flag:
                         tok_text = token['choices'][0]['text']
                         response += tok_text
-                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True, file=sys.stderr)
+                        print(
+                            f'{BLUE}{tok_text}{RESET}',
+                            end='',
+                            flush=True,
+                            file=sys.stderr
+                        )
+                        
                         yield encode(tok_text)
+                    
                     else:
                         print(file=sys.stderr)
                         self._log('cancel generation from /submit. teapot')
                         self._cancel_flag = False # reset flag
                         return '', 418 # I'm a teapot
+                    
                 _newline()
                 self.thread.add_message('bot', response)
 
@@ -226,16 +315,16 @@ class WebUI:
         
         self._log('warming up thread')
         self.thread.warmup()
-
-        if ssl:
-            ez.utils.print_verbose(USING_SELF_SIGNED_SSL_CERT_WARNING)
         
         try:
             self._log('now running Flask')
             self.app.run(
                 host=host,
                 port=port,
-                ssl_context='adhoc' if ssl else None
+                ssl_context=(
+                    f'{ASSETS_FOLDER}/cert.pem',
+                    f'{ASSETS_FOLDER}/key.pem'
+                ) if ssl else None
             )
         except Exception as exc:
             self._log(f'{RED}exception in Flask: {exc}{RESET}')
