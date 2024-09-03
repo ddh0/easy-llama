@@ -4,7 +4,6 @@
 """The easy-llama WebUI"""
 
 import os
-import bz2
 import sys
 import json
 import base64
