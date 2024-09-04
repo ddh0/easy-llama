@@ -176,9 +176,12 @@ function submitForm(event) {
                     return;
                 }
 
+                console.log(value);
+
                 thisToken = decode(GlobalDecoder.decode(
-                    value, { stream: true }
+                    value, { stream: true, }
                 ));
+
                 accumulatedText += thisToken;
                 botMessage.innerHTML = marked.parse(accumulatedText);
 
