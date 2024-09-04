@@ -170,22 +170,35 @@ function submitForm(event) {
         const reader = response.body.getReader();
 
         function readStream() {
-
+            let accumulatedData = '';
+        
             reader.read().then(({ done, value }) => {
                 if (done) {
+                    // Decode any remaining data
+                    if (accumulatedData) {
+                        accumulatedText += decode(accumulatedData);
+                        botMessage.innerHTML = marked.parse(accumulatedText);
+                    }
                     setIsGeneratingState(false);
                     return;
                 }
-
-                //console.log(value);
-
-                thisToken = decode(GlobalDecoder.decode(
-                    value, { stream: true, }
-                ));
-
-                accumulatedText += thisToken;
-                botMessage.innerHTML = marked.parse(accumulatedText);
-
+        
+                const decodedValue = GlobalDecoder.decode(value, { stream: true });
+                accumulatedData += decodedValue;
+        
+                // Split the accumulated data into complete Base64 tokens
+                const tokens = accumulatedData.split(/(?=[\s\S]{4})/g);
+                let lastToken = tokens.pop();
+        
+                // Decode complete tokens
+                for (const token of tokens) {
+                    accumulatedText += decode(token);
+                    botMessage.innerHTML = marked.parse(accumulatedText);
+                }
+        
+                // Keep the last incomplete token for the next chunk
+                accumulatedData = lastToken;
+        
                 readStream();
             }).catch(error => {
                 console.error('Error reading stream:', error);
