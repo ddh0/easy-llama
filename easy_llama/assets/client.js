@@ -13,8 +13,8 @@ function encode(text) {
 }
 
 function decode(base64) {
-    console.log(base64);
     // base64
+    //console.log(base64);
     return atob(base64);
 }
 
