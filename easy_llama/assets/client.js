@@ -3,8 +3,9 @@
 
 let isGenerating = false;
 
-const GlobalEncoder = new TextEncoder;
-const GlobalDecoder = new TextDecoder;
+const GlobalEncoder  = new TextEncoder;
+const GlobalDecoder  = new TextDecoder;
+const maxLengthInput = 100000; // characters, not tokens :)
 
 function encode(text) {
     // base64
@@ -17,13 +18,20 @@ function decode(base64) {
 }
 
 function bytesToBase64(bytes) {
-    const binaryString = String.fromCharCode.apply(null, bytes);
+    let binaryString = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binaryString += String.fromCharCode(bytes[i]);
+    }
     return btoa(binaryString);
 }
 
 function base64ToBytes(base64) {
     const binString = atob(base64);
-    return Uint8Array.from(binString, (m) => m.codePointAt(0));
+    const bytes = new Uint8Array(binString.length);
+    for (let i = 0; i < binString.length; i++) {
+        bytes[i] = binString.charCodeAt(i);
+    }
+    return bytes;
 }
 
 const conversation = document.getElementById('conversation');
@@ -106,6 +114,14 @@ function submitForm(event) {
     const form = event.target;
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
+
+    if (prompt.length > maxLengthInput) {
+        alert(
+            'length of input exceeds maximum allowed length of ' + 
+            '100k characters'
+        );
+        return;
+    }
 
     if (isGenerating) {
 

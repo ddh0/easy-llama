@@ -16,6 +16,7 @@ body {
 }
 
 pre {
+    max-height: 20rem;
     border-radius: 5px;
     padding: 7px;
     white-space: pre;
@@ -70,7 +71,7 @@ a:visited {
     padding-bottom: 3px;
     border-radius: 15px;
     color: #eeeeee;
-    /* max-width: 55svw; */
+    max-width: 85svw;
 }
 
 .user-message {

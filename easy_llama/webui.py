@@ -54,6 +54,8 @@ f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
 
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
 
+MAX_LENGTH_INPUT = 100_000 # characters, not tokens
+
 
 def _newline() -> None:
     print('', end='\n', file=sys.stderr, flush=True)
@@ -66,6 +68,13 @@ def encode(text: str) -> str:
 
 def decode(text: str) -> str:
     return base64.b64decode(text).decode('utf-8')
+
+
+def assert_max_length(text: str) -> None:
+    if len(text) > MAX_LENGTH_INPUT:
+        raise AssertionError(
+            'length of input exceeds maximum allowed length of 100k characters'
+        )
 
 
 def generate_self_signed_ssl_cert() -> None:
