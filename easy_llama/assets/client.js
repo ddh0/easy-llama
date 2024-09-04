@@ -13,6 +13,7 @@ function encode(text) {
 }
 
 function decode(base64) {
+    console.log(base64);
     // base64
     return atob(base64);
 }
@@ -176,7 +177,7 @@ function submitForm(event) {
                     return;
                 }
 
-                console.log(value);
+                //console.log(value);
 
                 thisToken = decode(GlobalDecoder.decode(
                     value, { stream: true, }
