@@ -5,6 +5,7 @@ https://github.com/ddh0/easy-llama/
 
 body {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
+    line-height: 3.3rex;
     margin: 0;
     padding: 0;
     background-color: #000000;
@@ -13,6 +14,14 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+}
+
+h1 {
+    line-height: 8rex;
+}
+
+h2 {
+    line-height: 6rex;
 }
 
 pre {
@@ -27,18 +36,15 @@ pre {
     max-width: 100%;
 }
 
+code {
+    color: #bebebe;
+}
+
 .container {
     width: 100svw;
     height: auto;
     margin: 10px;
     padding: 0px;
-}
-
-h1 {
-    width: 90%;
-    text-wrap-mode: nowrap;
-    flex: auto;
-    text-align: left;
 }
 
 a {
@@ -62,26 +68,25 @@ a:visited {
 .message {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     /* overflow: auto; */
-    min-width: 2rem;
+    min-width: 95svw;
     /* min-height: 6rex; */
-    margin: 10px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 3px;
-    padding-bottom: 3px;
-    border-radius: 15px;
+    padding-left: 2rem;
+    padding-right: 2rem;
+    padding-top: 1rex;
+    padding-bottom: 1rex;
+    border-radius: 0px;
     color: #eeeeee;
-    max-width: 85svw;
+    max-width: 95svw;
 }
 
 .user-message {
-    background-color: #367739;
-    align-self: flex-end;
+    background-color: #214a2e;
+    align-self: center;
 }
 
 .bot-message {
-    background-color: #266366;
-    align-self: flex-start;
+    background-color: #21434b;
+    align-self: center;
 }
 
 form {
@@ -139,13 +144,13 @@ button {
     max-width: 30ch;
     max-height: 5rex;
     border-radius: 3px;
-    background-color: #4b724b;
+    background-color: #33693d;
     color: #eeeeee;
     cursor: pointer;
 }
 
 button:hover {
-    background-color: #355335;
+    background-color: #234c2b;
 }
 
 .button-group {
@@ -171,41 +176,41 @@ button:hover {
 }
 
 .red-button {
-    background-color: #6b3045;
+    background-color: #693333;
 }
 
 .red-button:hover {
-    background-color: #4e2131;
+    background-color: #4c2323;
 }
 
 #resetButton {
-    background-color: #6b3045;
+    background-color: #693333;
 }
 
 #resetButton:hover {
-    background-color: #4e2131;
+    background-color: #4c2323;
 }
 
 #removeButton {
-    background-color: #726642;
+    background-color: #696233;
 }
 
 #removeButton:hover {
-    background-color: #534a2f;
+    background-color: #4c4723;
 }
 
 #newBotMessageButton {
-    background-color: #3a5d5e;
+    background-color: #335e69;
 }
 
 #newBotMessageButton:hover {
-    background-color: #284344;
+    background-color: #23444c;
 }
 
 #swipeButton {
-    background-color: #563a5e;
+    background-color: #363369;
 }
 
 #swipeButton:hover {
-    background-color: #3e2844;
+    background-color: #25234c;
 }

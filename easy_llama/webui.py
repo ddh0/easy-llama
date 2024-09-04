@@ -54,7 +54,7 @@ f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
 
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
 
-MAX_LENGTH_INPUT = 100_000 # characters, not tokens
+MAX_LENGTH_INPUT = 100_000 # one hundred thousand characters
 
 
 def _newline() -> None:
@@ -62,11 +62,13 @@ def _newline() -> None:
 
 
 def encode(text: str) -> str:
+    # utf-8 str -> bytes -> ascii base64
     data = (text).encode('utf-8')
-    return base64.b64encode(data).decode('utf-8')
+    return base64.b64encode(data).decode('ascii')
 
 
 def decode(text: str) -> str:
+    # ascii base64 -> bytes -> utf-8 str
     return base64.b64decode(text).decode('utf-8')
 
 
@@ -212,6 +214,22 @@ class WebUI:
         @self.app.route('/')
         def home():
             return render_template('index.html')
+        
+        @self.app.route('/convo', methods=['GET'])
+        def convo():
+
+            msgs_dict = dict()
+
+            i = 0
+            for msg in self.thread.messages:
+                msgs_dict[i] = {
+                    encode(msg['role']) : encode(msg.as_string())
+                }
+                i += 1
+            
+            json.dumps(msgs_dict)
+            return msgs_dict, 200, {'ContentType': 'application/json'}
+        
         
         @self.app.route('/cancel', methods=['POST'])
         def cancel():

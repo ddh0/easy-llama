@@ -1,22 +1,19 @@
 // client.js
 // https://github.com/ddh0/easy-llama/
 
+marked.setOptions({
+    pedantic: false,  // more relaxed parsing
+    gfm: true,        // github-flavored markdown
+    breaks: true      // insert <br> on  '\n' also, not only on '\n\n'
+});
+
+document.body.height = window.innerHeight;
+
 let isGenerating = false;
 
 const GlobalEncoder  = new TextEncoder;
 const GlobalDecoder  = new TextDecoder;
-const maxLengthInput = 100000; // characters, not tokens :)
-
-function encode(text) {
-    // base64
-    return btoa(text);
-}
-
-function decode(base64) {
-    // base64
-    //console.log(base64);
-    return atob(base64);
-}
+const maxLengthInput = 100000; // one hundred thousand characters
 
 function bytesToBase64(bytes) {
     let binaryString = '';
@@ -33,6 +30,18 @@ function base64ToBytes(base64) {
         bytes[i] = binString.charCodeAt(i);
     }
     return bytes;
+}
+
+function encode(text) {
+    // utf-8 str -> utf-8 bytes -> base64 str
+    let bytes = GlobalEncoder.encode(text);
+    return bytesToBase64(bytes);
+}
+
+function decode(base64) {
+    // base64 str -> utf-8 bytes -> utf-8 str
+    let bytes = base64ToBytes(base64);
+    return GlobalDecoder.decode(bytes);
 }
 
 const conversation = document.getElementById('conversation');
@@ -170,39 +179,24 @@ function submitForm(event) {
         const reader = response.body.getReader();
 
         function readStream() {
-            let accumulatedData = '';
         
             reader.read().then(({ done, value }) => {
                 if (done) {
                     // Decode any remaining data
-                    if (accumulatedData) {
-                        accumulatedText += decode(accumulatedData);
-                        botMessage.innerHTML = marked.parse(accumulatedText);
-                    }
                     setIsGeneratingState(false);
                     return;
                 }
         
-                const decodedValue = GlobalDecoder.decode(value, { stream: true });
-                accumulatedData += decodedValue;
-        
-                // Process complete Base64 tokens
-                while (accumulatedData.length >= 4) {
-                    const token = accumulatedData.slice(0, 4);
-                    accumulatedData = accumulatedData.slice(4);
-        
-                    // Check if the token is a valid Base64 character
-                    if (/^[A-Za-z0-9+/=]{4}$/.test(token)) {
-                        accumulatedText += decode(token);
-                        botMessage.innerHTML = marked.parse(accumulatedText);
-                    } else {
-                        console.error('Invalid Base64 token:', token);
-                        setIsGeneratingState(false);
-                        return;
-                    }
-                }
+                accumulatedText += GlobalDecoder.decode(base64ToBytes(
+                    GlobalDecoder.decode(
+                        value, { stream: true }
+                    )
+                ));
+
+                botMessage.innerHTML = marked.parse(accumulatedText);
         
                 readStream();
+
             }).catch(error => {
                 console.error('Error reading stream:', error);
                 setIsGeneratingState(false);
@@ -288,9 +282,13 @@ function newBotMessage() {
                             return
                         }
                         
-                        accumulatedText += decode(GlobalDecoder.decode(
-                            value, { stream: true }
-                        ));
+                        accumulatedText += GlobalDecoder.decode(
+                            base64ToBytes(
+                                GlobalDecoder.decode(
+                                    value, { stream: true }
+                                )
+                            )
+                        );
                         botMessage.innerHTML = marked.parse(accumulatedText);
         
                         readStream();
@@ -325,8 +323,13 @@ function resetConversation() {
         }
     })
     .catch(error => {
-        console.error('setupResetButton:', error);
+        console.error('Error in resetConversation:', error);
     });
+}
+
+function populateConversation() {
+    conversation.innerHTML = ''
+    fetch('/convo')
 }
 
 window.onload = function() {
@@ -368,11 +371,6 @@ window.onload = function() {
             }
         }
     );
-
-    marked.setOptions({
-        pedantic: false,  // more relaxed parsing
-        gfm: true         // github-flavored markdown
-    });
 
 }
 
