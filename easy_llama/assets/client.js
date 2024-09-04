@@ -186,18 +186,21 @@ function submitForm(event) {
                 const decodedValue = GlobalDecoder.decode(value, { stream: true });
                 accumulatedData += decodedValue;
         
-                // Split the accumulated data into complete Base64 tokens
-                const tokens = accumulatedData.split(/(?=[\s\S]{4})/g);
-                let lastToken = tokens.pop();
+                // Process complete Base64 tokens
+                while (accumulatedData.length >= 4) {
+                    const token = accumulatedData.slice(0, 4);
+                    accumulatedData = accumulatedData.slice(4);
         
-                // Decode complete tokens
-                for (const token of tokens) {
-                    accumulatedText += decode(token);
-                    botMessage.innerHTML = marked.parse(accumulatedText);
+                    // Check if the token is a valid Base64 character
+                    if (/^[A-Za-z0-9+/=]{4}$/.test(token)) {
+                        accumulatedText += decode(token);
+                        botMessage.innerHTML = marked.parse(accumulatedText);
+                    } else {
+                        console.error('Invalid Base64 token:', token);
+                        setIsGeneratingState(false);
+                        return;
+                    }
                 }
-        
-                // Keep the last incomplete token for the next chunk
-                accumulatedData = lastToken;
         
                 readStream();
             }).catch(error => {
