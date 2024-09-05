@@ -1,7 +1,7 @@
 # webui.py
 # https://github.com/ddh0/easy-llama/
 
-"""The easy-llama WebUI"""
+"""Submodule containing the easy-llama WebUI"""
 
 import os
 import sys
@@ -9,8 +9,8 @@ import json
 import base64
 
 import easy_llama as ez
-from datetime import datetime, timedelta, UTC
 from easy_llama.utils import assert_type
+from datetime import datetime, timedelta, UTC
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -211,10 +211,12 @@ class WebUI:
                 generate_self_signed_ssl_cert()
                 ez.utils.print_verbose(SSL_CERT_FIRST_TIME_WARNING)
 
+
         @self.app.route('/')
         def home():
             return render_template('index.html')
         
+
         @self.app.route('/convo', methods=['GET'])
         def convo():
 
@@ -223,12 +225,12 @@ class WebUI:
             i = 0
             for msg in self.thread.messages:
                 msgs_dict[i] = {
-                    encode(msg['role']) : encode(msg.as_string())
+                    encode(msg['role']) : encode(msg['content'])
                 }
                 i += 1
             
-            json.dumps(msgs_dict)
-            return msgs_dict, 200, {'ContentType': 'application/json'}
+            json_convo = json.dumps(msgs_dict)
+            return json_convo, 200, {'ContentType': 'application/json'}
         
         
         @self.app.route('/cancel', methods=['POST'])
@@ -237,6 +239,7 @@ class WebUI:
             self._log('hit cancel endpoint - flag is set')
             self._cancel_flag = True
             return '', 200
+
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
@@ -283,12 +286,14 @@ class WebUI:
                 return Response(generate(), mimetype='text/plain')
             return '', 200
         
+
         @self.app.route('/reset', methods=['POST'])
         def reset():
             self.thread.reset()
             self._log(f"thread was reset")
             return '', 200
         
+
         @self.app.route('/get_context_string', methods=['GET'])
         def get_context_string():
             return json.dumps(
@@ -297,6 +302,7 @@ class WebUI:
                 }
             ), 200, {'ContentType': 'application/json'}
         
+
         @self.app.route('/remove', methods=['POST'])
         def remove():
             if len(self.thread.messages) >= 1:
@@ -307,6 +313,7 @@ class WebUI:
                 self._log('no previous message to remove. teapot')
                 return '', 418 # I'm a teapot
         
+
         @self.app.route('/trigger', methods=['POST'])
         def trigger():
             self._log('hit trigger endpoint')

@@ -95,6 +95,24 @@ function appendNewMessage(message) {
     }
 }
 
+function createMessage(role, content) {
+
+    if (role == 'user') {
+        const message = document.createElement('div');
+        message.className = 'message user-message';
+        message.innerHTML = marked.parse(content);
+        return message;
+    }
+
+    if (role == 'bot') {
+        const message = document.createElement('div');
+        message.className = 'message bot-message';
+        message.innerHTML = marked.parse(content);
+        return message;
+    }
+    
+}
+
 function removeLastMessage() {
 
     const lastMessage = getMostRecentMessage();
@@ -137,11 +155,14 @@ function submitForm(event) {
 
         // if already generating, cancel was clicked
         cancelGeneration();  
-        return
+        return;
 
     } else {
+
         if ('' == prompt) {
-            console.log('will not submit empty prompt');
+            // if user hits submit with no prompt, trigger new bot message
+            newBotMessage();
+            updatePlaceholderText();
             return;
         }
     }
@@ -312,7 +333,7 @@ function newBotMessage() {
 
 function resetConversation() {
     fetch('/reset', {
-        method: 'POST',
+        method: 'POST'
     })
     .then(response => {
         if (response.ok) {
@@ -328,8 +349,50 @@ function resetConversation() {
 }
 
 function populateConversation() {
-    conversation.innerHTML = ''
-    fetch('/convo')
+    conversation.innerHTML = '';
+    fetch('/convo', {
+        method: "GET"
+    })
+    .then(response => {
+        if (!response.ok) {
+            console.error('Bad response from /convo:', response.statusText);
+            return;
+        } else {
+            updatePlaceholderText();
+
+            return response.json(); // Return the promise from response.json()
+        }
+    })
+    .then(data => {
+        let msgs = Object.keys(data);
+
+        for (let i = 0; i < msgs.length; i++) {
+            const msgKey = msgs[i];
+            const msg = data[msgKey];
+            let keys = Object.keys(msg);
+
+            // Assuming the first key is the role and the second key is the content
+            let role = GlobalDecoder.decode(
+                base64ToBytes(keys[0])
+            );
+            let content = GlobalDecoder.decode(
+                base64ToBytes(msg[keys[0]])
+            );
+
+            //console.log('i:', i, 'role:', role, 'content:', content);
+
+            if (role != 'system') {
+                let newMessage = createMessage(role, content);
+                appendNewMessage(newMessage);
+            }
+        }
+
+        return;
+    })
+    .catch(error => {
+        console.error('Error in populateConversation:', error);
+        return;
+    });
 }
 
 window.onload = function() {
@@ -353,8 +416,8 @@ window.onload = function() {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
                 document.getElementById('promptForm').dispatchEvent(
-                    new Event('submit'
-                ));
+                    new Event('submit')
+                );
             }
         }
     );
@@ -371,6 +434,9 @@ window.onload = function() {
             }
         }
     );
+
+    // display all non-system messages even after page load/reload
+    populateConversation();
 
 }
 
