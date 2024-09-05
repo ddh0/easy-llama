@@ -78,6 +78,11 @@ def assert_max_length(text: str) -> None:
             'length of input exceeds maximum allowed length of 100k characters'
         )
 
+def _debug_help(thread: ez.Thread) -> None:
+    print(
+        f"{RED}{'#' * 80}\n{RESET}'''{thread.inf_str()}'''\n{RED}{'#' * 80}{RESET}"
+    )
+
 
 def generate_self_signed_ssl_cert() -> None:
 

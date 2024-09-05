@@ -110,30 +110,33 @@ function createMessage(role, content) {
         message.innerHTML = marked.parse(content);
         return message;
     }
-    
+
 }
 
 function removeLastMessage() {
+    return new Promise((resolve, reject) => {
+        const lastMessage = getMostRecentMessage();
 
-    const lastMessage = getMostRecentMessage();
-
-    if (lastMessage === null) {
-        return
-    }
-
-    fetch('/remove', {
-    method: 'POST',
-    })
-    .then(response => {
-        if (response.ok) {
-            lastMessage.remove();
-            updatePlaceholderText();
-        } else {
-            console.error('Bad response from /remove:', response.statusText);
+        if (lastMessage === null) {
+            resolve();
+            return;
         }
-    })
-    .catch(error => {
-        console.error('removeButton:', error);
+
+        fetch('/remove', {
+            method: 'POST',
+        })
+        .then(response => {
+            if (response.ok) {
+                lastMessage.remove();
+                updatePlaceholderText();
+                resolve();
+            } else {
+                reject(new Error('Bad response from /remove: ' + response.statusText));
+            }
+        })
+        .catch(error => {
+            reject(new Error('removeButton: ' + error));
+        });
     });
 }
 
@@ -424,16 +427,14 @@ window.onload = function() {
 
     document.getElementById('swipeButton').addEventListener('click',
         function() {
-            if (isGenerating) {
-                return
-                //cancelGeneration();
-                //newBotMessage();
-            } else {
-                removeLastMessage();
-                newBotMessage();
+            if (!isGenerating) {
+                removeLastMessage().then(() => {
+                    newBotMessage();
+                }).catch(error => {
+                    console.error('Error in swipeButton:', error);
+                });
             }
-        }
-    );
+    });
 
     // display all non-system messages even after page load/reload
     populateConversation();
