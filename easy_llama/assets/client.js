@@ -425,15 +425,14 @@ window.onload = function() {
         }
     );
 
-    document.getElementById('swipeButton').addEventListener('click',
-        function() {
-            if (!isGenerating) {
-                removeLastMessage().then(() => {
-                    newBotMessage();
-                }).catch(error => {
-                    console.error('Error in swipeButton:', error);
-                });
-            }
+    document.getElementById('swipeButton').addEventListener('click', function() {
+        if (!isGenerating) {
+            removeLastMessage().then(() => {
+                newBotMessage();
+            }).catch(error => {
+                console.error('Error in swipeButton:', error);
+            });
+        }
     });
 
     // display all non-system messages even after page load/reload

@@ -78,7 +78,8 @@ def assert_max_length(text: str) -> None:
             'length of input exceeds maximum allowed length of 100k characters'
         )
 
-def _debug_help(thread: ez.Thread) -> None:
+
+def _debug_help(thread) -> None:
     print(
         f"{RED}{'#' * 80}\n{RESET}'''{thread.inf_str()}'''\n{RED}{'#' * 80}{RESET}"
     )
@@ -258,6 +259,7 @@ class WebUI:
             def generate():
                 self.thread.add_message('user', prompt)
                 print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
+                _debug_help(self.thread)
                 token_generator = self.thread.model.stream(
                     self.thread.inf_str(),
                     stops=self.thread.format['stops'],
@@ -303,7 +305,7 @@ class WebUI:
         def get_context_string():
             return json.dumps(
                 {
-                    'text': encode(self._get_context_string())
+                    'text' : encode(self._get_context_string())
                 }
             ), 200, {'ContentType': 'application/json'}
         
@@ -324,6 +326,7 @@ class WebUI:
             self._log('hit trigger endpoint')
             self._cancel_flag = False
             def generate():
+                _debug_help(self.thread)
                 token_generator = self.thread.model.stream(
                     self.thread.inf_str(),
                     stops=self.thread.format['stops'],
