@@ -25,7 +25,8 @@ h2 {
 }
 
 pre {
-    max-height: 20rem;
+    line-height: 2.8rex;
+    max-height: 45rex;
     border-radius: 5px;
     padding: 7px;
     white-space: pre;

@@ -7,13 +7,16 @@ marked.setOptions({
     breaks: true      // insert <br> on  '\n' also, not only on '\n\n'
 });
 
+
 document.body.height = window.innerHeight;
+
 
 let isGenerating = false;
 
 const GlobalEncoder  = new TextEncoder;
 const GlobalDecoder  = new TextDecoder;
 const maxLengthInput = 100000; // one hundred thousand characters
+
 
 function bytesToBase64(bytes) {
     let binaryString = '';
@@ -22,6 +25,7 @@ function bytesToBase64(bytes) {
     }
     return btoa(binaryString);
 }
+
 
 function base64ToBytes(base64) {
     const binString = atob(base64);
@@ -32,17 +36,20 @@ function base64ToBytes(base64) {
     return bytes;
 }
 
+
 function encode(text) {
     // utf-8 str -> utf-8 bytes -> base64 str
     let bytes = GlobalEncoder.encode(text);
     return bytesToBase64(bytes);
 }
 
+
 function decode(base64) {
     // base64 str -> utf-8 bytes -> utf-8 str
     let bytes = base64ToBytes(base64);
     return GlobalDecoder.decode(bytes);
 }
+
 
 const conversation = document.getElementById('conversation');
 const resetButton = document.getElementById('resetButton');
@@ -51,6 +58,7 @@ const submitButton = document.getElementById('submitButton');
 const newBotMessageButton = document.getElementById('newBotMessageButton');
 const swipeButton = document.getElementById('swipeButton');
 const promptInput = document.getElementById('prompt');
+
 
 function setIsGeneratingState(targetState) {
 
@@ -82,9 +90,11 @@ function setIsGeneratingState(targetState) {
     isGenerating = targetState;
 }
 
+
 function getMostRecentMessage() { 
     return conversation.firstChild; // node or null
 }
+
 
 function appendNewMessage(message) {
     let mostRecentMessage = getMostRecentMessage();
@@ -94,6 +104,7 @@ function appendNewMessage(message) {
         conversation.append(message);
     }
 }
+
 
 function createMessage(role, content) {
 
@@ -111,7 +122,10 @@ function createMessage(role, content) {
         return message;
     }
 
+    console.error('unreachable in createMessage')
+
 }
+
 
 function removeLastMessage() {
     return new Promise((resolve, reject) => {
@@ -128,6 +142,7 @@ function removeLastMessage() {
         .then(response => {
             if (response.ok) {
                 lastMessage.remove();
+                console.log('removeLastMessage: removed node')
                 updatePlaceholderText();
                 resolve();
             } else {
@@ -139,6 +154,7 @@ function removeLastMessage() {
         });
     });
 }
+
 
 function submitForm(event) {
     event.preventDefault();
@@ -171,17 +187,14 @@ function submitForm(event) {
     }
 
     // Append user message to the conversation
-    const userMessage = document.createElement('div');
-    userMessage.className = 'message user-message';
-    userMessage.innerHTML = marked.parse(prompt);
+    let userMessage = createMessage('user', prompt)
     appendNewMessage(userMessage);
 
     // Clear prompt input text box
     form.reset();
 
     // Create a new bot message element
-    const botMessage = document.createElement('div');
-    botMessage.className = 'message bot-message';
+    const botMessage = createMessage('bot', '')
     appendNewMessage(botMessage);
 
     // Scroll to the bottom of the conversation
@@ -197,7 +210,6 @@ function submitForm(event) {
     })
     .then(response => {
 
-        // account for user message in placeholder text
         updatePlaceholderText();
 
         const reader = response.body.getReader();
@@ -206,7 +218,6 @@ function submitForm(event) {
         
             reader.read().then(({ done, value }) => {
                 if (done) {
-                    // Decode any remaining data
                     setIsGeneratingState(false);
                     return;
                 }
@@ -235,6 +246,7 @@ function submitForm(event) {
     });
 }
 
+
 function updatePlaceholderText() {
     fetch('/get_context_string')
         .then(response => response.json())
@@ -246,6 +258,7 @@ function updatePlaceholderText() {
         });
 }
 
+
 function escapeHtml(unsafe) { // currently unused
     return unsafe
         .replace(/&/g, "&")
@@ -255,6 +268,7 @@ function escapeHtml(unsafe) { // currently unused
         .replace(/'/g, "'");
 }
 
+
 function cancelGeneration() {
     fetch('/cancel', {
         method: 'POST'
@@ -263,7 +277,7 @@ function cancelGeneration() {
             if (response.ok) {
                 setIsGeneratingState(false);
                 const lastMessage = getMostRecentMessage();
-                if (lastMessage === null) { return } else {
+                if (lastMessage === null) { return; } else {
                     lastMessage.remove();
                 }
                 return;
@@ -275,64 +289,94 @@ function cancelGeneration() {
         });
 }
 
+
 function newBotMessage() {
 
     // do not trigger generation if already generating
-    if (isGenerating) { return } else {
+    if (isGenerating) {
+        console.log('refuse to trigger newBotMessage - already generating')
+    }
 
-        // Create a new bot message element
-        const botMessage = document.createElement('div');
-        botMessage.className = 'message bot-message';
+    let v = promptInput.value;
+    let encodedPrefix = null;
+    let accumulatedText = '';
+    let botMessage = null;
+
+    if (promptInput.value !== '') { // trigger with bot prefix
+
+        if (prompt.length > maxLengthInput) {
+            alert(
+                'length of input exceeds maximum allowed length of ' + 
+                '100k characters'
+            );
+            return;
+        }
+
+        encodedPrefix = bytesToBase64(GlobalEncoder.encode(v));
+        accumulatedText = v;
+
+        botMessage = createMessage('bot', v);
         appendNewMessage(botMessage);
 
-        // Scroll to the bottom of the conversation
-        conversation.scrollTop = conversation.scrollHeight;
-
-        let accumulatedText = '';
-
-        setIsGeneratingState(true);
-
-        fetch('/trigger', {
-            method: 'POST',  
-        })
-        .then(response => {
-            if (response.ok) {
-                const reader = response.body.getReader();
-        
-                function readStream() {
-                    reader.read().then(({ done, value }) => {
-                        if (done) {
-                            setIsGeneratingState(false);
-                            return
-                        }
-                        
-                        accumulatedText += GlobalDecoder.decode(
-                            base64ToBytes(
-                                GlobalDecoder.decode(
-                                    value, { stream: true }
-                                )
-                            )
-                        );
-                        botMessage.innerHTML = marked.parse(accumulatedText);
-        
-                        readStream();
-
-                    }).catch(error => {
-                        console.error('Error reading stream:', error);
-                        setIsGeneratingState(false);
-                    });
-                }
-        
-                readStream();
-
-            } else {
-                console.error(
-                    'Bad response from /trigger:', response.statusText
-                );
-            }
-        });
     }
+
+    fetch('/trigger', {
+        method: 'POST',
+        body: encodedPrefix
+    })
+    .then(response => {
+        if (response.ok) {
+
+            setIsGeneratingState(true);
+
+            if (botMessage === null) {
+                botMessage = createMessage('bot', '');
+                appendNewMessage(botMessage);
+            }
+
+            // clear input box
+            promptInput.value = '';
+
+            // Scroll to the bottom of the conversation
+            conversation.scrollTop = conversation.scrollHeight;
+            
+            const reader = response.body.getReader();
+
+            function readStream() {
+                reader.read().then(({ done, value }) => {
+                    if (done) {
+                        setIsGeneratingState(false);
+                        return;
+                    }
+                    
+                    accumulatedText += GlobalDecoder.decode(
+                        base64ToBytes(
+                            GlobalDecoder.decode(
+                                value, { stream: true }
+                            )
+                        )
+                    );
+
+                    botMessage.innerHTML = marked.parse(accumulatedText);
+    
+                    readStream();
+
+                }).catch(error => {
+                    console.error('Error reading stream:', error);
+                    setIsGeneratingState(false);
+                });
+            }
+    
+            readStream();
+
+        } else {
+            console.error(
+                'Bad response from /trigger:', response.statusText
+            );
+        }
+    });
 }
+
 
 function resetConversation() {
     fetch('/reset', {
@@ -351,8 +395,8 @@ function resetConversation() {
     });
 }
 
+
 function populateConversation() {
-    conversation.innerHTML = '';
     fetch('/convo', {
         method: "GET"
     })
@@ -369,12 +413,14 @@ function populateConversation() {
     .then(data => {
         let msgs = Object.keys(data);
 
+        conversation.innerHTML = '';
+
+        // iterate over all messages and add them to the conversation
         for (let i = 0; i < msgs.length; i++) {
             const msgKey = msgs[i];
             const msg = data[msgKey];
             let keys = Object.keys(msg);
 
-            // Assuming the first key is the role and the second key is the content
             let role = GlobalDecoder.decode(
                 base64ToBytes(keys[0])
             );
@@ -397,6 +443,7 @@ function populateConversation() {
         return;
     });
 }
+
 
 window.onload = function() {
 
@@ -426,19 +473,27 @@ window.onload = function() {
     );
 
     document.getElementById('swipeButton').addEventListener('click', function() {
-        if (!isGenerating) {
-            removeLastMessage().then(() => {
-                newBotMessage();
-            }).catch(error => {
-                console.error('Error in swipeButton:', error);
-            });
+
+        if (isGenerating) {
+            console.log('refuse to respond to swipeButton - is generating')
+            return
         }
+
+        removeLastMessage().then(() => {
+            console.log('swipe: got to then() of removeLastMessage')
+            newBotMessage();
+        }).catch(error => {
+            console.log('swipe: caught error in removeLastMessage')
+            console.error('Error in swipeButton:', error);
+        });
+
     });
 
     // display all non-system messages even after page load/reload
     populateConversation();
 
 }
+
 
 window.onresize = function() { 
     document.body.height = window.innerHeight;
