@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.87'
+__version__ = '0.1.88'
 
 from setuptools import setup
 
@@ -16,7 +16,16 @@ setup(
     license='The Unlicense',
     include_package_data=True,
     packages=['easy_llama'],
-    package_data={'': ['assets/*.*']},
+    package_data={
+        '': [
+                'assets/*.ico',
+                'assets/*.png',
+                'assets/*.html',
+                'assets/*.css',
+                'assets/*.js',
+                'assets/*.webmanifest'
+            ]
+    },
     install_requires=[
         'llama_cpp_python',
         'numpy',
