@@ -13,22 +13,22 @@
     <link rel="manifest" href="site.webmanifest">
 </head>
 <body>
-    <div class="container">
-        <div id="conversation" class="conversation"></div>
-    </div>
-    <form id="promptForm" onsubmit="submitForm(event)">
-        <textarea id="prompt" name="prompt" placeholder="type a message here..."></textarea>
-        <div class="button-group">
+    <div id="pageContainer">
+        <div id="panel">
+            <button type="button" id="resetButton">restart chat</button>
             <button type="button" id="newBotMessageButton">new bot message</button>
             <button type="button" id="swipeButton">re-roll last message</button>
-            <button type="button" id="resetButton">restart chat</button>
             <button type="button" id="removeButton">remove last message</button>
             <button type="submit" id="submitButton">send message</button>
         </div>
-    </form>
+        <div id="conversationContainer">
+            <div id="conversationWindow"></div>
+            <form id="inputForm" onsubmit="submitForm(event)">
+                <textarea id="inputBox" name="prompt" placeholder="type your message here..."></textarea>
+            </form>
+        </div>
+    </div>
 </body>
-<!-- ./marked.min.js is originally from: https://cdn.jsdelivr.net/npm/marked/marked.min.js -->
-<!-- it is used to parse markdown within messages -->
 <script src="marked.min.js"></script>
 <script src="client.js"></script>
 </html>

@@ -51,13 +51,22 @@ function decode(base64) {
 }
 
 
-const conversation = document.getElementById('conversation');
+const conversationWindow = document.getElementById('conversationWindow');
 const resetButton = document.getElementById('resetButton');
 const removeButton = document.getElementById('removeButton');
 const submitButton = document.getElementById('submitButton');
 const newBotMessageButton = document.getElementById('newBotMessageButton');
 const swipeButton = document.getElementById('swipeButton');
-const promptInput = document.getElementById('prompt');
+const inputBox = document.getElementById('inputBox');
+const inputForm = document.getElementById('inputForm');
+
+
+function popAlertPleaseReport(text) {
+    alert(
+        text + "\n\nPlease report this issue to the developer at this link:\n" +
+        "https://github.com/ddh0/easy-llama/issues/new/choose"
+    );
+}
 
 
 function setIsGeneratingState(targetState) {
@@ -92,16 +101,16 @@ function setIsGeneratingState(targetState) {
 
 
 function getMostRecentMessage() { 
-    return conversation.firstChild; // node or null
+    return conversationWindow.firstChild; // node or null
 }
 
 
 function appendNewMessage(message) {
     let mostRecentMessage = getMostRecentMessage();
     if (mostRecentMessage !== null) {
-        conversation.insertBefore(message, mostRecentMessage);
+        conversationWindow.insertBefore(message, mostRecentMessage);
     } else {
-        conversation.append(message);
+        conversationWindow.append(message);
     }
 }
 
@@ -122,7 +131,7 @@ function createMessage(role, content) {
         return message;
     }
 
-    console.error('unreachable in createMessage')
+    popAlertPleaseReport('unreachable in createMessage');
 
 }
 
@@ -142,11 +151,15 @@ function removeLastMessage() {
         .then(response => {
             if (response.ok) {
                 lastMessage.remove();
-                console.log('removeLastMessage: removed node')
+                console.log('removeLastMessage: removed node');
                 updatePlaceholderText();
                 resolve();
             } else {
-                reject(new Error('Bad response from /remove: ' + response.statusText));
+                reject(
+                    new Error(
+                        'Bad response from /remove: ' + response.statusText
+                    )
+                );
             }
         })
         .catch(error => {
@@ -158,7 +171,7 @@ function removeLastMessage() {
 
 function submitForm(event) {
     event.preventDefault();
-    const form = event.target;
+    const form = inputForm;
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
 
@@ -198,7 +211,7 @@ function submitForm(event) {
     appendNewMessage(botMessage);
 
     // Scroll to the bottom of the conversation
-    conversation.scrollTop = conversation.scrollHeight;
+    conversationWindow.scrollTop = conversationWindow.scrollHeight;
 
     let accumulatedText = '';
 
@@ -251,7 +264,7 @@ function updatePlaceholderText() {
     fetch('/get_context_string')
         .then(response => response.json())
         .then(data => {
-            promptInput.placeholder = decode(data.text);
+            inputBox.placeholder = decode(data.text);
         })
         .catch(error => {
             console.error('Error fetching context usage string:', error);
@@ -277,7 +290,7 @@ function cancelGeneration() {
             if (response.ok) {
                 setIsGeneratingState(false);
                 const lastMessage = getMostRecentMessage();
-                if (lastMessage === null) { return; } else {
+                if (lastMessage === null) { return } else {
                     lastMessage.remove();
                 }
                 return;
@@ -294,15 +307,15 @@ function newBotMessage() {
 
     // do not trigger generation if already generating
     if (isGenerating) {
-        console.log('refuse to trigger newBotMessage - already generating')
+        console.log('refuse to trigger newBotMessage - already generating');
     }
 
-    let v = promptInput.value;
+    let v = inputBox.value;
     let encodedPrefix = null;
     let accumulatedText = '';
     let botMessage = null;
 
-    if (promptInput.value !== '') { // trigger with bot prefix
+    if (inputBox.value !== '') { // trigger with bot prefix
 
         if (prompt.length > maxLengthInput) {
             alert(
@@ -320,10 +333,7 @@ function newBotMessage() {
 
     }
 
-    fetch('/trigger', {
-        method: 'POST',
-        body: encodedPrefix
-    })
+    fetch('/trigger', { method : 'POST', body : encodedPrefix })
     .then(response => {
         if (response.ok) {
 
@@ -335,10 +345,10 @@ function newBotMessage() {
             }
 
             // clear input box
-            promptInput.value = '';
+            inputBox.value = '';
 
             // Scroll to the bottom of the conversation
-            conversation.scrollTop = conversation.scrollHeight;
+            conversationWindow.scrollTop = conversationWindow.scrollHeight;
             
             const reader = response.body.getReader();
 
@@ -379,12 +389,10 @@ function newBotMessage() {
 
 
 function resetConversation() {
-    fetch('/reset', {
-        method: 'POST'
-    })
+    fetch('/reset', { method : 'POST' })
     .then(response => {
         if (response.ok) {
-            document.getElementById('conversation').innerHTML = '';
+            conversationWindow.innerHTML = '';
             updatePlaceholderText();
         } else {
             console.error('Bad response from /reset:', response.statusText);
@@ -397,9 +405,7 @@ function resetConversation() {
 
 
 function populateConversation() {
-    fetch('/convo', {
-        method: "GET"
-    })
+    fetch('/convo', { method : "GET" })
     .then(response => {
         if (!response.ok) {
             console.error('Bad response from /convo:', response.statusText);
@@ -413,7 +419,7 @@ function populateConversation() {
     .then(data => {
         let msgs = Object.keys(data);
 
-        conversation.innerHTML = '';
+        conversationWindow.innerHTML = '';
 
         // iterate over all messages and add them to the conversation
         for (let i = 0; i < msgs.length; i++) {
@@ -445,35 +451,43 @@ function populateConversation() {
 }
 
 
-window.onload = function() {
+document.addEventListener('DOMContentLoaded', function() {
 
-    document.getElementById('resetButton').addEventListener(
-        'click', resetConversation
-    );
-
-    document.getElementById("removeButton").addEventListener(
-        'click', removeLastMessage
-    );
-
-    document.getElementById("newBotMessageButton").addEventListener(
-        'click', newBotMessage
-    );
+    // display all non-system messages even after page load/reload
+    populateConversation();
 
     // SHIFT + ENTER -> newline
     // ENTER         -> submit form
-    document.getElementById('prompt').addEventListener('keydown',
-        function(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                document.getElementById('promptForm').dispatchEvent(
-                    new Event('submit')
-                );
-            }
+    inputBox.addEventListener('keydown', function(event) {
+
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault(); // default is newline
+            inputForm.dispatchEvent(
+                new Event('submit')
+            );
         }
-    );
 
-    document.getElementById('swipeButton').addEventListener('click', function() {
+        //if (inputBox.value === '') {
+        //    submitButton.classList.add('disabled-button')
+        //    submitButton.disabled = true
+        //} else {
+        //    submitButton.classList.remove('disabled-button')
+        //    submitButton.disabled = false
+        //}
 
+    });
+
+    submitButton.addEventListener('click', function(event) {
+        submitForm(event);
+    });
+
+    removeButton.addEventListener('click', removeLastMessage);
+
+    resetButton.addEventListener('click', resetConversation);
+
+    newBotMessageButton.addEventListener('click', newBotMessage);
+
+    swipeButton.addEventListener('click', function() {
         if (isGenerating) {
             console.log('refuse to respond to swipeButton - is generating')
             return
@@ -486,13 +500,9 @@ window.onload = function() {
             console.log('swipe: caught error in removeLastMessage')
             console.error('Error in swipeButton:', error);
         });
-
     });
 
-    // display all non-system messages even after page load/reload
-    populateConversation();
-
-}
+});
 
 
 window.onresize = function() { 

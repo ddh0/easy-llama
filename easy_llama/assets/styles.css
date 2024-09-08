@@ -3,17 +3,123 @@ styles.css
 https://github.com/ddh0/easy-llama/
 */
 
-body {
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
-    line-height: 3.5rex;
-    margin: 0;
-    padding: 0;
+html {
     background-color: #000000;
     color: #eeeeee;
-    padding-bottom: 0px;
+    margin: 0px;
+    padding: 0px;
+    overflow: hidden;
+}
+
+body {
+    background-color: #000000;
+    color: #eeeeee;
+    margin: 0px;
+    padding: 0px;
+    overflow: hidden;
+}
+
+#pageContainer {
+    width: 100svw;
+    height: 100svh;
+    margin: 0px;
+    border-color: transparent;
+    border-width: 0px;
+    padding: 0px;
+    overflow: hidden;
+    color: #eeeeee;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 2rex;
+    line-height: 3.5rex;
+}
+
+#conversationContainer {
+    width: 80svw;
+    height: inherit;
+    margin: inherit;
+    border-color: inherit;
+    border-width: inherit;
+    padding: inherit;
+    overflow: inherit;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+#conversationWindow {
+    display: flex;
+    flex-direction: column-reverse;
+    background-color: #161616;
+    width: inherit;
+    height: 85svh;
+    margin: 0px;
+    border-color: inherit;
+    border-width: inherit;
+    padding: inherit;
+    overflow-y: auto;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+#inputBox {
+    background-color: #161616;
+    width: calc(100% - 2rex); /* fill width and account for padding */
+    height: 15svh;
+    margin: 0px;
+    resize: none;
+    border-color: #242424;
+    border-width: 5px 0px 0px 0px;
+    padding: 1rex;
+    overflow: auto;
+    color: #eeeeee;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: inherit;
+    line-height: 3.5rex;
+}
+
+#panel {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
+    background-color: inherit;
+    float: right;
+    width: 20svw;
+    height: inherit;
+    margin: inherit;
+    border-color: inherit;
+    border-width: inherit;
+    padding: inherit;
+    overflow: inherit;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+button {
+    border-color: #555;
+    border-style: solid;
+    border-width: 2px;
+    border-radius: 16px;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    width: 15svw;
+    height: 8svh;
+    background-color: #4b724b;
+    color: #eeeeee;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 1.7rex;
+    line-height: 3.5rex;
+    overflow: clip;
+}
+
+button:hover {
+    background-color: #355335;
+    cursor: pointer;
 }
 
 h1 {
@@ -25,10 +131,11 @@ h2 {
 }
 
 pre {
+    font-size: 85%;
     line-height: 2.8rex;
     max-height: 45rex;
     border-radius: 5px;
-    padding: 7px;
+    padding: 1rex;
     white-space: pre;
     word-wrap: normal;
     background-color: #000000bf;
@@ -41,13 +148,6 @@ code {
     color: #bebebe;
 }
 
-.container {
-    width: 100svw;
-    height: auto;
-    margin: 10px;
-    padding: 0px;
-}
-
 a {
     color: #a0c5ff;
 }
@@ -56,28 +156,15 @@ a:visited {
     color: #a0c5ff;
 }
 
-.conversation {
-    background-color: #161616;
-    margin-top: -10px;
-    margin-bottom: 20px;
-    height: 80svh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column-reverse;
-}
-
 .message {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 2rex;
     /* overflow: auto; */
-    min-width: 95svw;
+    width: calc(100% - 4rex);
+    padding: 0.5rex 2rex;
     /* min-height: 6rex; */
-    padding-left: 2rem;
-    padding-right: 2rem;
-    padding-top: 1rex;
-    padding-bottom: 1rex;
     border-radius: 0px;
     color: #eeeeee;
-    max-width: 95svw;
 }
 
 .user-message {
@@ -88,37 +175,6 @@ a:visited {
 .bot-message {
     background-color: #21434b;
     align-self: center;
-}
-
-form {
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
-    position: fixed;
-    margin-top: 80svh;
-    height: 20svh;
-    width: 100svw;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 3px;
-    border: none;
-}
-
-textarea {
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
-    position: absolute;
-    overflow-wrap: anywhere;
-    top: 10px;
-    bottom: 10px;
-    width: 80%;
-    height: 25%;
-    padding: 10px;
-    border-radius: 2px;
-    border: none;
-    resize: none;
-    margin-bottom: 10px;
-    background-color: #161616;
-    color: #eeeeee;
-    font-size: 16px;  /* this is necessary to prevent iOS safari from zooming in on the input box */
 }
 
 /* these 4 rules do the same thing on different browsers */
@@ -135,36 +191,8 @@ textarea:-ms-input-placeholder {
     color: #404040;
 }
 
-button {
-    font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: 80%;
-    padding: 10px;
-    border: none;
-    text-wrap: nowrap;
-    text-overflow: ellipsis;
-    max-width: 30ch;
-    max-height: 5rex;
-    border-radius: 3px;
-    background-color: #33693d;
-    color: #eeeeee;
-    cursor: pointer;
-}
-
-button:hover {
-    background-color: #234c2b;
-}
-
-.button-group {
-    margin-top: 8rex;
-    text-align: center;
-    justify-content: space-between;
-}
-
-.button-group button {
-    margin-left: 5px;
-    margin-right: 5px;
-    flex: 1;
-    margin-inline: 5px;
+textarea:focus {
+    outline: none;
 }
 
 .disabled-button {
