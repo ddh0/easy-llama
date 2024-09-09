@@ -71,6 +71,8 @@ function popAlertPleaseReport(text) {
 
 function setIsGeneratingState(targetState) {
 
+    if (isGenerating === targetState) { return; }
+
     if (targetState) {
         submitButton.textContent = 'cancel generation';
         submitButton.classList.add('red-button');
@@ -80,8 +82,9 @@ function setIsGeneratingState(targetState) {
         removeButton.disabled = true;
         newBotMessageButton.classList.add('disabled-button');
         newBotMessageButton.disabled = true;
-        swipeButton.classList.add('disabled-button');
-        swipeButton.disabled = true;
+        swipeButton.textContent = 'cancel and re-roll';
+        //swipeButton.classList.add('disabled-button');
+        //swipeButton.disabled = true;
     } else {
         submitButton.textContent = 'send message';
         submitButton.classList.remove('red-button');
@@ -91,12 +94,13 @@ function setIsGeneratingState(targetState) {
         removeButton.disabled = false;
         newBotMessageButton.classList.remove('disabled-button');
         newBotMessageButton.disabled = false;
-        swipeButton.classList.remove('disabled-button');
-        swipeButton.disabled = false;
-        updatePlaceholderText();
+        swipeButton.textContent = 're-roll last message';
+        //swipeButton.classList.remove('disabled-button');
+        //swipeButton.disabled = false;
     }
 
     isGenerating = targetState;
+    console.log('set generating state:', targetState)
 }
 
 
@@ -175,18 +179,10 @@ function submitForm(event) {
     const formData = new FormData(form);
     const prompt = formData.get('prompt');
 
-    if (prompt.length > maxLengthInput) {
-        alert(
-            'length of input exceeds maximum allowed length of ' + 
-            '100k characters'
-        );
-        return;
-    }
-
     if (isGenerating) {
 
         // if already generating, cancel was clicked
-        cancelGeneration();  
+        cancelGeneration();
         return;
 
     } else {
@@ -197,6 +193,14 @@ function submitForm(event) {
             updatePlaceholderText();
             return;
         }
+    }
+
+    if (prompt.length > maxLengthInput) {
+        alert(
+            'length of input exceeds maximum allowed length of ' + 
+            '100k characters'
+        );
+        return;
     }
 
     // Append user message to the conversation
@@ -214,8 +218,6 @@ function submitForm(event) {
     conversationWindow.scrollTop = conversationWindow.scrollHeight;
 
     let accumulatedText = '';
-
-    setIsGeneratingState(true);
 
     fetch('/submit', {
         method: 'POST',
@@ -247,21 +249,21 @@ function submitForm(event) {
 
             }).catch(error => {
                 console.error('Error reading stream:', error);
-                setIsGeneratingState(false);
             });
         }
-
+        
+        setIsGeneratingState(true);
         readStream();
     })
     .catch(error => {
         console.error('Caught error: submitForm:', error);
-        setIsGeneratingState(false);
     });
+    setIsGeneratingState(false);
 }
 
 
 function updatePlaceholderText() {
-    fetch('/get_context_string')
+    return fetch('/get_context_string')
         .then(response => response.json())
         .then(data => {
             inputBox.placeholder = decode(data.text);
@@ -283,107 +285,122 @@ function escapeHtml(unsafe) { // currently unused
 
 
 function cancelGeneration() {
-    fetch('/cancel', {
-        method: 'POST'
-    })
-    .then(response => {
-            if (response.ok) {
-                setIsGeneratingState(false);
-                const lastMessage = getMostRecentMessage();
-                if (lastMessage === null) { return } else {
-                    lastMessage.remove();
-                }
-                return;
-            } else {
-                console.error(
-                    'Not OK: cancelGeneration:', response.statusText
-                );
-            }
-        });
-}
-
-
-function newBotMessage() {
-
-    // do not trigger generation if already generating
-    if (isGenerating) {
-        console.log('refuse to trigger newBotMessage - already generating');
-    }
-
-    let v = inputBox.value;
-    let encodedPrefix = null;
-    let accumulatedText = '';
-    let botMessage = null;
-
-    if (inputBox.value !== '') { // trigger with bot prefix
-
-        if (prompt.length > maxLengthInput) {
-            alert(
-                'length of input exceeds maximum allowed length of ' + 
-                '100k characters'
-            );
+    return new Promise((resolve, reject) => {
+        if (!isGenerating) {
+            resolve();
             return;
         }
 
-        encodedPrefix = bytesToBase64(GlobalEncoder.encode(v));
-        accumulatedText = v;
+        fetch('/cancel', {
+            method: 'POST'
+        })
+        .then(response => {
+            if (response.ok) {
+                console.log('cancel: before set false');
+                setIsGeneratingState(false);
+                console.log('cancel: after set false');
 
-        botMessage = createMessage('bot', v);
-        appendNewMessage(botMessage);
-
-    }
-
-    fetch('/trigger', { method : 'POST', body : encodedPrefix })
-    .then(response => {
-        if (response.ok) {
-
-            setIsGeneratingState(true);
-
-            if (botMessage === null) {
-                botMessage = createMessage('bot', '');
-                appendNewMessage(botMessage);
+                // remove canceled message
+                const lastMessage = getMostRecentMessage();
+                if (lastMessage === null) {
+                    resolve();
+                } else {
+                    lastMessage.remove();
+                    resolve();
+                }
+            } else {
+                reject(new Error('error when canceling generation: ' + response.statusText));
             }
+        })
+        .catch(error => {
+            reject(new Error('Error in cancelGeneration: ' + error));
+        });
+    });
+}
 
-            // clear input box
-            inputBox.value = '';
 
-            // Scroll to the bottom of the conversation
-            conversationWindow.scrollTop = conversationWindow.scrollHeight;
-            
-            const reader = response.body.getReader();
 
-            function readStream() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        setIsGeneratingState(false);
-                        return;
-                    }
-                    
-                    accumulatedText += GlobalDecoder.decode(
-                        base64ToBytes(
-                            GlobalDecoder.decode(
-                                value, { stream: true }
-                            )
-                        )
-                    );
-
-                    botMessage.innerHTML = marked.parse(accumulatedText);
-    
-                    readStream();
-
-                }).catch(error => {
-                    console.error('Error reading stream:', error);
-                    setIsGeneratingState(false);
-                });
-            }
-    
-            readStream();
-
-        } else {
-            console.error(
-                'Bad response from /trigger:', response.statusText
-            );
+function newBotMessage() {
+    return new Promise((resolve, reject) => {
+        if (isGenerating) {
+            console.log('refuse to trigger newBotMessage - already generating');
+            resolve();
+            return;
         }
+
+        let v = inputBox.value;
+        let encodedPrefix = null;
+        let accumulatedText = '';
+        let botMessage = null;
+
+        if (inputBox.value !== '') { // trigger with bot prefix
+            if (v.length > maxLengthInput) {
+                alert(
+                    'length of input exceeds maximum allowed length of ' +
+                    '100k characters'
+                );
+                resolve();
+                return;
+            }
+
+            encodedPrefix = bytesToBase64(GlobalEncoder.encode(v));
+            accumulatedText = v;
+
+            botMessage = createMessage('bot', v);
+            appendNewMessage(botMessage);
+        }
+
+        fetch('/trigger', { method : 'POST', body : encodedPrefix })
+        .then(response => {
+            if (response.ok) {
+                if (botMessage === null) {
+                    botMessage = createMessage('bot', '');
+                    appendNewMessage(botMessage);
+                }
+
+                // clear input box
+                inputBox.value = '';
+
+                // Scroll to the bottom of the conversation
+                conversationWindow.scrollTop = conversationWindow.scrollHeight;
+
+                const reader = response.body.getReader();
+
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            setIsGeneratingState(false);
+                            resolve();
+                            return;
+                        }
+
+                        accumulatedText += GlobalDecoder.decode(
+                            base64ToBytes(
+                                GlobalDecoder.decode(
+                                    value, { stream: true }
+                                )
+                            )
+                        );
+
+                        botMessage.innerHTML = marked.parse(accumulatedText);
+                        readStream();
+                    }).catch(error => {
+                        console.error('Error reading stream:', error);
+                        reject(error);
+                    });
+                }
+
+                setIsGeneratingState(true);
+                readStream();
+            } else {
+                console.error(
+                    'Bad response from /trigger:', response.statusText
+                );
+                reject(new Error('Bad response from /trigger: ' + response.statusText));
+            }
+        }).catch(error => {
+            reject(new Error('Error in newBotMessage: ' + error));
+        });
     });
 }
 
@@ -450,6 +467,28 @@ function populateConversation() {
     });
 }
 
+async function swipe() {
+    console.log('swipe: start function');
+    if (isGenerating) {
+        console.log('swipe: branch 1: going to cancel generation');
+        await cancelGeneration(); // Wait for cancelGeneration to complete
+        console.log('swipe: branch 1: canceled. going to trigger');
+        setTimeout(newBotMessage, 500); // Wait for newBotMessage to complete
+        console.log('swipe: branch 1: triggered. going to update placeholder');
+        await updatePlaceholderText(); // Wait for updatePlaceholderText to complete
+        console.log('swipe: branch 1: updated placeholder. branch done.');
+    } else {
+        console.log('swipe: branch 2: going to remove last message');
+        await removeLastMessage(); // Wait for removeLastMessage to complete
+        console.log('swipe: branch 2: removed. going to trigger');
+        await newBotMessage(); // Wait for newBotMessage to complete
+        console.log('swipe: branch 2: triggered. going to update placeholder');
+        await updatePlaceholderText(); // Wait for updatePlaceholderText to complete
+        console.log('swipe: branch 2: updated. branch done.');
+    }
+    console.log('swipe: end function');
+}
+
 
 document.addEventListener('DOMContentLoaded', function() {
 
@@ -487,20 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     newBotMessageButton.addEventListener('click', newBotMessage);
 
-    swipeButton.addEventListener('click', function() {
-        if (isGenerating) {
-            console.log('refuse to respond to swipeButton - is generating')
-            return
-        }
-
-        removeLastMessage().then(() => {
-            console.log('swipe: got to then() of removeLastMessage')
-            newBotMessage();
-        }).catch(error => {
-            console.log('swipe: caught error in removeLastMessage')
-            console.error('Error in swipeButton:', error);
-        });
-    });
+    swipeButton.addEventListener('click', swipe);            
 
 });
 

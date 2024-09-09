@@ -163,6 +163,40 @@ def assert_type(
         exc.add_note(hint)
     raise exc
 
+class InferenceLock:
+    """
+    Prevent the model from accepting more than one generation at a time,
+    which is not supported and can cause a hard crash
+    """
+
+    class LockFailure(Exception):
+        pass
+
+    def __init__(self):
+        self.locked = False
+
+    def __enter__(self):
+        self.acquire()
+    
+    def __exit__(self, *_):
+        self.release()
+    
+    def acquire(self):
+        if self.locked:
+            raise self.LockFailure(
+                'failed to acquire InferenceLock (already locked)'
+            )
+        self.locked = True
+        return self
+    
+    def release(self):
+        if not self.locked:
+            raise self.LockFailure(
+                'tried to release InferenceLock that is not acquired'
+            )
+        self.locked = False
+
+
 class GGUFValueType(IntEnum):
     # Occasionally check to ensure this class is consistent with gguf
     UINT8   = 0

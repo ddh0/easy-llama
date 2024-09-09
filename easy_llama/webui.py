@@ -283,13 +283,11 @@ class WebUI:
             newline()
             self.log('hit cancel endpoint - flag is set')
             self._cancel_flag = True
-
             return '', 200
 
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
-            self._cancel_flag = False
             self.log('hit submit endpoint')
             prompt = decode(request.data)
 
@@ -298,12 +296,10 @@ class WebUI:
                 return '', 418
 
             def generate():
-                
                 self.thread.add_message('user', prompt)
                 print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
                 inf_str = self.thread.inf_str()
                 _print_inference_string(inf_str)
-
                 token_generator = self.thread.model.stream(
                     inf_str,
                     stops=self.thread.format['stops'],
@@ -312,31 +308,29 @@ class WebUI:
                 response = ''
 
                 for token in token_generator:
-
-                    if not self._cancel_flag:
-                        tok_text = token['choices'][0]['text']
-                        response += tok_text
-                        print(
-                            f'{BLUE}{tok_text}{RESET}',
-                            end='',
-                            flush=True,
-                            file=sys.stderr
-                        )
-                        
-                        yield encode(tok_text)
-                    
-                    else:
+                    if self._cancel_flag:
                         print(file=sys.stderr)
                         self.log('cancel generation from /submit. teapot')
-                        self._cancel_flag = False # reset flag
-                        return '', 418 # I'm a teapot
-                    
+                        self._cancel_flag = False
+                        return '', 418  # I'm a teapot
+
+                    tok_text = token['choices'][0]['text']
+                    response += tok_text
+                    print(
+                        f'{BLUE}{tok_text}{RESET}',
+                        end='',
+                        flush=True,
+                        file=sys.stderr
+                    )
+                    yield encode(tok_text)
+
+                self._cancel_flag = False
                 newline()
                 self.thread.add_message('bot', response)
 
             if prompt not in ['', None]:
                 return Response(generate(), mimetype='text/plain')
-            
+
             return '', 200
         
 
@@ -372,51 +366,43 @@ class WebUI:
 
         @self.app.route('/trigger', methods=['POST'])
         def trigger():
-
             self.log('hit trigger endpoint')
             prompt = decode(request.data)
 
             if prompt not in ['', None]:
                 self.log(f'trigger with prompt: {prompt!r}')
-
             else:
                 self.log(f'trigger without prompt')
                 prompt = ''
 
-            self._cancel_flag = False
-
             def generate():
-
                 inf_str = self.thread.inf_str() + prompt
                 _print_inference_string(inf_str)
-
                 token_generator = self.thread.model.stream(
                     inf_str,
                     stops=self.thread.format['stops'],
                     sampler=self.thread.sampler
                 )
-
                 response = ''
 
                 for token in token_generator:
-
-                    if not self._cancel_flag:
-                        tok_text = token['choices'][0]['text']
-                        response += tok_text
-                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
-                        yield encode(tok_text)
-
-                    else:
+                    if self._cancel_flag:
                         print()
                         self.log('cancel generation from /trigger. teapot')
-                        self._cancel_flag = False # reset flag
+                        self._cancel_flag = False  # reset flag
+                        return '', 418  # I'm a teapot
 
-                        return '', 418 # I'm a teapot
-                    
+                    tok_text = token['choices'][0]['text']
+                    response += tok_text
+                    print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
+                    yield encode(tok_text)
+
+                self._cancel_flag = False
                 print('', file=sys.stderr)
                 self.thread.add_message('bot', prompt + response)
 
             return Response(generate(), mimetype='text/plain')
+
         
         if not self.thread.model.is_loaded():
 
