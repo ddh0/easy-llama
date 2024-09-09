@@ -66,13 +66,13 @@ body {
 
 #inputBox {
     background-color: #161616;
-    width: calc(100% - 2rex); /* fill width and account for padding */
+    width: calc(100% - 2.4rex); /* fill width and account for padding */
     height: 15svh;
     margin: 0px;
     resize: none;
     border-color: #242424;
     border-width: 5px 0px 0px 0px;
-    padding: 1rex;
+    padding: 1.2rex;
     overflow: auto;
     color: #eeeeee;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
