@@ -481,7 +481,7 @@ async function swipe() {
         console.log('swipe: branch 2: going to remove last message');
         await removeLastMessage(); // Wait for removeLastMessage to complete
         console.log('swipe: branch 2: removed. going to trigger');
-        await newBotMessage(); // Wait for newBotMessage to complete
+        setTimeout(newBotMessage, 500); // Wait for newBotMessage to complete
         console.log('swipe: branch 2: triggered. going to update placeholder');
         await updatePlaceholderText(); // Wait for updatePlaceholderText to complete
         console.log('swipe: branch 2: updated. branch done.');
