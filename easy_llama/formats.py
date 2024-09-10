@@ -5,8 +5,8 @@
 
 import time
 
-from typing import Callable, Any
-from .utils import assert_type
+from typing import Callable, Any, Optional
+from .utils import assert_type, NoneType
 
 
 class AdvancedFormat:
@@ -73,10 +73,14 @@ def wrap(
            format['bot_prefix']
 
 
-def get_time_str():
+def get_time_str() -> str:
     """Return a timestamp of the current time as a string"""
     # helpful: https://strftime.net
     return time.strftime("%l:%M %p, %A, %B %e, %Y")
+
+def short_time_str() -> str:
+    """Return a shorter timestamp of the current time as a string"""
+    return time.strftime('%a %I:%M %p')
 
 
 blank: dict[str, str | list] = {
@@ -544,3 +548,64 @@ Llama3WithTimestamps = AdvancedFormat({
     "bot_suffix": _llama3_suffix_with_timestamp,
     "stops": [128001, 128008, 128009, 128011, 128012]
 })
+
+
+def AdvancedChatMarkupFormat(
+    user_name: str,
+    bot_name: str,
+    title: str,
+    description: str,
+    tags: list[str]
+) -> AdvancedFormat:
+    """
+    Quickly create a prompt template using the specified variables, for use
+    within Threads
+    """
+    
+    assert_type(user_name, str, 'user_name', 'ChatMarkupFormat')
+    assert_type(bot_name, str, 'bot_name', 'ChatMarkupFormat')
+    assert_type(title, str, 'title', 'ChatMarkupFormat')
+    assert_type(description, str, 'description', 'ChatMarkupFormat')
+    assert_type(tags, list, 'tags', 'ChatMarkupFormat')
+
+    _t = "  " # indentation string
+
+    def _markup_user_prefix() -> str:
+        return f"""{_t*2}<message sender="{user_name}" timestamp="{short_time_str()}">"""
+
+    def _markup_bot_prefix() -> str:
+        return f"""{_t*2}<message sender="{bot_name}" timestamp="{short_time_str()}">"""
+
+    def _markup_msg_suffix() -> str:
+        return "</message>\n"
+
+    xml_tags = [f'{_t*2}<tags>']
+    for tag in tags:
+        xml_tags.append(f'{_t*3}<tag>{tag}</tag>')
+    xml_tags.append(f'{_t*2}</tags>')
+    final_tags_string = '\n'.join(xml_tags)
+
+    return AdvancedFormat({
+        "system_prefix": \
+
+f"""<chat>
+{_t}<meta>
+{_t*2}<title>{title if title is not None else "Untitled Chat"}</title>
+{_t*2}<description>{description if description is not None else "No description provided"}</description>
+{final_tags_string}
+{_t*2}<participants>
+{_t*3}<participant name="{user_name}"/>
+{_t*3}<participant name="{bot_name}"/>
+{_t*2}</participants>
+{_t*2}<datetime>{get_time_str()}</datetime>
+{_t}</meta>
+{_t}<messages>\n""",
+
+        "system_prompt": "",
+        "system_suffix": "",
+        "user_prefix": _markup_user_prefix,
+        "user_suffix": _markup_msg_suffix,
+        "bot_prefix": _markup_bot_prefix,
+        "bot_suffix": _markup_msg_suffix,
+        "stops": ["</", "</message>", "</message>\n"]
+    })
