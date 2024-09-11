@@ -173,6 +173,16 @@ function removeLastMessage() {
 }
 
 
+function highlightMessage(message) {
+    // given a message, submit its `<pre><code>...</pre></code>` elements
+    // to highlight.js
+    const codeElements = message.querySelectorAll('pre code');
+    codeElements.forEach(codeElement => {
+        hljs.highlightElement(codeElement)
+    });
+}
+
+
 function submitForm(event) {
     event.preventDefault();
     const form = inputForm;
@@ -205,6 +215,7 @@ function submitForm(event) {
 
     // Append user message to the conversation
     let userMessage = createMessage('user', prompt)
+    highlightMessage(userMessage);
     appendNewMessage(userMessage);
 
     // Clear prompt input text box
@@ -244,6 +255,7 @@ function submitForm(event) {
                 ));
 
                 botMessage.innerHTML = marked.parse(accumulatedText);
+                highlightMessage(botMessage);
         
                 readStream();
 
@@ -347,6 +359,7 @@ function newBotMessage() {
             accumulatedText = v;
 
             botMessage = createMessage('bot', v);
+            highlightMessage(botMessage);
             appendNewMessage(botMessage);
         }
 
@@ -383,7 +396,10 @@ function newBotMessage() {
                         );
 
                         botMessage.innerHTML = marked.parse(accumulatedText);
+                        highlightMessage(botMessage);
+
                         readStream();
+
                     }).catch(error => {
                         console.error('Error reading stream:', error);
                         reject(error);
@@ -455,7 +471,9 @@ function populateConversation() {
 
             if (role != 'system') {
                 let newMessage = createMessage(role, content);
+                highlightMessage(newMessage);
                 appendNewMessage(newMessage);
+
             }
         }
 

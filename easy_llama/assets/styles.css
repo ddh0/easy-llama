@@ -35,7 +35,7 @@ body {
 
 #conversationContainer {
     width: 80svw;
-    height: inherit;
+    height: 100svh;
     margin: inherit;
     border-color: inherit;
     border-width: inherit;
@@ -132,21 +132,31 @@ h2 {
 }
 
 pre {
-    font-size: 85%;
+    font-size: 85%; 
     line-height: 2.8rex;
-    max-height: 45rex;
+    /* max-height: 45rex; */
+    text-align: left;
+    direction: ltr;
     border-radius: 5px;
-    padding: 1rex;
+    padding: 1.3rex;
     white-space: pre;
     word-wrap: normal;
+    tab-size: 4;
     background-color: #000000bf;
     color: #bebebe;
     overflow: auto;
     max-width: 100%;
+    hyphens: none;
 }
 
-code {
+code:not(pre code) { /* inline code */
+    background-color: #000000bf;
     color: #bebebe;
+    font-size: 85%;
+    border-radius: 5px;
+    padding: 0.5rex;
+    hyphens: none;
+    white-space: pre;
 }
 
 a {
