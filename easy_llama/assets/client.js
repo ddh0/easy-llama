@@ -59,6 +59,8 @@ const newBotMessageButton = document.getElementById('newBotMessageButton');
 const swipeButton = document.getElementById('swipeButton');
 const inputBox = document.getElementById('inputBox');
 const inputForm = document.getElementById('inputForm');
+const uploadButton = document.getElementById('fileUploadButton');
+const uploadForm = document.getElementById('fileInput');
 
 
 function popAlertPleaseReport(text) {
@@ -76,8 +78,9 @@ function setIsGeneratingState(targetState) {
     if (targetState) {
         submitButton.textContent = 'cancel generation';
         submitButton.classList.add('red-button');
-        resetButton.classList.add('disabled-button');
-        resetButton.disabled = true;
+        //resetButton.classList.add('disabled-button');
+        //resetButton.disabled = true;
+        resetButton.textContent = 'cancel and restart chat';
         removeButton.classList.add('disabled-button');
         removeButton.disabled = true;
         newBotMessageButton.classList.add('disabled-button');
@@ -85,11 +88,14 @@ function setIsGeneratingState(targetState) {
         swipeButton.textContent = 'cancel and re-roll';
         //swipeButton.classList.add('disabled-button');
         //swipeButton.disabled = true;
+        //uploadButton.classList.add('disabled-button');
+        //uploadButton.disabled = true;
     } else {
         submitButton.textContent = 'send message';
         submitButton.classList.remove('red-button');
-        resetButton.classList.remove('disabled-button');
-        resetButton.disabled = false;
+        //resetButton.classList.remove('disabled-button');
+        //resetButton.disabled = false;
+        resetButton.textContent = 'restart chat';
         removeButton.classList.remove('disabled-button');
         removeButton.disabled = false;
         newBotMessageButton.classList.remove('disabled-button');
@@ -97,6 +103,8 @@ function setIsGeneratingState(targetState) {
         swipeButton.textContent = 're-roll last message';
         //swipeButton.classList.remove('disabled-button');
         //swipeButton.disabled = false;
+        //uploadButton.classList.remove('disabled-button');
+        //uploadButton.disabled = false;
     }
 
     isGenerating = targetState;
@@ -183,6 +191,25 @@ function highlightMessage(message) {
 }
 
 
+function triggerFileUpload() {
+    uploadForm.click();
+}
+
+
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            resolve(e.target.result);
+        };
+        reader.onerror = function(e) {
+            reject(e);
+        };
+        reader.readAsText(file);
+    });
+}
+
+
 function submitForm(event) {
     event.preventDefault();
     const form = inputForm;
@@ -212,6 +239,8 @@ function submitForm(event) {
         );
         return;
     }
+
+    setIsGeneratingState(true);
 
     // Append user message to the conversation
     let userMessage = createMessage('user', prompt)
@@ -245,6 +274,7 @@ function submitForm(event) {
             reader.read().then(({ done, value }) => {
                 if (done) {
                     setIsGeneratingState(false);
+                    updatePlaceholderText();
                     return;
                 }
         
@@ -261,16 +291,18 @@ function submitForm(event) {
 
             }).catch(error => {
                 console.error('Error reading stream:', error);
+                setIsGeneratingState(false);
             });
         }
         
-        setIsGeneratingState(true);
         readStream();
+
     })
     .catch(error => {
         console.error('Caught error: submitForm:', error);
+        setIsGeneratingState(false);
     });
-    setIsGeneratingState(false);
+
 }
 
 
@@ -308,9 +340,7 @@ function cancelGeneration() {
         })
         .then(response => {
             if (response.ok) {
-                console.log('cancel: before set false');
                 setIsGeneratingState(false);
-                console.log('cancel: after set false');
 
                 // remove canceled message
                 const lastMessage = getMostRecentMessage();
@@ -365,6 +395,8 @@ function newBotMessage() {
             appendNewMessage(botMessage);
         }
 
+        setIsGeneratingState(true);
+
         fetch('/trigger', { method : 'POST', body : encodedPrefix })
         .then(response => {
             if (response.ok) {
@@ -385,6 +417,7 @@ function newBotMessage() {
                     reader.read().then(({ done, value }) => {
                         if (done) {
                             setIsGeneratingState(false);
+                            updatePlaceholderText();
                             resolve();
                             return;
                         }
@@ -404,21 +437,24 @@ function newBotMessage() {
 
                     }).catch(error => {
                         console.error('Error reading stream:', error);
+                        setIsGeneratingState(false);
                         reject(error);
                     });
                 }
 
-                setIsGeneratingState(true);
                 readStream();
+            
             } else {
                 console.error(
                     'Bad response from /trigger:', response.statusText
                 );
+                setIsGeneratingState(false);
                 reject(new Error(
                     'Bad response from /trigger: ' + response.statusText
                 ));
             }
         }).catch(error => {
+            setIsGeneratingState(false);
             reject(new Error('Error in newBotMessage: ' + error));
         });
     });
@@ -540,11 +576,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
     removeButton.addEventListener('click', removeLastMessage);
 
-    resetButton.addEventListener('click', resetConversation);
+    resetButton.addEventListener('click', function(event) {
+        if (isGenerating) {
+            cancelGeneration();
+            resetConversation();
+        } else {
+            resetConversation();
+        }
+    });
 
     newBotMessageButton.addEventListener('click', newBotMessage);
 
-    swipeButton.addEventListener('click', swipe);            
+    swipeButton.addEventListener('click', swipe);
+
+    uploadButton.addEventListener('click', triggerFileUpload);
+
+    uploadForm.addEventListener('change', async function(event) {
+        const files = event.target.files;
+        if (files.length > 0) {
+            try {
+                for (const file of files) {
+                    const content = await readFileAsText(file);
+                    inputBox.value += "```\n" + content + "\n```\n\n";
+                }
+                inputBox.scrollTop = inputBox.scrollHeight;
+                inputBox.selectionStart = inputBox.value.length;
+                inputBox.selectionEnd = inputBox.value.length;
+            } catch (error) {
+                console.error('Error reading file:', error);
+            }
+        }
+    });
 
 });
 

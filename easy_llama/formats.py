@@ -553,9 +553,9 @@ Llama3WithTimestamps = AdvancedFormat({
 def AdvancedChatMarkupFormat(
     user_name: str,
     bot_name: str,
-    title: str,
-    description: str,
-    tags: list[str]
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    tags: Optional[list[str]] = None
 ) -> AdvancedFormat:
     """
     Quickly create a prompt template using the specified variables, for use
@@ -564,48 +564,42 @@ def AdvancedChatMarkupFormat(
     
     assert_type(user_name, str, 'user_name', 'AdvancedChatMarkupFormat')
     assert_type(bot_name, str, 'bot_name', 'AdvancedChatMarkupFormat')
-    assert_type(title, str, 'title', 'AdvancedChatMarkupFormat')
-    assert_type(description, str, 'description', 'AdvancedChatMarkupFormat')
-    assert_type(tags, list, 'tags', 'AdvancedChatMarkupFormat')
+    assert_type(title, (str, NoneType), 'title', 'AdvancedChatMarkupFormat')
+    assert_type(description, (str, NoneType), 'description',
+                'AdvancedChatMarkupFormat')
+    assert_type(tags, (list, NoneType), 'tags', 'AdvancedChatMarkupFormat')
 
-    _t = "  " # indentation string
+    _t = "    " # indentation string
 
-    def _markup_user_prefix() -> str:
-        return f"""{_t*2}<message sender="{user_name}" timestamp="{short_time_str()}">"""
+    def _user_prefix() -> str:
+        return (f'{_t*2}<message sender="{user_name}" '
+                f'timestamp="{short_time_str()}">')
 
-    def _markup_bot_prefix() -> str:
-        return f"""{_t*2}<message sender="{bot_name}" timestamp="{short_time_str()}">"""
+    def _bot_prefix() -> str:
+        return (f'{_t*2}<message sender="{bot_name}" '
+                f'timestamp="{short_time_str()}">')
 
-    def _markup_msg_suffix() -> str:
+    def _msg_suffix() -> str:
         return "</message>\n"
 
-    xml_tags = [f'{_t*2}<tags>']
-    for tag in tags:
-        xml_tags.append(f'{_t*3}<tag>{tag}</tag>')
-    xml_tags.append(f'{_t*2}</tags>')
-    final_tags_string = '\n'.join(xml_tags)
+    if tags is not None:
+        xml_tags = [f'{_t*2}<tags>']
+        for tag in tags:
+            xml_tags.append(f'{_t*3}<tag>{tag}</tag>')
+        xml_tags.append(f'{_t*2}</tags>')
+        final_tags_string = '\n'.join(xml_tags)
+    else:
+        final_tags_string = f"{_t*2}<tags>\n{_t*2}</tags>"
 
-    return AdvancedFormat({
-        "system_prefix": "",
-        "system_prompt": \
-        
-f"""<chat>
-{_t}<meta>
-{_t*2}<title>{title if title is not None else "Untitled Chat"}</title>
-{_t*2}<description>{description if description is not None else "No description provided"}</description>
-{final_tags_string}
-{_t*2}<participants>
-{_t*3}<participant name="{user_name}"/>
-{_t*3}<participant name="{bot_name}"/>
-{_t*2}</participants>
-{_t*2}<datetime>{get_time_str()}</datetime>
-{_t}</meta>
-{_t}<messages>\n""",
-
-        "system_suffix": "",
-        "user_prefix": _markup_user_prefix,
-        "user_suffix": _markup_msg_suffix,
-        "bot_prefix": _markup_bot_prefix,
-        "bot_suffix": _markup_msg_suffix,
-        "stops": ["</", "</message>", "</message>\n"]
-    })
+    return AdvancedFormat(
+        {
+            "system_prefix": "",
+            "system_prompt": f"""<chat>\n{_t}<meta>\n{_t*2}<title>{title if title is not None else "Untitled Chat"}</title>\n{_t*2}<description>{description if description is not None else "No description provided"}</description>\n{final_tags_string}\n{_t*2}<participants>\n{_t*3}<participant name="{user_name}"/>\n{_t*3}<participant name="{bot_name}"/>\n{_t*2}</participants>\n{_t*2}<datetime>{get_time_str()}</datetime>\n{_t}</meta>\n{_t}<messages>""",
+            "system_suffix": "\n",
+            "user_prefix": _user_prefix,
+            "user_suffix": _msg_suffix,
+            "bot_prefix": _bot_prefix,
+            "bot_suffix": _msg_suffix,
+            "stops": ["</", "</message>", "</message>\n"]
+        }
+    )

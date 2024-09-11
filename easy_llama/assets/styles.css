@@ -275,3 +275,11 @@ textarea:focus {
 #swipeButton:hover {
     background-color: #25234c;
 }
+
+#fileUploadButton {
+    background-color: #7b7f7b;
+}
+
+#fileUploadButton:hover {
+    background-color: #5a5d5a;
+}
