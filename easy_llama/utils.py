@@ -165,8 +165,11 @@ def assert_type(
 
 class InferenceLock:
     """
-    Prevent the model from accepting more than one generation at a time,
-    which is not supported and can cause a hard crash
+    A context manager that can be used to prevent the model from accepting more
+    than one generation at a time, which is not supported and can cause a hard
+    crash.
+
+    This is mostly useful in asychronous / multi-threaded contexts
     """
 
     class LockFailure(Exception):

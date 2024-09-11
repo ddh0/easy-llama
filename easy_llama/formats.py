@@ -562,11 +562,11 @@ def AdvancedChatMarkupFormat(
     within Threads
     """
     
-    assert_type(user_name, str, 'user_name', 'ChatMarkupFormat')
-    assert_type(bot_name, str, 'bot_name', 'ChatMarkupFormat')
-    assert_type(title, str, 'title', 'ChatMarkupFormat')
-    assert_type(description, str, 'description', 'ChatMarkupFormat')
-    assert_type(tags, list, 'tags', 'ChatMarkupFormat')
+    assert_type(user_name, str, 'user_name', 'AdvancedChatMarkupFormat')
+    assert_type(bot_name, str, 'bot_name', 'AdvancedChatMarkupFormat')
+    assert_type(title, str, 'title', 'AdvancedChatMarkupFormat')
+    assert_type(description, str, 'description', 'AdvancedChatMarkupFormat')
+    assert_type(tags, list, 'tags', 'AdvancedChatMarkupFormat')
 
     _t = "  " # indentation string
 
@@ -586,8 +586,9 @@ def AdvancedChatMarkupFormat(
     final_tags_string = '\n'.join(xml_tags)
 
     return AdvancedFormat({
-        "system_prefix": \
-
+        "system_prefix": "",
+        "system_prompt": \
+        
 f"""<chat>
 {_t}<meta>
 {_t*2}<title>{title if title is not None else "Untitled Chat"}</title>
@@ -601,7 +602,6 @@ f"""<chat>
 {_t}</meta>
 {_t}<messages>\n""",
 
-        "system_prompt": "",
         "system_suffix": "",
         "user_prefix": _markup_user_prefix,
         "user_suffix": _markup_msg_suffix,

@@ -165,9 +165,9 @@ def assert_max_length(text: str) -> None:
 
 def _print_inference_string(text: str) -> None:
     print(
-        f"{RED}{'#' * 80}\n"
-        f"{RESET}'''{text}'''\n"
-        f"{RED}{'#' * 80}{RESET}",
+        f"{'#' * 80}\n"
+        f"{YELLOW}'''{RESET}{text}{YELLOW}'''{RESET}\n"
+        f"{'#' * 80}",
         file=sys.stderr,
         flush=True
     )

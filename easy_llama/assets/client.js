@@ -4,7 +4,7 @@
 marked.setOptions({
     pedantic: false,  // more relaxed parsing
     gfm: true,        // github-flavored markdown
-    breaks: true      // insert <br> on  '\n' also, not only on '\n\n'
+    breaks: true      // insert <br> on '\n' also, not only on '\n\n'
 });
 
 
@@ -321,7 +321,9 @@ function cancelGeneration() {
                     resolve();
                 }
             } else {
-                reject(new Error('error when canceling generation: ' + response.statusText));
+                reject(new Error(
+                    'error when canceling generation: ' + response.statusText
+                ));
             }
         })
         .catch(error => {
@@ -412,7 +414,9 @@ function newBotMessage() {
                 console.error(
                     'Bad response from /trigger:', response.statusText
                 );
-                reject(new Error('Bad response from /trigger: ' + response.statusText));
+                reject(new Error(
+                    'Bad response from /trigger: ' + response.statusText
+                ));
             }
         }).catch(error => {
             reject(new Error('Error in newBotMessage: ' + error));
@@ -485,26 +489,22 @@ function populateConversation() {
     });
 }
 
+
 async function swipe() {
-    console.log('swipe: start function');
+
     if (isGenerating) {
-        console.log('swipe: branch 1: going to cancel generation');
-        await cancelGeneration(); // Wait for cancelGeneration to complete
-        console.log('swipe: branch 1: canceled. going to trigger');
-        setTimeout(newBotMessage, 500); // Wait for newBotMessage to complete
-        console.log('swipe: branch 1: triggered. going to update placeholder');
-        await updatePlaceholderText(); // Wait for updatePlaceholderText to complete
-        console.log('swipe: branch 1: updated placeholder. branch done.');
+
+        await cancelGeneration();
+        setTimeout(newBotMessage, 500);
+        await updatePlaceholderText();
+
     } else {
-        console.log('swipe: branch 2: going to remove last message');
-        await removeLastMessage(); // Wait for removeLastMessage to complete
-        console.log('swipe: branch 2: removed. going to trigger');
-        setTimeout(newBotMessage, 500); // Wait for newBotMessage to complete
-        console.log('swipe: branch 2: triggered. going to update placeholder');
-        await updatePlaceholderText(); // Wait for updatePlaceholderText to complete
-        console.log('swipe: branch 2: updated. branch done.');
+
+        await removeLastMessage();
+        setTimeout(newBotMessage, 500);
+        await updatePlaceholderText();
     }
-    console.log('swipe: end function');
+
 }
 
 
