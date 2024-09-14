@@ -172,6 +172,7 @@ def _print_inference_string(text: str) -> None:
         flush=True
     )
 
+
 class WebUI:
     """
     The easy-llama WebUI server
@@ -244,10 +245,6 @@ class WebUI:
         self.log(f"   host                  == {host}")
         self.log(f"   port                  == {port}")
         self.log(f"   ssl (HTTPS)           == {ssl}")
-        
-        # these variables are used when printing logs
-        self._log_host = host
-        self._log_port = port
 
         if ssl:
 
@@ -418,9 +415,14 @@ class WebUI:
         
         self.log('warming up thread')
         self.thread.warmup()
+
+        self.log('now running Flask')
+
+        # these variables are used when printing logs
+        self._log_host = host
+        self._log_port = port
         
         try:
-            self.log('now running Flask')
             self.app.run(
                 host=host,
                 port=port,
@@ -429,7 +431,7 @@ class WebUI:
                     f'{ASSETS_FOLDER}/key.pem'
                 ) if ssl else None
             )
-
+        
         except Exception as exc:
             newline()
             self.log(f'{RED}exception in Flask: {exc}{RESET}')

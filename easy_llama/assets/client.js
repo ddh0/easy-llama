@@ -180,6 +180,14 @@ function removeLastMessage() {
     });
 }
 
+function strHasContent(str) {
+    if (!str || str === '') {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 
 function highlightMessage(message) {
     // given a message, submit its `<pre><code>...</pre></code>` elements
@@ -188,11 +196,6 @@ function highlightMessage(message) {
     codeElements.forEach(codeElement => {
         hljs.highlightElement(codeElement)
     });
-}
-
-
-function triggerFileUpload() {
-    uploadForm.click();
 }
 
 
@@ -206,6 +209,38 @@ function readFileAsText(file) {
             reject(e);
         };
         reader.readAsText(file);
+    });
+}
+
+
+function streamToMessage(reader, targetMessage, prefix) {
+    let accumulatedText = '';
+
+    if (strHasContent(prefix)) {
+        accumulatedText = prefix;
+    }
+
+    function processStream({ done, value }) {
+        if (done) {
+            return;
+        }
+
+        accumulatedText += decode(GlobalDecoder.decode(
+            value, { stream: true }
+        ));
+
+        targetMessage.innerHTML = marked.parse(accumulatedText);
+        highlightMessage(targetMessage);
+
+        // read the next chunk recursively
+        reader.read().then(processStream).catch(error => {
+            console.error('Error when streaming to message:', error);
+        });
+    }
+
+    // start reading the stream
+    reader.read().then(processStream).catch(error => {
+        console.error('Error when streaming to message:', error);
     });
 }
 
@@ -224,7 +259,7 @@ function submitForm(event) {
 
     } else {
 
-        if ('' == prompt) {
+        if (!strHasContent(prompt)) {
             // if user hits submit with no prompt, trigger new bot message
             newBotMessage();
             updatePlaceholderText();
@@ -254,11 +289,6 @@ function submitForm(event) {
     const botMessage = createMessage('bot', '')
     appendNewMessage(botMessage);
 
-    // Scroll to the bottom of the conversation
-    conversationWindow.scrollTop = conversationWindow.scrollHeight;
-
-    let accumulatedText = '';
-
     fetch('/submit', {
         method: 'POST',
         body: bytesToBase64(GlobalEncoder.encode(prompt))
@@ -266,40 +296,13 @@ function submitForm(event) {
     .then(response => {
 
         updatePlaceholderText();
-
-        const reader = response.body.getReader();
-
-        function readStream() {
-        
-            reader.read().then(({ done, value }) => {
-                if (done) {
-                    setIsGeneratingState(false);
-                    updatePlaceholderText();
-                    return;
-                }
-        
-                accumulatedText += GlobalDecoder.decode(base64ToBytes(
-                    GlobalDecoder.decode(
-                        value, { stream: true }
-                    )
-                ));
-
-                botMessage.innerHTML = marked.parse(accumulatedText);
-                highlightMessage(botMessage);
-        
-                readStream();
-
-            }).catch(error => {
-                console.error('Error reading stream:', error);
-                setIsGeneratingState(false);
-            });
-        }
-        
-        readStream();
+        streamToMessage(response.body.getReader(), botMessage, null);
 
     })
     .catch(error => {
         console.error('Caught error: submitForm:', error);
+    })
+    .finally(() => {
         setIsGeneratingState(false);
     });
 
@@ -374,10 +377,9 @@ function newBotMessage() {
 
         let v = inputBox.value;
         let encodedPrefix = null;
-        let accumulatedText = '';
         let botMessage = null;
 
-        if (inputBox.value !== '') { // trigger with bot prefix
+        if (strHasContent(v)) { // trigger with bot prefix
             if (v.length > maxLengthInput) {
                 alert(
                     'length of input exceeds maximum allowed length of ' +
@@ -387,7 +389,7 @@ function newBotMessage() {
                 return;
             }
 
-            encodedPrefix = bytesToBase64(GlobalEncoder.encode(v));
+            encodedPrefix = encode(v);
             accumulatedText = v;
 
             botMessage = createMessage('bot', v);
@@ -408,54 +410,18 @@ function newBotMessage() {
                 // clear input box
                 inputBox.value = '';
 
-                // Scroll to the bottom of the conversation
-                conversationWindow.scrollTop = conversationWindow.scrollHeight;
-
-                const reader = response.body.getReader();
-
-                function readStream() {
-                    reader.read().then(({ done, value }) => {
-                        if (done) {
-                            setIsGeneratingState(false);
-                            updatePlaceholderText();
-                            resolve();
-                            return;
-                        }
-
-                        accumulatedText += GlobalDecoder.decode(
-                            base64ToBytes(
-                                GlobalDecoder.decode(
-                                    value, { stream: true }
-                                )
-                            )
-                        );
-
-                        botMessage.innerHTML = marked.parse(accumulatedText);
-                        highlightMessage(botMessage);
-
-                        readStream();
-
-                    }).catch(error => {
-                        console.error('Error reading stream:', error);
-                        setIsGeneratingState(false);
-                        reject(error);
-                    });
-                }
-
-                readStream();
+                streamToMessage(response.body.getReader(), botMessage, v);
             
             } else {
-                console.error(
-                    'Bad response from /trigger:', response.statusText
-                );
-                setIsGeneratingState(false);
                 reject(new Error(
                     'Bad response from /trigger: ' + response.statusText
                 ));
             }
         }).catch(error => {
-            setIsGeneratingState(false);
             reject(new Error('Error in newBotMessage: ' + error));
+        })
+        .finally(() => {
+            setIsGeneratingState(false);
         });
     });
 }
@@ -560,14 +526,6 @@ document.addEventListener('DOMContentLoaded', function() {
             );
         }
 
-        //if (inputBox.value === '') {
-        //    submitButton.classList.add('disabled-button')
-        //    submitButton.disabled = true
-        //} else {
-        //    submitButton.classList.remove('disabled-button')
-        //    submitButton.disabled = false
-        //}
-
     });
 
     submitButton.addEventListener('click', function(event) {
@@ -576,7 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     removeButton.addEventListener('click', removeLastMessage);
 
-    resetButton.addEventListener('click', function(event) {
+    resetButton.addEventListener('click', function() {
         if (isGenerating) {
             cancelGeneration();
             resetConversation();
@@ -589,7 +547,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     swipeButton.addEventListener('click', swipe);
 
-    uploadButton.addEventListener('click', triggerFileUpload);
+    uploadButton.addEventListener('click', function() {
+        uploadForm.click();
+    });
 
     uploadForm.addEventListener('change', async function(event) {
         const files = event.target.files;

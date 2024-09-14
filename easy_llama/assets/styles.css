@@ -104,7 +104,7 @@ body {
 button {
     border-color: #555;
     border-style: solid;
-    border-width: 2px;
+    border-width: 1px;
     border-radius: 16px;
     margin-top: 1rem;
     margin-bottom: 1rem;
@@ -158,7 +158,7 @@ pre {
     /* max-height: 45rex; */
     text-align: left;
     direction: ltr;
-    border-radius: 10px;
+    border-radius: 2rex;
     padding: 1.3rex;
     white-space: pre;
     word-wrap: normal;
@@ -192,8 +192,8 @@ a:visited {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     font-size: 2rex;
     /* overflow: auto; */
-    width: calc(100% - 4rex);
-    padding: 0.5rex 2rex;
+    width: calc(100% - 5rex);
+    padding: 0.0rex 2.5rex;
     /* min-height: 6rex; */
     border-radius: 0px;
     color: #eeeeee;
