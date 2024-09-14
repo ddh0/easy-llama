@@ -180,6 +180,7 @@ function removeLastMessage() {
     });
 }
 
+
 function strHasContent(str) {
     if (!str || str === '') {
         return false;
@@ -220,29 +221,35 @@ function streamToMessage(reader, targetMessage, prefix) {
         accumulatedText = prefix;
     }
 
-    function processStream({ done, value }) {
-        if (done) {
-            return;
+    return new Promise((resolve, reject) => {
+        function processStream({ done, value }) {
+            if (done) {
+                resolve();
+                return;
+            }
+
+            accumulatedText += decode(GlobalDecoder.decode(
+                value, { stream: true }
+            ));
+
+            targetMessage.innerHTML = marked.parse(accumulatedText);
+            highlightMessage(targetMessage);
+
+            // read the next chunk recursively
+            reader.read().then(processStream).catch(error => {
+                console.error('Error when streaming to message:', error);
+                reject(error);
+            });
         }
 
-        accumulatedText += decode(GlobalDecoder.decode(
-            value, { stream: true }
-        ));
-
-        targetMessage.innerHTML = marked.parse(accumulatedText);
-        highlightMessage(targetMessage);
-
-        // read the next chunk recursively
+        // start reading the stream
         reader.read().then(processStream).catch(error => {
             console.error('Error when streaming to message:', error);
+            reject(error);
         });
-    }
-
-    // start reading the stream
-    reader.read().then(processStream).catch(error => {
-        console.error('Error when streaming to message:', error);
     });
 }
+
 
 
 function submitForm(event) {
@@ -291,19 +298,20 @@ function submitForm(event) {
 
     fetch('/submit', {
         method: 'POST',
-        body: bytesToBase64(GlobalEncoder.encode(prompt))
+        body: encode(prompt)
     })
     .then(response => {
-
         updatePlaceholderText();
-        streamToMessage(response.body.getReader(), botMessage, null);
-
+        return streamToMessage(response.body.getReader(), botMessage, null);
+    })
+    .then(() => {
+        setIsGeneratingState(false);
+        updatePlaceholderText();
     })
     .catch(error => {
         console.error('Caught error: submitForm:', error);
-    })
-    .finally(() => {
         setIsGeneratingState(false);
+        updatePlaceholderText();
     });
 
 }
@@ -366,7 +374,6 @@ function cancelGeneration() {
 }
 
 
-
 function newBotMessage() {
     return new Promise((resolve, reject) => {
         if (isGenerating) {
@@ -399,7 +406,7 @@ function newBotMessage() {
 
         setIsGeneratingState(true);
 
-        fetch('/trigger', { method : 'POST', body : encodedPrefix })
+        fetch('/trigger', { method: 'POST', body: encodedPrefix })
         .then(response => {
             if (response.ok) {
                 if (botMessage === null) {
@@ -410,18 +417,25 @@ function newBotMessage() {
                 // clear input box
                 inputBox.value = '';
 
-                streamToMessage(response.body.getReader(), botMessage, v);
-            
+                return streamToMessage(
+                    response.body.getReader(), botMessage, v
+                );
             } else {
                 reject(new Error(
                     'Bad response from /trigger: ' + response.statusText
                 ));
             }
-        }).catch(error => {
-            reject(new Error('Error in newBotMessage: ' + error));
         })
-        .finally(() => {
+        .then(() => {
             setIsGeneratingState(false);
+            updatePlaceholderText();
+            resolve();
+        })
+        .catch(error => {
+            console.error('Error in newBotMessage:', error);
+            setIsGeneratingState(false);
+            updatePlaceholderText();
+            reject(error);
         });
     });
 }
@@ -466,12 +480,8 @@ function populateConversation() {
             const msg = data[msgKey];
             let keys = Object.keys(msg);
 
-            let role = GlobalDecoder.decode(
-                base64ToBytes(keys[0])
-            );
-            let content = GlobalDecoder.decode(
-                base64ToBytes(msg[keys[0]])
-            );
+            let role = decode(keys[0]);
+            let content = decode(msg[keys[0]]);
 
             //console.log('i:', i, 'role:', role, 'content:', content);
 
