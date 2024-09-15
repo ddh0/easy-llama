@@ -316,6 +316,9 @@ function submitForm(event) {
 
 
 function updatePlaceholderText() {
+    if (isGenerating) {
+        console.log('refuse to fetch context string - currently generating');
+    }
     return fetch('/get_context_string')
         .then(response => response.json())
         .then(data => {
