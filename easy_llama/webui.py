@@ -29,15 +29,14 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from flask import Flask, render_template, request, Response
 from cryptography.hazmat.primitives.serialization import Encoding
 
-
-GREEN = USER_STYLE
-BLUE = BOT_STYLE
 YELLOW = SPECIAL_STYLE
+GREEN = USER_STYLE
 RED = ERROR_STYLE
 RESET = RESET_ALL
+BLUE = BOT_STYLE
 
-WARNING = \
-f"""{RED}
+
+WARNING = f"""{RED}
 ################################################################################
 {RESET}
 
@@ -55,13 +54,16 @@ f"""{RED}
 ################################################################################
 {RESET}"""
 
+
 SSL_CERT_FIRST_TIME_WARNING = \
 f"{YELLOW}you have just generated a new self-signed SSL certificate and " + \
 f"key. your browser will probably warn you about an untrusted " + \
 f"certificate. this is expected and you may safely proceed to the WebUI. " + \
 f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
 
+
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
+
 
 MAX_LENGTH_INPUT = 100_000 # one hundred thousand characters
 
@@ -402,6 +404,15 @@ class WebUI:
                     self.thread.add_message('bot', prompt + response)
 
             return Response(generate(), mimetype='text/plain')
+        
+
+        @self.app.route('/summarize', methods=['GET'])
+        def summarize():
+            with self.lock:
+                summary = self.thread.summarize()
+            response = encode(summary)
+            self.log(f"generated summary: {BLUE}'{summary}'{RESET}")
+            return response, 200, {'ContentType': 'text/plain'}
 
         
         if not self.thread.model.is_loaded():
@@ -431,7 +442,7 @@ class WebUI:
                     f'{ASSETS_FOLDER}/key.pem'
                 ) if ssl else None
             )
-        
+
         except Exception as exc:
             newline()
             self.log(f'{RED}exception in Flask: {exc}{RESET}')

@@ -61,6 +61,7 @@ const inputBox = document.getElementById('inputBox');
 const inputForm = document.getElementById('inputForm');
 const uploadButton = document.getElementById('fileUploadButton');
 const uploadForm = document.getElementById('fileInput');
+const summarizeButton = document.getElementById('summarizeButton');
 
 
 function popAlertPleaseReport(text) {
@@ -254,9 +255,7 @@ function streamToMessage(reader, targetMessage, prefix) {
 
 function submitForm(event) {
     event.preventDefault();
-    const form = inputForm;
-    const formData = new FormData(form);
-    const prompt = formData.get('prompt');
+    const prompt = inputBox.value;
 
     if (isGenerating) {
 
@@ -284,15 +283,14 @@ function submitForm(event) {
 
     setIsGeneratingState(true);
 
-    // Append user message to the conversation
+    // append user message to the conversation
     let userMessage = createMessage('user', prompt)
     highlightMessage(userMessage);
     appendNewMessage(userMessage);
 
-    // Clear prompt input text box
-    form.reset();
+    inputBox.value = '';
 
-    // Create a new bot message element
+    // create a new bot message element
     const botMessage = createMessage('bot', '')
     appendNewMessage(botMessage);
 
@@ -402,6 +400,7 @@ function newBotMessage() {
             botMessage = createMessage('bot', v);
             highlightMessage(botMessage);
             appendNewMessage(botMessage);
+            inputBox.value = '';
         }
 
         setIsGeneratingState(true);
@@ -520,6 +519,44 @@ async function swipe() {
 }
 
 
+function generateSummary() {
+    return new Promise((resolve, reject) => {
+
+        if (isGenerating) {
+            console.log('refuse to generate summary - already generating');
+            resolve();
+            return;
+        }
+
+        setIsGeneratingState(true);
+
+        fetch('/summarize', { method : 'GET' })
+        .then(response => {
+            if (response.ok) {
+                return response.text(); // Read the response body as text
+            } else {
+                setIsGeneratingState(false);
+                reject(new Error(
+                    'Bad response from /summarize: ' + response.statusText
+                ));
+            }
+        })
+        .then(data => {
+            let summary = decode(data); // Use the text data
+            console.log('summary:', summary);
+            alert(summary);
+            setIsGeneratingState(false);
+            resolve();
+        })
+        .catch(error => {
+            console.error('Error in generateSummary:', error);
+            setIsGeneratingState(false);
+            reject(error);
+        });
+    });
+}
+
+
 document.addEventListener('DOMContentLoaded', function() {
 
     // display all non-system messages even after page load/reload
@@ -577,6 +614,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+
+    summarizeButton.addEventListener('click', generateSummary);
 
 });
 

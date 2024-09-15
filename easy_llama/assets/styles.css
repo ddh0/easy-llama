@@ -32,10 +32,10 @@ body {
     font-size: 2rex;
     line-height: 3.5rex;
 }
-
+/*
 #conversationContainer {
     width: 80svw;
-    height: 100svh;
+    height: 80svh;
     float: left;
     margin: inherit;
     border-color: inherit;
@@ -47,13 +47,14 @@ body {
     font-size: inherit;
     line-height: inherit;
 }
-
+*/
 #conversationWindow {
     display: flex;
     flex-direction: column-reverse;
     background-color: #161616;
-    width: inherit;
+    width: 80svw;
     height: 85svh;
+    float: left;
     margin: 0px;
     border-color: inherit;
     border-width: inherit;
@@ -65,20 +66,50 @@ body {
     line-height: inherit;
 }
 
+#bottomPanelContainer {
+    display: flex;
+    flex-direction: row;
+    width: 100svw;
+    height: 15svh;
+    background-color: #000000;
+    border-color: #545454;
+    border-top-style: solid;
+    border-top-width: 5px;
+    padding: 0px;
+    margin: 0px;
+    overflow: hidden;
+}
+
 #inputBox {
+    border-right-width: 2px;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+    border-color: #212121;
     background-color: #161616;
-    width: calc(100% - 2.4rex); /* fill width and account for padding */
+    width: calc(80svw - 2.4rex); /* fill width and account for padding */
     height: 15svh;
     margin: 0px;
     resize: none;
-    border-color: #242424;
-    border-width: 5px 0px 0px 0px;
     padding: 1.2rex;
     overflow: auto;
     color: #eeeeee;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     font-size: inherit;
     line-height: 3.5rex;
+}
+
+#submitArea {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #161616;
+    height: 15svh;
+    width: 20svw;
+    padding: 0px;
+    margin: 0px;
+    overflow: hidden;
 }
 
 #panel {
@@ -89,7 +120,7 @@ body {
     background-color: inherit;
     float: right;
     width: 20svw;
-    height: inherit;
+    height: 85svh;
     margin: inherit;
     border-color: inherit;
     border-width: inherit;
@@ -108,8 +139,9 @@ button {
     border-radius: 16px;
     margin-top: 1rem;
     margin-bottom: 1rem;
+    padding: 0px;
     width: 15svw;
-    height: 8svh;
+    height: 7svh;
     background-color: #4b724b;
     color: #eeeeee;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
@@ -282,4 +314,18 @@ textarea:focus {
 
 #fileUploadButton:hover {
     background-color: #5a5d5a;
+}
+
+#summarizeButton {
+    background-color: #734c6f;
+}
+
+#summarizeButton:hover {
+    background-color: #543651;
+}
+
+#submitButton {
+    height: 10svh;
+    width: 18svw;
+    font-size: 2.1rex;
 }

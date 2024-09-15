@@ -34,7 +34,7 @@ class _SupportsWriteAndFlush(TextIO):
     "A file, stream, or buffer that supports writing and flushing"
 
 class UnreachableException(Exception):
-    """The code has reached an unreachable state"""
+    "The code has reached an unreachable state"
     def __init__(self):
         super().__init__(
             "the code has reached a location that was thought to be "
