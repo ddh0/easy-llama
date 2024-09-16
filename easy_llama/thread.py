@@ -914,7 +914,7 @@ class Thread:
         summary = _model.generate(
             inf_str,
             stops=self.format['stops'] + ['\n\n'],
-            sampler=SamplerSettings(max_len_tokens=256)
+            sampler=SamplerSettings(max_len_tokens=512)
         )
 
         # unload helper model, if used
