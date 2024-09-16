@@ -72,6 +72,17 @@ function popAlertPleaseReport(text) {
 }
 
 
+function handleError(message) { // TODO: make this smarter?
+    if (!strHasContent(message)) {
+        console.error('An error occured, but no error message was provided');
+        return;
+    } else {
+        console.error('An error occured:', message);
+        return;
+    }
+}
+
+
 function setIsGeneratingState(targetState) {
 
     if (isGenerating === targetState) { return; }
@@ -91,6 +102,8 @@ function setIsGeneratingState(targetState) {
         //swipeButton.disabled = true;
         //uploadButton.classList.add('disabled-button');
         //uploadButton.disabled = true;
+        summarizeButton.classList.add('disabled-button');
+        summarizeButton.disabled = true;
     } else {
         submitButton.textContent = 'send message';
         submitButton.classList.remove('red-button');
@@ -106,6 +119,8 @@ function setIsGeneratingState(targetState) {
         //swipeButton.disabled = false;
         //uploadButton.classList.remove('disabled-button');
         //uploadButton.disabled = false;
+        summarizeButton.classList.remove('disabled-button');
+        summarizeButton.disabled = false;
     }
 
     isGenerating = targetState;
@@ -144,7 +159,7 @@ function createMessage(role, content) {
         return message;
     }
 
-    popAlertPleaseReport('unreachable in createMessage');
+    popAlertPleaseReport('cannot create message that is not from user or bot');
 
 }
 
@@ -168,15 +183,17 @@ function removeLastMessage() {
                 updatePlaceholderText();
                 resolve();
             } else {
-                reject(
-                    new Error(
-                        'Bad response from /remove: ' + response.statusText
-                    )
+                handleError(
+                    'Bad response from /remove: ' +
+                    response.status +
+                    response.statusText
                 );
+                reject();
             }
         })
         .catch(error => {
-            reject(new Error('removeButton: ' + error));
+            handleError("removeLastMessage: " + error.message);
+            reject();
         });
     });
 }
@@ -238,15 +255,15 @@ function streamToMessage(reader, targetMessage, prefix) {
 
             // read the next chunk recursively
             reader.read().then(processStream).catch(error => {
-                console.error('Error when streaming to message:', error);
-                reject(error);
+                handleError("streamToMessage run: " + error.message);
+                reject();
             });
         }
 
         // start reading the stream
         reader.read().then(processStream).catch(error => {
-            console.error('Error when streaming to message:', error);
-            reject(error);
+            handleError('streamToMessage start: ' + error.message);
+            reject();
         });
     });
 }
@@ -307,7 +324,7 @@ function submitForm(event) {
         updatePlaceholderText();
     })
     .catch(error => {
-        console.error('Caught error: submitForm:', error);
+        handleError('submitForm: ' + error.message);
         setIsGeneratingState(false);
         updatePlaceholderText();
     });
@@ -316,7 +333,7 @@ function submitForm(event) {
 
 
 function updatePlaceholderText() {
-    
+
     if (isGenerating) {
         console.log('refuse to fetch context string - currently generating');
         return;
@@ -328,7 +345,7 @@ function updatePlaceholderText() {
             inputBox.placeholder = decode(data.text);
         })
         .catch(error => {
-            console.error('Error fetching context usage string:', error);
+            handleError('updatePlaceholderText: ' + error.message);
         });
 }
 
@@ -366,13 +383,17 @@ function cancelGeneration() {
                     resolve();
                 }
             } else {
-                reject(new Error(
-                    'error when canceling generation: ' + response.statusText
-                ));
+                handleError(
+                    "cancelGeneration: bad response from /cancel: " +
+                    response.status +
+                    response.statusText
+                );
+                reject();
             }
         })
         .catch(error => {
-            reject(new Error('Error in cancelGeneration: ' + error));
+            handleError('cancelGeneration: ' + error.message);
+            reject();
         });
     });
 }
@@ -426,9 +447,12 @@ function newBotMessage() {
                     response.body.getReader(), botMessage, v
                 );
             } else {
-                reject(new Error(
-                    'Bad response from /trigger: ' + response.statusText
-                ));
+                handleError(
+                    "Bad response from /trigger: " +
+                    response.status +
+                    response.statusText
+                );
+                reject();
             }
         })
         .then(() => {
@@ -437,10 +461,10 @@ function newBotMessage() {
             resolve();
         })
         .catch(error => {
-            console.error('Error in newBotMessage:', error);
+            handleError("newBotMessage: " + error.message);
             setIsGeneratingState(false);
             updatePlaceholderText();
-            reject(error);
+            reject();
         });
     });
 }
@@ -453,11 +477,15 @@ function resetConversation() {
             conversationWindow.innerHTML = '';
             updatePlaceholderText();
         } else {
-            console.error('Bad response from /reset:', response.statusText);
+            handleError(
+                "Bad response from /reset: " +
+                response.status +
+                response.statusText
+            );
         }
     })
     .catch(error => {
-        console.error('Error in resetConversation:', error);
+        handleError("resetConversation: " + error.message);
     });
 }
 
@@ -466,7 +494,11 @@ function populateConversation() {
     fetch('/convo', { method : "GET" })
     .then(response => {
         if (!response.ok) {
-            console.error('Bad response from /convo:', response.statusText);
+            handleError(
+                "Bad response from /convo: " +
+                response.status + 
+                response.statusText
+            );
             return;
         } else {
             updatePlaceholderText();
@@ -501,7 +533,7 @@ function populateConversation() {
         return;
     })
     .catch(error => {
-        console.error('Error in populateConversation:', error);
+        handleError("populateConversation: " + error.message);
         return;
     });
 }
@@ -542,9 +574,12 @@ function generateSummary() {
                 return response.text(); // Read the response body as text
             } else {
                 setIsGeneratingState(false);
-                reject(new Error(
-                    'Bad response from /summarize: ' + response.statusText
-                ));
+                handleError(
+                    "Bad response from /summarize: " +
+                    response.status +
+                    response.statusText
+                );
+                reject();
             }
         })
         .then(data => {
@@ -555,9 +590,9 @@ function generateSummary() {
             resolve();
         })
         .catch(error => {
-            console.error('Error in generateSummary:', error);
+            handleError("generateSummary: " + error.message);
             setIsGeneratingState(false);
-            reject(error);
+            reject();
         });
     });
 }
@@ -616,7 +651,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 inputBox.selectionStart = inputBox.value.length;
                 inputBox.selectionEnd = inputBox.value.length;
             } catch (error) {
-                console.error('Error reading file:', error);
+                handleError("uploadForm: event change: " + error.message);
             }
         }
     });
