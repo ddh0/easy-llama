@@ -411,7 +411,7 @@ class WebUI:
             with self.lock:
                 summary = self.thread.summarize()
             response = encode(summary)
-            self.log(f"generated summary: {BLUE}'{summary}'{RESET}")
+            self.log(f"generated summary: {BLUE}{summary!r}{RESET}")
             return response, 200, {'ContentType': 'text/plain'}
 
         

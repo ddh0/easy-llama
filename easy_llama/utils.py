@@ -179,10 +179,16 @@ class InferenceLock:
         self.locked = False
 
     def __enter__(self):
-        self.acquire()
+        return self.acquire()
     
     def __exit__(self, *_):
-        self.release()
+        return self.release()
+
+    async def __aenter__(self):
+        return self.__enter__()
+
+    async def __aexit__(self, *_):
+       return self.__exit__()
     
     def acquire(self):
         if self.locked:
