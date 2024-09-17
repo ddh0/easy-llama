@@ -959,7 +959,7 @@ class Model:
             )
         elif self.verbose:
             print_verbose(
-                f"generate: recieved prompt with {input_length} tokens"
+                f"generate: received prompt with {input_length} tokens"
             )
 
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
@@ -1061,7 +1061,7 @@ class Model:
             )
         elif self.verbose:
             print_verbose(
-                f"stream: recieved prompt with {input_length} tokens"
+                f"stream: received prompt with {input_length} tokens"
             )
 
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
