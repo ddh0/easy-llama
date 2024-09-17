@@ -242,6 +242,9 @@ Llama3 = SamplerSettings(
 )
 
 #https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
-Nemo = MistralNemo = SamplerSettings(
+Nemo = MistralNemo = MistralSmall = SamplerSettings(
+    top_k = None,
+    top_p = None,
+    min_p = None,
     temp = 0.3
 )
