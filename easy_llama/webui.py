@@ -243,10 +243,10 @@ class WebUI:
         self._log_port = None
 
         self.log(f"starting WebUI instance:")
-        self.log(f"   thread.uuid           == {self.thread.uuid}")
-        self.log(f"   host                  == {host}")
-        self.log(f"   port                  == {port}")
-        self.log(f"   ssl (HTTPS)           == {ssl}")
+        self.log(f"   thread.uuid == {self.thread.uuid}")
+        self.log(f"   host        == {host}")
+        self.log(f"   port        == {port}")
+        self.log(f"   ssl (HTTPS  == {ssl}")
 
         if ssl:
 

@@ -123,8 +123,8 @@ mistral_instruct: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
-    "user_prefix": "[INST]",
-    "user_suffix": "[/INST]",
+    "user_prefix": "[INST] ",
+    "user_suffix": " [/INST]",
     "bot_prefix": "",
     "bot_suffix": "</s>",
     "stops": []
@@ -135,11 +135,11 @@ mistral_instruct_safe: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
-    "user_prefix": "[INST]Always assist with care, respect, and truth. " + \
+    "user_prefix": "[INST] Always assist with care, respect, and truth. " + \
     "Respond with utmost utility yet securely. Avoid harmful, unethical, " + \
     "prejudiced, or negative content. Ensure replies promote fairness and " + \
     "positivity.\n\n",
-    "user_suffix": "[/INST]",
+    "user_suffix": " [/INST]",
     "bot_prefix": "",
     "bot_suffix": "</s>",
     "stops": []

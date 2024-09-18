@@ -32,22 +32,7 @@ body {
     font-size: 2rex;
     line-height: 3.5rex;
 }
-/*
-#conversationContainer {
-    width: 80svw;
-    height: 80svh;
-    float: left;
-    margin: inherit;
-    border-color: inherit;
-    border-width: inherit;
-    padding: inherit;
-    overflow: inherit;
-    color: inherit;
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-}
-*/
+
 #conversationWindow {
     display: flex;
     flex-direction: column-reverse;
@@ -81,7 +66,7 @@ body {
 }
 
 #inputBox {
-    border-right-width: 2px;
+    border-right-width: 3px;
     border-top: none;
     border-bottom: none;
     border-left: none;
@@ -327,5 +312,5 @@ textarea:focus {
 #submitButton {
     height: 10svh;
     width: 18svw;
-    font-size: 2.1rex;
+    font-size: 2rex;
 }

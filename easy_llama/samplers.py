@@ -140,7 +140,7 @@ TikTokenSampling = SamplerSettings(
 LowMinPSampling = SamplerSettings(
     top_k = None,
     top_p = None,
-    min_p = 0.025,
+    min_p = 0.01,
     temp = None
 )
 
@@ -148,7 +148,7 @@ LowMinPSampling = SamplerSettings(
 MinPSampling = SamplerSettings(
     top_k = None,
     top_p = None,
-    min_p = 0.05,
+    min_p = 0.075,
     temp = None
 )
 
@@ -156,7 +156,7 @@ MinPSampling = SamplerSettings(
 StrictMinPSampling = SamplerSettings(
     top_k = None,
     top_p = None,
-    min_p = 0.1,
+    min_p = 0.2,
     temp = None
 )
 
@@ -193,7 +193,7 @@ LowTempSampling = SamplerSettings(
 
 # default sampling with increased temperature
 HighTempSampling = SamplerSettings(
-    temp = 1.2
+    temp = 1.1
 )
 
 # https://arxiv.org/abs/1904.09751
@@ -215,7 +215,7 @@ TopPSampling = SamplerSettings(
 # https://arxiv.org/abs/1904.09751
 StrictTopPSampling = SamplerSettings(
     top_k=None,
-    top_p=0.5,
+    top_p=0.7,
     min_p=None,
     temp=None
 )
