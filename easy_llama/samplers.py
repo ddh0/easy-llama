@@ -246,5 +246,5 @@ Nemo = MistralNemo = MistralSmall = SamplerSettings(
     top_k = None,
     top_p = None,
     min_p = None,
-    temp = 0.3
+    temp = 0.7
 )

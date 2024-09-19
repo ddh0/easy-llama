@@ -1315,11 +1315,14 @@ class Model:
         for _tuple in self.candidates(
             prompt=prompt, k=k, temp=temp, raw_token_ids=raw_token_ids
         ):
-            print(
-                f"token {_tuple[0]!r:<32} has probability "
-                f"{_tuple[1] * 100 :>7.3f} %",
-                file=sys.stdout if file is None else file,
-            )
+            percent_as_string = f"{_tuple[1] * 100 :>7.3f}"
+            # do not print tokens with ~0.000% probability
+            if percent_as_string != "  0.000":
+                print(
+                    f"token {_tuple[0]!r:<32} has probability "
+                    f"{percent_as_string} %",
+                    file=sys.stdout if file is None else file,
+                )
 
 
 def assert_model_is_loaded(model) -> None:

@@ -145,6 +145,18 @@ mistral_instruct_safe: dict[str, str | list] = {
     "stops": []
 }
 
+# unofficial, custom template
+mistral_instruct_roleplay: dict[str, str | list] = {
+    "system_prefix": "[INST] ",
+    "system_prompt": "A chat between Alice and Bob.",
+    "system_suffix": " [/INST] ",
+    "user_prefix": "[INST] ALICE: ",
+    "user_suffix": " [/INST] BOB:",
+    "bot_prefix": "",
+    "bot_suffix": "</s>",
+    "stops": []
+}
+
 # https://github.com/openai/openai-python/blob/main/chatml.md
 chatml: dict[str, str | list] = {
     "system_prefix": "<|im_start|>system\n",
@@ -407,9 +419,9 @@ noromaid: dict[str, str | list] = {
     "system_prompt": "Below is an instruction that describes a task. " + \
     "Write a response that appropriately completes the request.",
     "system_suffix": "\n\n",
-    "user_prefix": "### Instruction:\nBob: ",
+    "user_prefix": "### Instruction:\nAlice: ",
     "user_suffix": "\n\n",
-    "bot_prefix": "### Response:\nAlice:",
+    "bot_prefix": "### Response:\nBob:",
     "bot_suffix": "\n\n",
     "stops": ['###', 'Instruction:', '\n\n\n']
 }
@@ -573,14 +585,14 @@ def AdvancedChatMarkupFormat(
 
     def _user_prefix() -> str:
         return (f'{_t*2}<message sender="{user_name}" '
-                f'timestamp="{short_time_str()}">')
+                f'timestamp="{short_time_str()}">\n{_t*3}<text>')
 
     def _bot_prefix() -> str:
         return (f'{_t*2}<message sender="{bot_name}" '
-                f'timestamp="{short_time_str()}">')
+                f'timestamp="{short_time_str()}">\n{_t*3}<text>')
 
     def _msg_suffix() -> str:
-        return "</message>\n"
+        return f"</text>\n{_t*2}</message>\n"
 
     if tags is not None:
         xml_tags = [f'{_t*2}<tags>']
@@ -600,6 +612,6 @@ def AdvancedChatMarkupFormat(
             "user_suffix": _msg_suffix,
             "bot_prefix": _bot_prefix,
             "bot_suffix": _msg_suffix,
-            "stops": ["</", "</message>", "</message>\n"]
+            "stops": ["</", "</text>", "</message>"]
         }
     )
