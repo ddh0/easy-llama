@@ -28,12 +28,25 @@ function bytesToBase64(bytes) {
 
 
 function base64ToBytes(base64) {
+    //console.log('attempting atob', base64);
     const binString = atob(base64);
     const bytes = new Uint8Array(binString.length);
     for (let i = 0; i < binString.length; i++) {
         bytes[i] = binString.charCodeAt(i);
     }
     return bytes;
+}
+
+
+function fixBase64Padding(base64) {
+    // remove all '=' characters
+    let _base64_no_equals = base64.replace(/=/g, '');
+    const missingPadding = _base64_no_equals.length % 4;
+    if (missingPadding) {
+        // add padding to the end if necessary
+        _base64_no_equals += '='.repeat(4 - missingPadding);
+    }
+    return _base64_no_equals;
 }
 
 
@@ -234,6 +247,7 @@ function readFileAsText(file) {
 
 function streamToMessage(reader, targetMessage, prefix) {
     let accumulatedText = '';
+    let accumulatedBase64 = '';
 
     if (strHasContent(prefix)) {
         accumulatedText = prefix;
@@ -242,32 +256,71 @@ function streamToMessage(reader, targetMessage, prefix) {
     return new Promise((resolve, reject) => {
         function processStream({ done, value }) {
             if (done) {
+                // Decode any remaining base64 data
+                if (accumulatedBase64.length > 0) {
+                    try {
+                        accumulatedText += decode(
+                            fixBase64Padding(accumulatedBase64)
+                        );
+                    } catch (error) {
+                        handleError(
+                            "Cannot decode remainder of base64: " +
+                            accumulatedBase64
+                        );
+                    }
+                }
                 resolve();
                 return;
             }
 
-            accumulatedText += decode(GlobalDecoder.decode(
-                value, { stream: true }
-            ));
+            let chunk = GlobalDecoder.decode(value);
+
+            // Concatenate the base64 chunks
+            accumulatedBase64 += chunk;
+
+            // Split the accumulated base64 string by newlines
+            let chunks = accumulatedBase64.split('\n');
+            accumulatedBase64 = chunks.pop();  // Keep the last incomplete chunk
+
+            for (const base64Chunk of chunks) {
+                if (base64Chunk) {
+                    try {
+                        decoded_chunk = decode(fixBase64Padding(base64Chunk));
+                        //console.log(
+                        //    "single base64chunk",
+                        //    base64Chunk,
+                        //    "which is",
+                        //    decoded_chunk
+                        //);
+                        accumulatedText += decoded_chunk
+                    } catch (error) {
+                        handleError(
+                            "Decoding base64 chunk: " + error.name + " -- " +
+                            error.message + " : " + base64Chunk
+                        );
+                    }
+                }
+            }
+
+            //console.log('accumulated:', accumulatedText);
 
             targetMessage.innerHTML = marked.parse(accumulatedText);
             highlightMessage(targetMessage);
 
             // read the next chunk recursively
-            reader.read().then(processStream).catch(error => {
-                handleError("streamToMessage run: " + error.message);
-                reject();
-            });
+            reader.read().then(processStream);//.catch(error => {
+               // handleError("streamToMessage run: " + error.message);
+                //reject();
+            //});
         }
 
         // start reading the stream
-        reader.read().then(processStream).catch(error => {
-            handleError('streamToMessage start: ' + error.message);
-            reject();
-        });
+        reader.read().then(processStream);//.catch(error => {
+        //    handleError('streamToMessage start: ' + error.message);
+        //    reject();
+        //});
     });
 }
-
 
 
 function submitForm(event) {

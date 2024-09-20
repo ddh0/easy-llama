@@ -336,8 +336,8 @@ class Thread:
         """
         Using the list of messages, construct a string suitable for inference,
         respecting the format of this thread. The `role` parameter specifies
-        whether the following generated text is from `system`, `user`, or `bot`
-        . If `role` is `bot`, the behaviour is equivalent to
+        whether the following generated text is from `system`, `user`, or `bot`.
+        If `role` is `bot`, the behaviour is equivalent to
         `inference_str_from_messages`.
         """
 
@@ -358,8 +358,7 @@ class Thread:
                 return self.format['system_prefix']
             
             for message in reversed(self.messages):
-                msg_str = message.as_string()
-                inf_str = msg_str + inf_str
+                inf_str = message.as_string() + inf_str
 
             inf_str += self.format['system_prefix']
 
@@ -370,8 +369,7 @@ class Thread:
                 return self.format['user_prefix']
             
             for message in reversed(self.messages):
-                msg_str = message.as_string()
-                inf_str = msg_str + inf_str
+                inf_str = message.as_string() + inf_str
 
             inf_str += self.format['user_prefix']
 
@@ -382,8 +380,7 @@ class Thread:
                 return self.format['bot_prefix']
             
             for message in reversed(self.messages):
-                msg_str = message.as_string()
-                inf_str = msg_str + inf_str
+                inf_str = message.as_string() + inf_str
 
             inf_str += self.format['bot_prefix']
 
@@ -391,7 +388,6 @@ class Thread:
         
         else:
             raise UnreachableException
-
 
 
     def send(self, prompt: str) -> str:

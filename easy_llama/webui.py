@@ -149,7 +149,9 @@ def newline() -> None:
 def encode(text: str) -> str:
     """ utf-8 str -> bytes -> ascii base64 """
     data = (text).encode('utf-8')
-    return base64.b64encode(data).decode('ascii')
+    encoded = base64.b64encode(data).decode('utf-8')
+    #print(f"sending encoded: {encoded!r}")
+    return encoded
 
 
 def decode(text: str) -> str:
@@ -323,7 +325,7 @@ class WebUI:
                             flush=True,
                             file=sys.stderr
                         )
-                        yield encode(tok_text)
+                        yield encode(tok_text) + '\n' # delimiter between tokens
 
                     self._cancel_flag = False
                     newline()
@@ -397,7 +399,7 @@ class WebUI:
                         tok_text = token['choices'][0]['text']
                         response += tok_text
                         print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
-                        yield encode(tok_text)
+                        yield encode(tok_text) + '\n' # delimiter between tokens
 
                     self._cancel_flag = False
                     print('', file=sys.stderr)

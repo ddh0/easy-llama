@@ -147,9 +147,9 @@ mistral_instruct_safe: dict[str, str | list] = {
 
 # unofficial, custom template
 mistral_instruct_roleplay: dict[str, str | list] = {
-    "system_prefix": "[INST] ",
+    "system_prefix": "",
     "system_prompt": "A chat between Alice and Bob.",
-    "system_suffix": " [/INST] ",
+    "system_suffix": "\n\n",
     "user_prefix": "[INST] ALICE: ",
     "user_suffix": " [/INST] BOB:",
     "bot_prefix": "",
