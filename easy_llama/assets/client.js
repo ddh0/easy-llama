@@ -527,8 +527,7 @@ function resetConversation() {
     fetch('/reset', { method : 'POST' })
     .then(response => {
         if (response.ok) {
-            conversationWindow.innerHTML = '';
-            updatePlaceholderText();
+            populateConversation();
         } else {
             handleError(
                 "Bad response from /reset: " +

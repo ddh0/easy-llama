@@ -108,7 +108,7 @@ def cls() -> None:
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
-def print_version_info(file: _SupportsWriteAndFlush) -> None:
+def print_version_info(file: _SupportsWriteAndFlush = sys.stderr) -> None:
     print(f"easy_llama package version: {__version__}", file=file)
     print(f"llama_cpp package version: {__llama_cpp_version__}", file=file)
 

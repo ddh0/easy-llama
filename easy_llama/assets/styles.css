@@ -189,7 +189,7 @@ pre {
 }
 
 code:not(pre code) { /* inline code */
-    background-color: #000000bf;
+    background-color: #00000080;
     color: #bebebe;
     font-size: 85%;
     border-radius: 5px;

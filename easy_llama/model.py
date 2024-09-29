@@ -391,7 +391,7 @@ class Model:
             n_gpu_layers=_llama_ngl,
             use_mmap=True,
             use_mlock=False,
-            logits_all=False,
+            logits_all=True,
             n_batch=n_batch,
             n_threads=n_threads,
             n_threads_batch=n_threads_batch,
