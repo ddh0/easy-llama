@@ -75,6 +75,11 @@ const inputForm = document.getElementById('inputForm');
 const uploadButton = document.getElementById('fileUploadButton');
 const uploadForm = document.getElementById('fileInput');
 const summarizeButton = document.getElementById('summarizeButton');
+const topKInput = document.getElementById('top_k');
+const topPInput = document.getElementById('top_p');
+const minPInput = document.getElementById('min_p');
+const tempInput = document.getElementById('temp');
+const updateSamplerButton = document.getElementById('updateSamplerButton');
 
 
 function popAlertPleaseReport(text) {
@@ -646,6 +651,32 @@ function generateSummary() {
             setIsGeneratingState(false);
             reject();
         });
+    });
+}
+
+
+function updateSampler() {
+    const top_k = parseInt(topKInput.value);
+    const top_p = parseFloat(topPInput.value);
+    const min_p = parseFloat(minPInput.value);
+    const temp = parseFloat(tempInput.value);
+
+    fetch('/update_sampler', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ top_k, top_p, min_p, temp })
+    })
+    .then(response => {
+        if (response.ok) {
+            alert('Sampler settings updated successfully!');
+        } else {
+            handleError('Failed to update sampler settings: ' + response.statusText);
+        }
+    })
+    .catch(error => {
+        handleError('updateSampler: ' + error.message);
     });
 }
 

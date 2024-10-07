@@ -195,7 +195,7 @@ code:not(pre code) { /* inline code */
     border-radius: 5px;
     padding: 0.5rex;
     hyphens: none;
-    white-space: pre;
+    /* white-space: pre; */
 }
 
 a {

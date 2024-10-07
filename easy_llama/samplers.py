@@ -241,10 +241,18 @@ Llama3 = SamplerSettings(
     temp = 0.6
 )
 
-#https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407
+# Llama3 with reduced temperature
+Llama3Strict = SamplerSettings(
+    top_k = None,
+    top_p = 0.9,
+    min_p = None,
+    temp = 0.3
+)
+
+# Not an official preset, but recommended based on my own testing
 Nemo = MistralNemo = MistralSmall = SamplerSettings(
     top_k = None,
     top_p = None,
     min_p = None,
-    temp = 0.175
+    temp = 0.15
 )
