@@ -12,6 +12,7 @@ from .utils import (
     _SupportsWriteAndFlush,
     UnreachableException,
     print_version_info,
+    assert_only_ints,
     QuickGGUFReader,
     print_warning,
     print_verbose,
@@ -179,6 +180,12 @@ class Model:
                 f"Model: the given model_path {model_path!r} is a directory, "
                 "not a GGUF file"
             )
+        if not model_path.endswith(('.gguf', '.GGUF')):
+            raise ValueError(
+                f"Model: the given model_path {model_path!r} does not end in "
+                "'.gguf' or '.GGUF'. easy-llama refuses to load from files "
+                "that do not have the correct extension"
+            )
         assert_type(context_length, (int, NoneType), 'context_length', 'Model')
         assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
         assert_type(offload_kqv, bool, 'offload_kqv', 'Model')
@@ -277,7 +284,7 @@ class Model:
         if n_attn_heads is not None and n_kv_heads is not None:
             n_gqa = int(n_attn_heads / n_kv_heads)
         
-        if context_length <= 0:
+        if context_length is not None and context_length <= 0:
             context_length = None
         
         rope_freq_base = __class__._calculate_rope_freq_base(
@@ -934,6 +941,7 @@ class Model:
         
         assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
+            assert_only_ints(prompt)
             prompt_tokens = prompt
         else:
             if self.verbose:
@@ -1036,6 +1044,7 @@ class Model:
         
         assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):
+            assert_only_ints(prompt)
             prompt_tokens = prompt
         else:
             if self.verbose:
@@ -1151,6 +1160,7 @@ class Model:
 
         assert_type(text, (str, list), 'prompt', 'stream')
         if isinstance(text, list):
+            assert_only_ints(text)
             tokens = text
         else:
             if self.verbose:
@@ -1182,21 +1192,21 @@ class Model:
         assert_model_is_loaded(self)
         self.llama.create_completion(
             prompt=tokens,
-            max_tokens=2,
+            max_tokens=1,
             temperature=0.0
         )
 
 
     def candidates(
         self,
-        prompt: str,
+        prompt: str | list[int],
         k: int = 40,
         temp: Optional[float] = None,
         raw_token_ids: bool = False
     ) -> list[tuple[str, np.floating]]:
         """
-        Given prompt `str` and k `int`, return a sorted list of the
-        top k candidates for most likely next token, along with their
+        Given a prompt `str | list[int]` and k `int`, return a sorted list of
+        the top k candidates for most likely next token, along with their
         normalized probabilities (logprobs).
 
         The following parameters are optional:
@@ -1208,10 +1218,11 @@ class Model:
         hundred-thousands.
         """
 
-        assert_type(prompt, str, 'prompt', 'candidates')
+        assert_type(prompt, (str, list), 'prompt', 'candidates')
         assert_type(k, int, 'k', 'candidates')
         assert_type(temp, (float, NoneType), 'temp', 'candidates')
         assert_model_is_loaded(self)
+
         if k <= 0:
             k = self.n_vocab
             if self.verbose:
@@ -1224,7 +1235,12 @@ class Model:
                 f"inclusive"
             )
 
-        prompt_tokens = self.tokenize(prompt)
+        if isinstance(prompt, str):
+            prompt_tokens = self.tokenize(prompt)
+        else:
+            assert_only_ints(prompt)
+            prompt_tokens = prompt
+        
         input_length = len(prompt_tokens)
 
         if input_length > self.context_length:
@@ -1293,14 +1309,14 @@ class Model:
 
     def print_candidates(
         self,
-        prompt: str,
+        prompt: str | list[int],
         k: int = 40,
         temp: Optional[float] = None,
         raw_token_ids: bool = False,
         file: _SupportsWriteAndFlush = None,
     ) -> None:
         """
-        Given prompt `str` and k `int`, print a sorted list of the
+        Given a prompt `str | list[int]` and k `int`, print a sorted list of the
         top k candidates for most likely next token, along with their
         normalized probabilities (logprobs).
 
@@ -1309,7 +1325,7 @@ class Model:
         - raw_token_ids: If `True`, print raw token IDs instead of text tokens
 
         If parameter `k` is <= 0, the probabilities for all tokens in the
-        vocabulary will be printed. Vocabulary sizes are often in the
+        vocabulary will be printed. Note that vocabulary sizes are often in the
         hundred-thousands.
         """
         for _tuple in self.candidates(
@@ -1323,6 +1339,50 @@ class Model:
                     f"{percent_as_string} %",
                     file=sys.stdout if file is None else file,
                 )
+    
+
+    def get_candidate_index(
+        self,
+        prompt: str | list[int],
+        token: int
+    ):
+        """
+        Given a prompt `str | list[int]` and a token ID `int`, return the index
+        (i.e. position) of the token ID among the candidate tokens
+
+        i.e.:
+        - an index of `0` means the given token is the most likely candidate
+        - an index of `n_vocab - 1` means the given token is the least
+          likely candidate
+        """
+
+        assert_type(prompt, (str, list), 'prompt', 'get_candidate_index')
+        assert_type(token, int, 'k', 'get_candidate_index')
+        assert_model_is_loaded(self)
+
+        if token < 0:
+            raise ValueError(
+                f"get_candidate_index: token ID must be 0 or greater "
+                f"(got {token})"
+            )
+
+        if token >= self.n_vocab:
+            raise IndexError(
+                f"get_candidate_index: the provided token ID {token} is out of "
+                f"range. vocab size for this model is {self.n_vocab}"
+            )
+
+        candidates = self.candidates(
+            prompt=prompt,
+            k=self.n_vocab,
+            raw_token_ids=True
+        )
+
+        for position, (candidate_token, _) in enumerate(candidates):
+            if candidate_token == token:
+                return position
+
+        raise UnreachableException
 
 
 def assert_model_is_loaded(model) -> None:

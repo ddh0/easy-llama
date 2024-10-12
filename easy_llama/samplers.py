@@ -160,6 +160,46 @@ StrictMinPSampling = SamplerSettings(
     temp = None
 )
 
+# use min_p as the only sampler (almost completely incoherent)
+VeryLowMinPOnlySampling = SamplerSettings(
+    top_k = None,
+    top_p = None,
+    min_p = 0.01,
+    temp = MAX_TEMP
+)
+
+# use min_p as the only sampler (like a very drunk person)
+LowMinPOnlySampling = SamplerSettings(
+    top_k = None,
+    top_p = None,
+    min_p = 0.025,
+    temp = MAX_TEMP
+)
+
+# use min_p as the only sampler (like a slightly drunk person)
+MinPOnlySampling = SamplerSettings(
+    top_k = None,
+    top_p = None,
+    min_p = 0.05,
+    temp = MAX_TEMP
+)
+
+# use min_p as the only sampler (coherent)
+StrictMinPOnlySampling = SamplerSettings(
+    top_k = None,
+    top_p = None,
+    min_p = 0.1,
+    temp = MAX_TEMP
+)
+
+# use min_p as the only sampler (strictly coherent)
+VeryStrictMinPOnlySampling = SamplerSettings(
+    top_k = None,
+    top_p = None,
+    min_p = 0.2,
+    temp = MAX_TEMP
+)
+
 # https://arxiv.org/abs/2210.14140
 ContrastiveSearch = SamplerSettings(
     top_k = None,
@@ -254,5 +294,14 @@ Nemo = MistralNemo = MistralSmall = SamplerSettings(
     top_k = None,
     top_p = None,
     min_p = None,
-    temp = 0.15
+    temp = 0.3
+)
+
+# https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/blob/main/generation_config.json
+Qwen2_5 = SamplerSettings(
+    top_k = 20,
+    top_p = 0.8,
+    min_p = None,
+    temp = 0.7,
+    repeat_penalty = 1.05
 )

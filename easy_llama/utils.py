@@ -54,8 +54,8 @@ def softmax(
     Any floating-point value for temperature `T` is valid, including 0.0 and
     negative numbers.
 
-    If `dtype` is not specified, the highest precision
-    numpy `dtype` available will be used.
+    If `dtype` is not specified, the highest precision numpy `dtype` available
+    will be used.
     """
     if dtype is None:
         if hasattr(np, 'float128'):
@@ -162,6 +162,15 @@ def assert_type(
     if isinstance(hint, str):
         exc.add_note(hint)
     raise exc
+
+def assert_only_ints(iterable: Iterable) -> None:
+    """
+    Ensure that the given iterable contains only `int`s
+    """
+    if any(not isinstance(x, int) for x in iterable):
+        raise TypeAssertionError(
+            f"assert_only_ints: some item in the given iterable is not an int"
+        )
 
 class InferenceLock:
     """

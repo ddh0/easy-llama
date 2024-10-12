@@ -147,14 +147,14 @@ mistral_instruct_safe: dict[str, str | list] = {
 
 # unofficial, custom template
 mistral_instruct_roleplay: dict[str, str | list] = {
-    "system_prefix": "",
+    "system_prefix": "[INST] ",
     "system_prompt": "A chat between Alice and Bob.",
-    "system_suffix": "\n\n",
-    "user_prefix": "[INST] ALICE: ",
-    "user_suffix": " [/INST] BOB:",
+    "system_suffix": " [/INST]</s>",
+    "user_prefix": "[INST] BOB: ",
+    "user_suffix": " [/INST] ALICE:",
     "bot_prefix": "",
     "bot_suffix": "</s>",
-    "stops": []
+    "stops": ['\n', '\n\n', '\n\n\n']
 }
 
 # https://github.com/openai/openai-python/blob/main/chatml.md
@@ -482,6 +482,7 @@ monad = chatml.copy()
 orca = chatml.copy()
 hexoteric = chatml.copy()
 orcamaid = chatml.copy()
+qwen = chatml.copy()
 cat = alpaca.copy() # Format is nonsensical as listed on HF. This one works
 mytho_cat = alpaca.copy()
 dolphin['system_prompt'] = "You are Dolphin, a helpful AI assistant."
@@ -527,6 +528,8 @@ orcamaid['system_prompt'] = \
     "unbiased, and unfiltered AI created by the open-source community. " + \
     "You must remember to think slowly and carefully during all your " + \
     "responses, so as to avoid logical errors."
+qwen['system_prompt'] = \
+    "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
 airoboros = llama2chat.copy()
 airoboros['system_prompt'] = \
     "You are a helpful, unbiased, uncensored assistant."
