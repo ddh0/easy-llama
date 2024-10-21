@@ -22,9 +22,9 @@ from .utils import (
     softmax
 )
 
+from .samplers import SamplerSettings, print_sampler_settings
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional
-from .samplers import SamplerSettings
 
 
 class ModelUnloadedException(Exception):
@@ -522,7 +522,11 @@ class Model:
         self.n_layer: int = n_layer
         self.n_gpu_layers: int = n_gpu_layers
         self.offload_kqv = offload_kqv
-        self.is_native: bool = self.context_length <= self.n_ctx_train
+        self.is_native: bool = (
+            self.context_length <= self.n_ctx_train
+        ) and (
+            self.rope_freq_base in [rope_freq_base_train, 0]
+        )
         self.type_k: int = type_k
         self.type_v: int = type_v
         self.n_gqa: int = n_gqa
@@ -561,7 +565,9 @@ class Model:
             )
             print_verbose(f"   n_ctx_train          == {self.n_ctx_train}")
             print_verbose(f"   n_ctx                == {self.n_ctx}")
-            print_verbose(f"   rope_freq_base_train == {self.rope_freq_base_train}")
+            print_verbose(
+                f"   rope_freq_base_train == {self.rope_freq_base_train}"
+            )
             print_verbose(f"   rope_freq_base       == {self.rope_freq_base}")
             print_verbose(f"   n_embd               == {self.n_embd}")
             print_verbose(f"   n_vocab              == {self.n_vocab}")
@@ -625,14 +631,22 @@ class Model:
 
     @staticmethod
     def _get_bpw_quality_hint(bpw: float) -> str:
-        if 0.0 < bpw < 2.0:
-            return 'terrible'
-        elif 2.0 <= bpw < 4.0:
-            return 'bad'
-        elif 4.0 <= bpw < 5.0:
+        if bpw < 1.0:
+            return 'impossibly bad'
+        elif 1.0 <= bpw < 2.0:
+            return 'likely terrible'
+        elif 2.0 <= bpw < 3.0:
+            return 'likely poor'
+        elif 3.0 <= bpw < 4.0:
+            return 'likely subpar'
+        elif 4.0 <= bpw < 4.5:
+            return 'adequate'
+        elif 4.5 <= bpw < 5.5:
             return 'good'
-        elif 5.0 <= bpw < 16.0:
+        elif 5.5 <= bpw < 7.0:
             return 'great'
+        elif 7.0 <= bpw < 16.0:
+            return 'practically native'
         elif bpw >= 16.0:
             return 'native'
         else:
@@ -971,23 +985,23 @@ class Model:
             )
 
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
-        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stop_token_ids: list[int] = [
+            tok_id for tok_id in stops if isinstance(tok_id, int)
+        ]
         stopping_criteria = None
         if stop_token_ids != []:
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
-
+        
+        if hasattr(sampler, "bias"):
+            logit_bias: dict[int, float] = sampler.bias
+        else:
+            logit_bias = None
+        
         if self.verbose:
             print_verbose(f'generate: using the following sampler settings:')
-            print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
-            print_verbose(f'top_k             == {sampler.top_k}')
-            print_verbose(f'top_p             == {sampler.top_p}')
-            print_verbose(f'min_p             == {sampler.min_p}')
-            print_verbose(f'temp              == {sampler.temp}')
-            print_verbose(f'frequency_penalty == {sampler.frequency_penalty}')
-            print_verbose(f'presence_penalty  == {sampler.presence_penalty}')
-            print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
+            print_sampler_settings(sampler)
 
         assert_model_is_loaded(self)
         return self.llama.create_completion(
@@ -1001,7 +1015,8 @@ class Model:
             repeat_penalty=sampler.repeat_penalty,
             top_k=sampler.top_k,
             stop=stop_strs,
-            stopping_criteria=stopping_criteria
+            stopping_criteria=stopping_criteria,
+            logit_bias=logit_bias
         )['choices'][0]['text']
     
 
@@ -1074,23 +1089,23 @@ class Model:
             )
 
         stop_strs: list[str] = [stop for stop in stops if isinstance(stop, str)]
-        stop_token_ids: list[int] = [tok_id for tok_id in stops if isinstance(tok_id, int)]
+        stop_token_ids: list[int] = [
+            tok_id for tok_id in stops if isinstance(tok_id, int)
+        ]
         stopping_criteria = None
         if stop_token_ids != []:
             def stop_on_token_ids(tokens, *args, **kwargs):
                 return tokens[-1] in stop_token_ids
             stopping_criteria = StoppingCriteriaList([stop_on_token_ids])
 
+        if hasattr(sampler, "bias"):
+            logit_bias: dict[int, float] = sampler.bias
+        else:
+            logit_bias = None
+
         if self.verbose:
             print_verbose(f'stream: using the following sampler settings:')
-            print_verbose(f'max_len_tokens    == {sampler.max_len_tokens}')
-            print_verbose(f'top_k             == {sampler.top_k}')
-            print_verbose(f'top_p             == {sampler.top_p}')
-            print_verbose(f'min_p             == {sampler.min_p}')
-            print_verbose(f'temp              == {sampler.temp}')
-            print_verbose(f'frequency_penalty == {sampler.frequency_penalty}')
-            print_verbose(f'presence_penalty  == {sampler.presence_penalty}')
-            print_verbose(f'repeat_penalty    == {sampler.repeat_penalty}')
+            print_sampler_settings(sampler)
         
         assert_model_is_loaded(self)
         return self.llama.create_completion(
@@ -1105,7 +1120,8 @@ class Model:
             top_k=sampler.top_k,
             stream=True,
             stop=stop_strs,
-            stopping_criteria=stopping_criteria
+            stopping_criteria=stopping_criteria,
+            logit_bias=logit_bias
         )
 
 
@@ -1392,6 +1408,7 @@ def assert_model_is_loaded(model) -> None:
 
     Raise ModelUnloadedException otherwise
     """
+    
     try:
         if model.llama._model.model is not None:
             return

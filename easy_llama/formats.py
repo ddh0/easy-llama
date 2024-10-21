@@ -108,24 +108,13 @@ alpaca: dict[str, str | list] = {
 }
 
 # https://docs.mistral.ai/models/
-# As a reference, here is the format used to tokenize instructions during fine-tuning:
-# ```
-# [START_SYMBOL_ID] + 
-# tok("[INST]") + tok(USER_MESSAGE_1) + tok("[/INST]") +
-# tok(BOT_MESSAGE_1) + [END_SYMBOL_ID] +
-# …
-# tok("[INST]") + tok(USER_MESSAGE_N) + tok("[/INST]") +
-# tok(BOT_MESSAGE_N) + [END_SYMBOL_ID]
-# ```
-# In the pseudo-code above, note that the tokenize method should not add a BOS or EOS token automatically, but should add a prefix space.
-
 mistral_instruct: dict[str, str | list] = {
     "system_prefix": "",
     "system_prompt": "",
     "system_suffix": "",
     "user_prefix": "[INST] ",
-    "user_suffix": " [/INST]",
-    "bot_prefix": "",
+    "user_suffix": " ",
+    "bot_prefix": "[/INST]",
     "bot_suffix": "</s>",
     "stops": []
 }
@@ -139,8 +128,8 @@ mistral_instruct_safe: dict[str, str | list] = {
     "Respond with utmost utility yet securely. Avoid harmful, unethical, " + \
     "prejudiced, or negative content. Ensure replies promote fairness and " + \
     "positivity.\n\n",
-    "user_suffix": " [/INST]",
-    "bot_prefix": "",
+    "user_suffix": " ",
+    "bot_prefix": "[/INST]",
     "bot_suffix": "</s>",
     "stops": []
 }
@@ -151,8 +140,8 @@ mistral_instruct_roleplay: dict[str, str | list] = {
     "system_prompt": "A chat between Alice and Bob.",
     "system_suffix": " [/INST]</s>",
     "user_prefix": "[INST] BOB: ",
-    "user_suffix": " [/INST] ALICE:",
-    "bot_prefix": "",
+    "user_suffix": " ",
+    "bot_prefix": "[/INST] ALICE:",
     "bot_suffix": "</s>",
     "stops": ['\n', '\n\n', '\n\n\n']
 }

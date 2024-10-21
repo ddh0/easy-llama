@@ -9,9 +9,9 @@ import sys
 import struct
 import numpy as np
 
-from typing   import Iterable, TextIO, Optional
-from io       import BufferedReader
-from enum     import IntEnum
+from typing    import Iterable, TextIO, Optional
+from io        import BufferedReader
+from enum      import IntEnum
 
 
 # color codes used in Thread.interact()
@@ -171,6 +171,7 @@ def assert_only_ints(iterable: Iterable) -> None:
         raise TypeAssertionError(
             f"assert_only_ints: some item in the given iterable is not an int"
         )
+
 
 class InferenceLock:
     """

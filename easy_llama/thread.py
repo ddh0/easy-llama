@@ -17,9 +17,9 @@ from .utils    import (
     cls
 )
 
+from .samplers import SamplerSettings, print_sampler_settings
 from .model    import Model, ExceededContextLengthException
 from typing    import Optional, Literal, Callable
-from .samplers import SamplerSettings
 from .formats  import AdvancedFormat
 
 from .formats import blank as formats_blank
@@ -173,21 +173,40 @@ class Thread:
             print_verbose(f"new Thread instance with the following attributes:")
             print_verbose(f"   uuid                      == {self.uuid}")
             print_verbose(f"   model.uuid                == {self.model.uuid}")
-            print_verbose(f"   format['system_prefix']   == {truncate(repr(self.format['system_prefix']))}")
-            print_verbose(f"   format['system_prompt']   == {truncate(repr(self.format['system_prompt']))}")
-            print_verbose(f"   format['system_suffix']   == {truncate(repr(self.format['system_suffix']))}")
-            print_verbose(f"   format['user_prefix']     == {truncate(repr(self.format['user_prefix']))}")
-            print_verbose(f"   format['user_suffix']     == {truncate(repr(self.format['user_suffix']))}")
-            print_verbose(f"   format['bot_prefix']      == {truncate(repr(self.format['bot_prefix']))}")
-            print_verbose(f"   format['bot_suffix']      == {truncate(repr(self.format['bot_suffix']))}")
-            print_verbose(f"   format['stops']           == {truncate(repr(self.format['stops']))}")
-            print_verbose(f"   sampler.top_k             == {self.sampler.top_k}")
-            print_verbose(f"   sampler.top_p             == {self.sampler.top_p}")
-            print_verbose(f"   sampler.min_p             == {self.sampler.min_p}")
-            print_verbose(f"   sampler.temp              == {self.sampler.temp}")
-            print_verbose(f"   sampler.frequency_penalty == {self.sampler.frequency_penalty}")
-            print_verbose(f"   sampler.presence_penalty  == {self.sampler.presence_penalty}")
-            print_verbose(f"   sampler.repeat_penalty    == {self.sampler.repeat_penalty}")
+            print_verbose(
+                f"   format['system_prefix']   == "
+                f"{truncate(repr(self.format['system_prefix']))}"
+            )
+            print_verbose(
+                f"   format['system_prompt']   == "
+                f"{truncate(repr(self.format['system_prompt']))}"
+            )
+            print_verbose(
+                f"   format['system_suffix']   == "
+                f"{truncate(repr(self.format['system_suffix']))}"
+            )
+            print_verbose(
+                f"   format['user_prefix']     == "
+                f"{truncate(repr(self.format['user_prefix']))}"
+            )
+            print_verbose(
+                f"   format['user_suffix']     == "
+                f"{truncate(repr(self.format['user_suffix']))}"
+            )
+            print_verbose(
+                f"   format['bot_prefix']      == "
+                f"{truncate(repr(self.format['bot_prefix']))}"
+            )
+            print_verbose(
+                f"   format['bot_suffix']      == "
+                f"{truncate(repr(self.format['bot_suffix']))}"
+            )
+            print_verbose(
+                f"   format['stops']           == "
+                f"{truncate(repr(self.format['stops']))}"
+            )
+            print_verbose(f"this Thread uses the following sampler settings:")
+            print_sampler_settings(self.sampler)
 
 
     def __repr__(self) -> str:
@@ -227,7 +246,7 @@ class Thread:
         assert_type(role, str, 'role', 'create_message')
         assert_type(content, str, 'content', 'create_message')
 
-        if not role.lower() in ['system', 'user', 'bot']:
+        if role.lower() not in ['system', 'user', 'bot']:
             raise ValueError(
                 "create_message: role should be 'system', 'user', or 'bot', "
                 f"not {role.lower()!r}"
@@ -262,6 +281,9 @@ class Thread:
                     'suffix': self.format['bot_suffix']
                 }
             )
+        
+        else:
+            raise UnreachableException
     
 
     def len_messages(self) -> int:

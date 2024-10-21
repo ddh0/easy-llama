@@ -6,7 +6,7 @@
 from typing import Optional
 from sys    import maxsize
 
-from .utils import assert_type, NoneType
+from .utils import assert_type, NoneType, print_verbose, truncate
 
 
 MAX_TEMP = float(maxsize)
@@ -84,7 +84,7 @@ class SamplerSettings:
             assert_type(
                 getattr(self, sampler_param),
                 SamplerSettings.param_types[sampler_param],
-                f'{sampler_param} parameter',
+                f'{sampler_param!r} parameter',
                 'SamplerSettings'
             )
     
@@ -100,6 +100,92 @@ class SamplerSettings:
             f'presence_penalty={self.presence_penalty}, ' \
             f'repeat_penalty={self.repeat_penalty}' \
             f')'
+
+
+class AdvancedSamplerSettings(SamplerSettings):
+    """
+    Just like SamplerSettings but with extra parameters
+    """
+
+    param_types: dict[str, tuple[type]] = {
+        'max_len_tokens'    : (int,   NoneType),
+        'top_k'             : (int,   NoneType),
+        'top_p'             : (float, NoneType),
+        'min_p'             : (float, NoneType),
+        'temp'              : (float, NoneType),
+        'frequency_penalty' : (float, NoneType),
+        'presence_penalty'  : (float, NoneType),
+        'repeat_penalty'    : (float, NoneType),
+        'bias'              : (dict, NoneType)
+    }
+
+    def __init__(
+        self,
+        max_len_tokens    : Optional[int]   = -1,
+        top_k             : Optional[int]   = 40,
+        top_p             : Optional[float] = 0.95,
+        min_p             : Optional[float] = 0.05,
+        temp              : Optional[float] = 0.8,
+        frequency_penalty : Optional[float] = 0.0,
+        presence_penalty  : Optional[float] = 0.0,
+        repeat_penalty    : Optional[float] = 1.0,
+        bias              : Optional[dict[int, float]] = None
+    ):
+        """
+        Construct a new AdvancedSamplerSettings instance
+
+        The `bias` parameter is a dictionary where keys are token IDs and values
+        are biases to apply to the raw logits.
+
+        If the `bias` parameter is unspecified or set to `None`, no bias will be
+        applied.
+        """
+
+        super().__init__(
+            max_len_tokens    = max_len_tokens,
+            top_k             = top_k,
+            top_p             = top_p,
+            min_p             = min_p,
+            temp              = temp,
+            frequency_penalty = frequency_penalty,
+            presence_penalty  = presence_penalty,
+            repeat_penalty    = repeat_penalty
+        )
+
+        self.bias = bias if bias is not None else {}
+
+        assert_type(
+            self.bias,
+            dict,
+            "'bias' parameter",
+            'AdvancedSamplerSettings'
+        )
+
+    def __repr__(self) -> str:
+        return \
+            'AdvancedSamplerSettings(' \
+            f'max_len_tokens={self.max_len_tokens}, ' \
+            f'top_k={self.top_k}, ' \
+            f'top_p={self.top_p}, ' \
+            f'min_p={self.min_p}, ' \
+            f'temp={self.temp}, ' \
+            f'frequency_penalty={self.frequency_penalty}, ' \
+            f'presence_penalty={self.presence_penalty}, ' \
+            f'repeat_penalty={self.repeat_penalty}, ' \
+            f'bias={self.bias}' \
+            f')'
+
+
+def print_sampler_settings(
+        sampler: SamplerSettings | AdvancedSamplerSettings
+) -> None:
+    assert_type(sampler, SamplerSettings, 'sampler', 'print_sampler_settings')
+    param_names = list(sampler.param_types.keys())
+    max_name_len = max(len(name) for name in param_names)
+    for name in param_names:
+        value = getattr(sampler, name)
+        print_verbose(f"{name:<{max_name_len}} == {truncate(repr(value))}")
+
 
 # most likely token is always chosen
 GreedyDecoding = SamplerSettings(
@@ -123,7 +209,7 @@ ClassicSampling = SamplerSettings(
     repeat_penalty = 1.1
 )
 
-# halfway between DefaultSampling and SimpleSampling
+# halfway between DefaultSampling and NoSampling
 SemiSampling = SamplerSettings(
     top_k = 80,
     top_p = 0.975,
@@ -238,26 +324,26 @@ HighTempSampling = SamplerSettings(
 
 # https://arxiv.org/abs/1904.09751
 LowTopPSampling = SamplerSettings(
-    top_k=None,
-    top_p=0.98,
-    min_p=None,
-    temp=None
+    top_k = None,
+    top_p = 0.98,
+    min_p = None,
+    temp = None
 )
 
 # https://arxiv.org/abs/1904.09751
 TopPSampling = SamplerSettings(
-    top_k=None,
-    top_p=0.9,
-    min_p=None,
-    temp=None
+    top_k = None,
+    top_p = 0.9,
+    min_p = None,
+    temp = None
 )
 
 # https://arxiv.org/abs/1904.09751
 StrictTopPSampling = SamplerSettings(
-    top_k=None,
-    top_p=0.7,
-    min_p=None,
-    temp=None
+    top_k = None,
+    top_p = 0.7,
+    min_p = None,
+    temp = None
 )
 
 #
@@ -281,12 +367,24 @@ Llama3 = SamplerSettings(
     temp = 0.6
 )
 
+Llama3Classic = SamplerSettings(
+    temp = 0.65
+)
+
 # Llama3 with reduced temperature
 Llama3Strict = SamplerSettings(
     top_k = None,
     top_p = 0.9,
     min_p = None,
     temp = 0.3
+)
+
+# Llama3 but more creative, good for chatting
+Llama3Creative = SamplerSettings(
+    top_k = None,
+    top_p = 0.9,
+    min_p = None,
+    temp = 1.0
 )
 
 # Not an official preset, but recommended based on my own testing
