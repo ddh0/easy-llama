@@ -6,7 +6,7 @@
 from typing import Optional
 from sys    import maxsize
 
-from .utils import assert_type, NoneType, print_verbose, truncate
+from .utils import assert_type, NoneType, print_verbose, truncate, print_warning
 
 
 MAX_TEMP = float(maxsize)
@@ -30,9 +30,23 @@ class SamplerSettings:
         'repeat_penalty'    : (float, NoneType)
     }
 
+    # NOTE: Cross-reference sampler neutralization values with
+    #       llama.cpp/src/llama-sampling.cpp
+
+    param_neutralization_values: dict[str, int | float] = {
+        'max_len_tokens'    : -1,
+        'top_k'             : -1,
+        'top_p'             : 1.0,
+        'min_p'             : 0.0,
+        'temp'              : 1.0,
+        'frequency_penalty' : 0.0,
+        'presence_penalty'  : 0.0,
+        'repeat_penalty'    : 1.0
+    }
+
     def __init__(
         self,
-        max_len_tokens    : Optional[int]   = -1,
+        max_len_tokens    : Optional[int]   = -1,    # llama.cpp defaults
         top_k             : Optional[int]   = 40,
         top_p             : Optional[float] = 0.95,
         min_p             : Optional[float] = 0.05,
@@ -55,38 +69,90 @@ class SamplerSettings:
         For greedy decoding, see the preset `GreedyDecoding`.
         """
 
-        self.max_len_tokens = (
-            max_len_tokens if max_len_tokens is not None else -1
-        )
-        self.top_k = (
-            top_k if top_k is not None else -1
-        )
-        self.top_p = (
-            top_p if top_p is not None else 1.0
-        )
-        self.min_p = (
-            min_p if min_p is not None else 0.0
-        )
-        self.temp = (
-            temp if temp is not None else 1.0
-        )
-        self.frequency_penalty = (
-            frequency_penalty if frequency_penalty is not None else 0.0
-        )
-        self.presence_penalty = (
-            presence_penalty if presence_penalty is not None else 0.0
-        )
-        self.repeat_penalty = (
-            repeat_penalty if repeat_penalty is not None else 1.0
-        )
+        if max_len_tokens is None or max_len_tokens <= 0:
+            self.max_len_tokens = \
+                self.param_neutralization_values['max_len_tokens']
+        else:
+            self.max_len_tokens = max_len_tokens
+        
+        # llama_sampler_top_k_impl
+        if top_k is None or top_k <= 0:
+            self.top_k = self.param_neutralization_values['top_k']
+        else:
+            self.top_k = top_k
 
-        for sampler_param in SamplerSettings.param_types:
-            assert_type(
-                getattr(self, sampler_param),
-                SamplerSettings.param_types[sampler_param],
-                f'{sampler_param!r} parameter',
-                'SamplerSettings'
-            )
+        # llama_sampler_top_p_apply
+        if top_p is None or top_p >= 1.0:
+            self.top_p = self.param_neutralization_values['top_p']
+        else:
+            if top_p < 0.0:
+                print_warning(
+                    f"top_p value of {top_p} may cause unexpected behaviour, "
+                    f"typical range is between 0.0 and 1.0 inclusive"
+                )
+            self.top_p = top_p
+
+        # llama_sampler_min_p_apply
+        if min_p is None or min_p <= 0.0:
+            self.min_p = self.param_neutralization_values['min_p']
+        else:
+            if min_p > 1.0:
+                print_warning(
+                    f"min_p value of {min_p} may cause unexpected behaviour, "
+                    f"typical range is between 0.0 and 1.0 inclusive"
+                )
+            self.min_p = min_p
+
+        # llama_sampler_temp_impl
+        if temp is None or temp == 1.0:
+            self.temp = self.param_neutralization_values['temp']
+        else:
+            if temp < 0.0:
+                print_warning(
+                    f"temp value of {temp} is equivalent to a value of 0.0"
+                )
+            self.temp = temp
+
+        # llama_sampler_penalties_apply
+        if frequency_penalty is None or frequency_penalty == 0.0:
+            self.frequency_penalty = \
+                self.param_neutralization_values['frequency_penalty']
+        else:
+            if frequency_penalty < 0.0:
+                print_warning(
+                    f"frequency_penalty value of {frequency_penalty} may cause "
+                    f"unexpected behaviour, typical range is 0.0 or greater"
+                )
+            self.frequency_penalty = frequency_penalty
+
+        # llama_sampler_penalties_apply
+        if presence_penalty is None or presence_penalty == 0.0:
+            self.presence_penalty = \
+                self.param_neutralization_values['presence_penalty']
+        else:
+            if presence_penalty < 0.0:
+                print_warning(
+                    f"presence_penalty value of {presence_penalty} may cause "
+                    f"unexpected behaviour, typical range is 0.0 or greater"
+                )
+            self.presence_penalty = presence_penalty
+
+        # llama_sampler_penalties_apply
+        if repeat_penalty is None or repeat_penalty == 1.0:
+            self.repeat_penalty = \
+                self.param_neutralization_values['repeat_penalty']
+        else:
+            if repeat_penalty < 0.0:
+                print_warning(
+                    f"repeat_penalty value of {repeat_penalty} will actually "
+                    f"INCREASE repetition, typical range is 1.0 or greater"
+                )
+            if repeat_penalty > 1.2:
+                print_warning(
+                    f"repeat_penalty value of {repeat_penalty} may reduce "
+                    f"generation quality, consider using a value less than ~1.2"
+                )
+            self.repeat_penalty = repeat_penalty
     
     def __repr__(self) -> str:
         return \
@@ -117,6 +183,18 @@ class AdvancedSamplerSettings(SamplerSettings):
         'presence_penalty'  : (float, NoneType),
         'repeat_penalty'    : (float, NoneType),
         'bias'              : (dict, NoneType)
+    }
+
+    param_neutralization_values: dict[str, int | float | dict] = {
+        'max_len_tokens'    : -1,
+        'top_k'             : -1,
+        'top_p'             : 1.0,
+        'min_p'             : 0.0,
+        'temp'              : 1.0,
+        'frequency_penalty' : 0.0,
+        'presence_penalty'  : 0.0,
+        'repeat_penalty'    : 1.0,
+        'bias'              : {}
     }
 
     def __init__(
@@ -152,13 +230,9 @@ class AdvancedSamplerSettings(SamplerSettings):
             repeat_penalty    = repeat_penalty
         )
 
-        self.bias = bias if bias is not None else {}
-
-        assert_type(
-            self.bias,
-            dict,
-            "'bias' parameter",
-            'AdvancedSamplerSettings'
+        self.bias = (
+            bias if bias is not None
+            else self.param_neutralization_values['bias']
         )
 
     def __repr__(self) -> str:
@@ -181,14 +255,30 @@ def print_sampler_settings(
 ) -> None:
     assert_type(sampler, SamplerSettings, 'sampler', 'print_sampler_settings')
     param_names = list(sampler.param_types.keys())
-    max_name_len = max(len(name) for name in param_names)
+    active_param_names = []
     for name in param_names:
-        value = getattr(sampler, name)
-        print_verbose(f"{name:<{max_name_len}} == {truncate(repr(value))}")
+        value = value = getattr(sampler, name)
+        if value != sampler.param_neutralization_values[name]:
+            active_param_names.append(name)
+    if len(active_param_names) > 0:
+        max_name_len = max(len(name) for name in active_param_names)
+        for name in active_param_names:
+            value = getattr(sampler, name)
+            print_verbose(f"{name:<{max_name_len}} == {truncate(repr(value))}")
+    else:
+        print_verbose("(unmodified probability distribution)")
+
+
+#
+#  Sampler presets
+#
 
 
 # most likely token is always chosen
 GreedyDecoding = SamplerSettings(
+    top_k = 1,
+    top_p = None,
+    min_p = None,
     temp = 0.0
 )
 
@@ -367,6 +457,7 @@ Llama3 = SamplerSettings(
     temp = 0.6
 )
 
+# unofficial, old personal preference
 Llama3Classic = SamplerSettings(
     temp = 0.65
 )

@@ -27,6 +27,9 @@ from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional
 
 
+MAX_DEFAULT_CONTEXT_LENGTH = 131072 # 2^17 ~=~ 128k
+
+
 class ModelUnloadedException(Exception):
     """Exception raised when trying to use a model that has been unloaded"""
 
@@ -286,23 +289,17 @@ class Model:
         
         if context_length is not None and context_length <= 0:
             context_length = None
-        
-        rope_freq_base = __class__._calculate_rope_freq_base(
-            n_ctx_train,
-            context_length if context_length is not None else n_ctx_train,
-            rope_freq_base_train
-        )
 
         if context_length is None:
-            if n_ctx_train > 32768:
+            if n_ctx_train > MAX_DEFAULT_CONTEXT_LENGTH:
                 print_warning(
                     f"you did not specify a context length, and the native "
-                    f"context length of this model is very large "
-                    f"({n_ctx_train}). defaulting to 32768 to avoid "
-                    f"out-of-memory errors. you should specify a higher "
-                    f"context length if you need it"
+                    f"context length of this model is extremely large "
+                    f"({n_ctx_train}). defaulting to "
+                    f"{MAX_DEFAULT_CONTEXT_LENGTH}. you should manually "
+                    f"specify a higher context length if you really need it"
                 )
-                self.context_length = self.n_ctx = 32768
+                self.context_length = self.n_ctx = MAX_DEFAULT_CONTEXT_LENGTH
             else:
                 self.context_length = self.n_ctx = n_ctx_train
 
@@ -322,6 +319,12 @@ class Model:
         
         else:
             raise UnreachableException
+        
+        rope_freq_base = __class__._calculate_rope_freq_base(
+            n_ctx_train,
+            context_length if context_length is not None else n_ctx_train,
+            rope_freq_base_train
+        )
 
         cpu_count = int(os.cpu_count()) # only read once
 
@@ -380,23 +383,23 @@ class Model:
         if rope_freq_base is None:
             rope_freq_base = 0
         
-        if verbose:
-            print_verbose(
-                f"attempting to load model, offloading "
-                f"{n_gpu_layers}/{n_layer} layers..."
-            )
-        
         # llama.cpp needs -ngl set to `-1`, not just n_layer
         if n_gpu_layers >= n_layer:
             _llama_ngl = -1
         else:
             _llama_ngl = n_gpu_layers
+        
+        if verbose:
+            print_verbose(
+                f"attempting to load model, offloading "
+                f"{n_gpu_layers}/{n_layer} layers..."
+            )
 
         self.llama = Llama(
             model_path=model_path,
             n_ctx=self.context_length,
             n_gpu_layers=_llama_ngl,
-            use_mmap=True,
+            use_mmap=False,
             use_mlock=False,
             logits_all=True,
             n_batch=n_batch,
@@ -538,6 +541,10 @@ class Model:
             )
             print_verbose(f"   uuid                 == {self.uuid}")
             print_verbose(f"   filename             == {self.filename}")
+            print_verbose(
+                f"   file size            == "
+                f"{self._model_file_size_bytes}"
+            )
             print_verbose(f"   n_params             == {self.n_params}")
             print_verbose(
                 f"   bpw                  == {self.bpw} "
@@ -659,7 +666,10 @@ class Model:
         file: _SupportsWriteAndFlush = sys.stderr
     ) -> None:
         max_len_key = max(len(k) for k in metadata.keys())
-        print(f'easy_llama: read model metadata from GGUF file header:', file=file)
+        print(
+            f'easy_llama: read model metadata from GGUF file header:',
+            file=file
+        )
         for k, v in metadata.items():
             print(
                 f'easy_llama:    {k:<{max_len_key}} : {truncate(repr(v))}',
@@ -947,11 +957,6 @@ class Model:
             )
         
         sampler = SamplerSettings() if sampler is None else sampler
-
-        if sampler.temp < 0.0:
-            print_warning(
-                f'generate: using negative temperature value {sampler.temp}'
-            )
         
         assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
@@ -1051,11 +1056,6 @@ class Model:
             )
         
         sampler = SamplerSettings() if sampler is None else sampler
-
-        if sampler.temp < 0.0:
-            print_warning(
-                f'stream: using negative temperature value {sampler.temp}'
-            )
         
         assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):

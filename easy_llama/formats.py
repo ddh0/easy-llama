@@ -461,6 +461,17 @@ command: dict[str, str | list] = {
     "stops": []
 }
 
+aya: dict[str, str | list] = {
+    "system_prefix": "",
+    "system_prompt": "",
+    "system_suffix": "",
+    "user_prefix": "<|START_OF_TURN_TOKEN|><|USER_TOKEN|>",
+    "user_suffix": "<|END_OF_TURN_TOKEN|>",
+    "bot_prefix": "<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>",
+    "bot_suffix": "<|END_OF_TURN_TOKEN|>",
+    "stops": []
+}
+
 mistral_openorca = chatml.copy()
 dolphin = chatml.copy()
 samantha = chatml.copy()
