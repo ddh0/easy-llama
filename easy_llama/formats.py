@@ -265,6 +265,21 @@ markup = {
     "stops": ['</message>']
 }
 
+# https://huggingface.co/PygmalionAI/metharme-7b
+pygmalion = metharme = {
+    "system_prefix": "<|system|>",
+    "system_prompt": """Enter RP mode. Pretend to be {{char}} whose persona follows:
+{{persona}}
+
+You shall reply to the user while staying in character, and generate long responses.""",
+    "system_suffix": "",
+    "user_prefix": "<|user|>",
+    "user_suffix": "",
+    "bot_prefix": "<|model|>",
+    "bot_suffix": "</s>",
+    "stops": ["<|",]
+}
+
 # https://huggingface.co/timdettmers/guanaco-65b
 guanaco: dict[str, str | list] = {
     "system_prefix": "",

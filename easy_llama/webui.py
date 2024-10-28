@@ -415,8 +415,42 @@ class WebUI:
             response = encode(summary)
             self.log(f"generated summary: {BLUE}{summary!r}{RESET}")
             return response, 200, {'ContentType': 'text/plain'}
-
         
+
+        @self.app.route('/settings', methods=['GET'])
+        def settings():
+            return render_template('settings.html')
+
+
+        @self.app.route('/update_sampler', methods=['POST'])
+        def update_sampler():
+            data = request.get_json()
+            self.thread.sampler.max_len_tokens = data.get('max_len_tokens', self.thread.sampler.max_len_tokens)
+            self.thread.sampler.top_k = data.get('top_k', self.thread.sampler.top_k)
+            self.thread.sampler.top_p = data.get('top_p', self.thread.sampler.top_p)
+            self.thread.sampler.min_p = data.get('min_p', self.thread.sampler.min_p)
+            self.thread.sampler.temp = data.get('temp', self.thread.sampler.temp)
+            self.thread.sampler.frequency_penalty = data.get('frequency_penalty', self.thread.sampler.frequency_penalty)
+            self.thread.sampler.presence_penalty = data.get('presence_penalty', self.thread.sampler.presence_penalty)
+            self.thread.sampler.repeat_penalty = data.get('repeat_penalty', self.thread.sampler.repeat_penalty)
+            return '', 200
+
+
+        @self.app.route('/get_sampler', methods=['GET'])
+        def get_sampler():
+            sampler_settings = {
+                'max_len_tokens': self.thread.sampler.max_len_tokens,
+                'top_k': self.thread.sampler.top_k,
+                'top_p': self.thread.sampler.top_p,
+                'min_p': self.thread.sampler.min_p,
+                'temp': self.thread.sampler.temp,
+                'frequency_penalty': self.thread.sampler.frequency_penalty,
+                'presence_penalty': self.thread.sampler.presence_penalty,
+                'repeat_penalty': self.thread.sampler.repeat_penalty
+            }
+            return json.dumps(sampler_settings), 200, {'ContentType': 'application/json'}
+
+
         if not self.thread.model.is_loaded():
 
             self.log('loading model')

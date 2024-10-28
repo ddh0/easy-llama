@@ -315,3 +315,60 @@ textarea:focus {
     width: 18svw;
     font-size: 2rex;
 }
+
+#pageContainer h1 {
+    text-align: center;
+    color: #eeeeee;
+}
+
+#samplerForm {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.form-row {
+    display: flex;
+    justify-content: space-between;
+    width: 80%;
+    margin-bottom: 20px;
+}
+
+.form-column {
+    flex: 1;
+    margin-right: 20px;
+}
+
+.form-column:last-child {
+    margin-right: 0;
+}
+
+#samplerForm label {
+    color: #eeeeee;
+    margin-bottom: 5px;
+}
+
+#samplerForm input {
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 5px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background-color: #161616;
+    color: #eeeeee;
+}
+
+#samplerForm button {
+    width: 200px;
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background-color: #4b724b;
+    color: #eeeeee;
+    cursor: pointer;
+}
+
+#samplerForm button:hover {
+    background-color: #355335;
+}
