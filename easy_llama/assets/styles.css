@@ -1,7 +1,6 @@
 /*
 styles.css
 https://github.com/ddh0/easy-llama/
-TODO: switch rex to rem
 */
 
 html {
@@ -30,8 +29,8 @@ body {
     overflow: hidden;
     color: #eeeeee;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: 2rex;
-    line-height: 3.5rex;
+    font-size: 1rem;
+    line-height: 1.6rem;
 }
 
 #conversationWindow {
@@ -73,16 +72,16 @@ body {
     border-left: none;
     border-color: #212121;
     background-color: #161616;
-    width: calc(80svw - 2.4rex); /* fill width and account for padding */
+    width: calc(80svw - 1rem); /* fill width and account for padding */
     height: 15svh;
     margin: 0px;
     resize: none;
-    padding: 1.2rex;
+    padding: 0.5rem;
     overflow: auto;
     color: #eeeeee;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: inherit;
-    line-height: 3.5rex;
+    font-size: 0.87rem;
+    line-height: 1.6rem;
 }
 
 #submitArea {
@@ -131,8 +130,8 @@ button {
     background-color: #4b724b;
     color: #eeeeee;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: 1.7rex;
-    line-height: 3.5rex;
+    font-size: 0.75rem;
+    line-height: 1rem;
     overflow: clip;
 }
 
@@ -149,11 +148,11 @@ button.copy-button {
     border-radius: 4px;
     margin-top: 0rem;
     margin-bottom: 0rem;
-    width: 17rex;
-    height: 3rex;
+    width: 8rem;
+    height: 1.5rem;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: 1.5rex;
-    line-height: 1.5rex;
+    font-size: 0.75rem;
+    line-height: 1rem;
     overflow: clip;
 }
 
@@ -163,21 +162,21 @@ button.copy-button:hover {
 }
 
 h1 {
-    line-height: 8rex;
+    line-height: 4rem;
 }
 
 h2 {
-    line-height: 6rex;
+    line-height: 3rem;
 }
 
 pre {
     font-size: 85%; 
-    line-height: 2.8rex;
-    /* max-height: 45rex; */
+    line-height: 1.2rem;
+    /* max-height: 30rem; */
     text-align: left;
     direction: ltr;
-    border-radius: 2rex;
-    padding: 1.3rex;
+    border-radius: 1rem;
+    padding: 0.65rem;
     white-space: pre;
     word-wrap: normal;
     tab-size: 4;
@@ -192,8 +191,8 @@ code:not(pre code) { /* inline code */
     background-color: #00000080;
     color: #bebebe;
     font-size: 85%;
-    border-radius: 5px;
-    padding: 0.5rex;
+    border-radius: 7px;
+    padding: 3px;
     hyphens: none;
     /* white-space: pre; */
 }
@@ -208,11 +207,10 @@ a:visited {
 
 .message {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
-    font-size: 2rex;
+    font-size: 0.87rem;
     /* overflow: auto; */
-    width: calc(100% - 5rex);
-    padding: 0.0rex 2.5rex;
-    /* min-height: 6rex; */
+    width: calc(100% - 2rem);
+    padding: 0.0rem 1rem;
     border-radius: 0px;
     color: #eeeeee;
 }
@@ -313,7 +311,7 @@ textarea:focus {
 #submitButton {
     height: 10svh;
     width: 18svw;
-    font-size: 2rex;
+    font-size: 0.9rem;
 }
 
 #pageContainer h1 {
@@ -357,18 +355,4 @@ textarea:focus {
     border-radius: 4px;
     background-color: #161616;
     color: #eeeeee;
-}
-
-#samplerForm button {
-    width: 200px;
-    padding: 10px;
-    border: none;
-    border-radius: 4px;
-    background-color: #4b724b;
-    color: #eeeeee;
-    cursor: pointer;
-}
-
-#samplerForm button:hover {
-    background-color: #355335;
 }

@@ -1,9 +1,9 @@
 // settings.js
+// https://github.com/ddh0/easy-llama/
 
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('samplerForm');
 
-    // Fetch the current sampler settings and populate the form
     fetch('/get_sampler')
         .then(response => response.json())
         .then(data => {
@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('presence_penalty').value = data.presence_penalty;
             document.getElementById('repeat_penalty').value = data.repeat_penalty;
         })
-        .catch(error => console.error('Error fetching sampler settings:', error));
+        .catch(error => console.error('error fetching sampler settings:', error));
 
     form.addEventListener('submit', function(event) {
         event.preventDefault();
@@ -41,11 +41,11 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => {
             if (response.ok) {
-                alert('Sampler settings updated successfully!');
+                alert('sampler settings updated successfully');
             } else {
-                alert('Failed to update sampler settings.');
+                alert('failed to update sampler settings');
             }
         })
-        .catch(error => console.error('Error updating sampler settings:', error));
+        .catch(error => console.error('error updating sampler settings:', error));
     });
 });
