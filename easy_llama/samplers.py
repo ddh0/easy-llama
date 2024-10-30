@@ -46,11 +46,11 @@ class SamplerSettings:
 
     def __init__(
         self,
-        max_len_tokens    : Optional[int]   = -1,    # llama.cpp defaults
-        top_k             : Optional[int]   = 40,
-        top_p             : Optional[float] = 0.95,
-        min_p             : Optional[float] = 0.05,
-        temp              : Optional[float] = 0.8,
+        max_len_tokens    : Optional[int]   = -1,
+        top_k             : Optional[int]   = -1,
+        top_p             : Optional[float] = 1.0,
+        min_p             : Optional[float] = 0.1,
+        temp              : Optional[float] = 1.0,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
         repeat_penalty    : Optional[float] = 1.0
@@ -182,7 +182,7 @@ class AdvancedSamplerSettings(SamplerSettings):
         'frequency_penalty' : (float, NoneType),
         'presence_penalty'  : (float, NoneType),
         'repeat_penalty'    : (float, NoneType),
-        'bias'              : (dict, NoneType)
+        'bias'              : (dict,  NoneType)
     }
 
     param_neutralization_values: dict[str, int | float | dict] = {
@@ -200,10 +200,10 @@ class AdvancedSamplerSettings(SamplerSettings):
     def __init__(
         self,
         max_len_tokens    : Optional[int]   = -1,
-        top_k             : Optional[int]   = 40,
-        top_p             : Optional[float] = 0.95,
-        min_p             : Optional[float] = 0.05,
-        temp              : Optional[float] = 0.8,
+        top_k             : Optional[int]   = -1,
+        top_p             : Optional[float] = 1.0,
+        min_p             : Optional[float] = 0.1,
+        temp              : Optional[float] = 1.0,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
         repeat_penalty    : Optional[float] = 1.0,
@@ -282,8 +282,15 @@ GreedyDecoding = SamplerSettings(
     temp = 0.0
 )
 
-# reflects llama.cpp
 DefaultSampling = SamplerSettings()
+
+# llama.cpp defaults
+LlamaCPPSampling = SamplerSettings(
+    top_k = 40,
+    top_p = 0.95,
+    min_p = 0.05,
+    temp = 0.8
+)
 
 # unmodified probability distribution (i.e. what the model actually thinks)
 NoSampling = SimpleSampling = SamplerSettings(

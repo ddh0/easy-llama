@@ -48,4 +48,26 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => console.error('error updating sampler settings:', error));
     });
+
+    document.getElementById('setDefaultsButton').addEventListener('click', function() {
+        document.getElementById('max_len_tokens').value = -1;
+        document.getElementById('top_k').value = 40;
+        document.getElementById('top_p').value = 0.95;
+        document.getElementById('min_p').value = 0.05;
+        document.getElementById('temp').value = 0.8;
+        document.getElementById('frequency_penalty').value = 0.0;
+        document.getElementById('presence_penalty').value = 0.0;
+        document.getElementById('repeat_penalty').value = 1.0;
+    });
+
+    document.getElementById('neutralizeAllButton').addEventListener('click', function() {
+        document.getElementById('max_len_tokens').value = -1;
+        document.getElementById('top_k').value = -1;
+        document.getElementById('top_p').value = 1.0;
+        document.getElementById('min_p').value = 0.0;
+        document.getElementById('temp').value = 1.0;
+        document.getElementById('frequency_penalty').value = 0.0;
+        document.getElementById('presence_penalty').value = 0.0;
+        document.getElementById('repeat_penalty').value = 1.0;
+    });
 });

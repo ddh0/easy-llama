@@ -356,3 +356,19 @@ textarea:focus {
     background-color: #161616;
     color: #eeeeee;
 }
+
+.button-container {
+    display: flex;
+    justify-content: space-between;
+    width: 80%;
+    margin-top: 20px;
+}
+
+.button-container button {
+    margin-right: 10px;
+    width: 20svw;
+}
+
+.button-container button:last-child {
+    margin-right: 0;
+}

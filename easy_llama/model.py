@@ -1383,7 +1383,7 @@ class Model:
             )
 
         if token >= self.n_vocab:
-            raise IndexError(
+            raise ValueError(
                 f"get_candidate_index: the provided token ID {token} is out of "
                 f"range. vocab size for this model is {self.n_vocab}"
             )
