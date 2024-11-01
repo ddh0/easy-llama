@@ -50,7 +50,7 @@ class SamplerSettings:
         top_k             : Optional[int]   = -1,
         top_p             : Optional[float] = 1.0,
         min_p             : Optional[float] = 0.1,
-        temp              : Optional[float] = 1.0,
+        temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
         repeat_penalty    : Optional[float] = 1.0
@@ -203,7 +203,7 @@ class AdvancedSamplerSettings(SamplerSettings):
         top_k             : Optional[int]   = -1,
         top_p             : Optional[float] = 1.0,
         min_p             : Optional[float] = 0.1,
-        temp              : Optional[float] = 1.0,
+        temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
         repeat_penalty    : Optional[float] = 1.0,
