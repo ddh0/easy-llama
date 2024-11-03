@@ -49,7 +49,7 @@ class SamplerSettings:
         max_len_tokens    : Optional[int]   = -1,
         top_k             : Optional[int]   = -1,
         top_p             : Optional[float] = 1.0,
-        min_p             : Optional[float] = 0.1,
+        min_p             : Optional[float] = 0.01,
         temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
@@ -202,7 +202,7 @@ class AdvancedSamplerSettings(SamplerSettings):
         max_len_tokens    : Optional[int]   = -1,
         top_k             : Optional[int]   = -1,
         top_p             : Optional[float] = 1.0,
-        min_p             : Optional[float] = 0.1,
+        min_p             : Optional[float] = 0.01,
         temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
@@ -466,6 +466,9 @@ Llama3 = SamplerSettings(
 
 # unofficial, old personal preference
 Llama3Classic = SamplerSettings(
+    top_k = 40,
+    top_p = 0.95,
+    min_p = 0.05,
     temp = 0.65
 )
 
@@ -474,7 +477,7 @@ Llama3Strict = SamplerSettings(
     top_k = None,
     top_p = 0.9,
     min_p = None,
-    temp = 0.3
+    temp = 0.45
 )
 
 # Llama3 but more creative, good for chatting
@@ -489,7 +492,7 @@ Llama3Creative = SamplerSettings(
 Nemo = MistralNemo = MistralSmall = SamplerSettings(
     top_k = None,
     top_p = None,
-    min_p = None,
+    min_p = 0.01,
     temp = 0.3
 )
 

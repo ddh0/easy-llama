@@ -22,7 +22,7 @@ from .utils import (
     softmax
 )
 
-from .samplers import SamplerSettings, print_sampler_settings
+from .samplers import SamplerSettings, print_sampler_settings, NoSampling
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional
 
@@ -1167,6 +1167,74 @@ class Model:
         print(end, end='', file=file, flush=True)
 
         return response
+    
+
+    def raw_generate(
+            self,
+            tokens: list[int],
+            sampler: Optional[SamplerSettings] = None
+        ) -> int:
+        """
+        Given a list of token IDs, perform a single forward pass and return
+        the inferred next token using the specified sampler
+        """
+
+        if isinstance(tokens, int):
+            tokens = [tokens]
+        
+        if len(tokens) == 0:
+            tokens = [self.bos_token]
+        
+        assert_type(tokens, list, 'tokens', 'raw_generate')
+        assert_only_ints(tokens)
+
+        input_length = len(tokens)
+
+        if input_length > self.context_length:
+            print(f'easy_llama: raw input: {tokens}')
+            raise ExceededContextLengthException(
+                f"raw_generate: length of input exceeds model's context length "
+                f"({input_length} > {self.context_length})"
+            )
+        elif input_length == self.context_length:
+            print(f'easy_llama: raw input: {tokens}')
+            raise ExceededContextLengthException(
+                f"raw_generate: length of input is equal to model's context "
+                f"length ({input_length} == {self.context_length}). this "
+                f"leaves no room for any new tokens to be generated"
+            )
+        elif self.verbose:
+            print_verbose(
+                f"raw_generate: received prompt with {input_length} tokens"
+            )
+        
+        if sampler is None:
+            sampler = NoSampling # unchanged probabilities (temp = 1.0)
+        
+        if self.verbose:
+            print_verbose(
+                f'raw_generate: using the following sampler settings:'
+            )
+            print_sampler_settings(sampler)
+        
+        if hasattr(sampler, 'bias'):
+            print_warning(
+                "raw_generate does not support the 'bias' sampler parameter"
+            )
+
+        token_generator = self.llama.generate(
+            tokens=tokens,
+            top_k=sampler.top_k,
+            top_p=sampler.top_p,
+            min_p=sampler.min_p,
+            temp=sampler.temp,
+            repeat_penalty=sampler.repeat_penalty,
+            frequency_penalty=sampler.frequency_penalty,
+            presence_penalty=sampler.presence_penalty,
+            penalize_nl=False,
+        )
+
+        return next(token_generator)
 
 
     def ingest(self, text: str | list[int]) -> None:
@@ -1209,7 +1277,8 @@ class Model:
         self.llama.create_completion(
             prompt=tokens,
             max_tokens=1,
-            temperature=0.0
+            temperature=0.0,
+            top_k=1
         )
 
 
