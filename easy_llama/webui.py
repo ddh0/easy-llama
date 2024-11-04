@@ -65,7 +65,7 @@ f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
 
 
-MAX_LENGTH_INPUT = 100_000 # one hundred thousand characters
+MAX_LENGTH_INPUT = 1_000_000 # one million characters
 
 
 def generate_self_signed_ssl_cert() -> None:

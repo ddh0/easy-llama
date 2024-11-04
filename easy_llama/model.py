@@ -22,7 +22,7 @@ from .utils import (
     softmax
 )
 
-from .samplers import SamplerSettings, print_sampler_settings, NoSampling
+from .samplers import SamplerSettings, print_sampler_settings, GreedyDecoding
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional
 
@@ -1176,7 +1176,10 @@ class Model:
         ) -> int:
         """
         Given a list of token IDs, perform a single forward pass and return
-        the inferred next token using the specified sampler
+        the inferred next token ID using the specified sampler
+
+        If no sampler is specified, the most likely token will always be chosen
+        (greedy decoding)
         """
 
         if isinstance(tokens, int):
@@ -1209,7 +1212,7 @@ class Model:
             )
         
         if sampler is None:
-            sampler = NoSampling # unchanged probabilities (temp = 1.0)
+            sampler = GreedyDecoding # always select most likely token
         
         if self.verbose:
             print_verbose(
@@ -1222,6 +1225,7 @@ class Model:
                 "raw_generate does not support the 'bias' sampler parameter"
             )
 
+        assert_model_is_loaded(self)
         token_generator = self.llama.generate(
             tokens=tokens,
             top_k=sampler.top_k,
@@ -1417,7 +1421,7 @@ class Model:
             prompt=prompt, k=k, temp=temp, raw_token_ids=raw_token_ids
         ):
             percent_as_string = f"{_tuple[1] * 100 :>7.3f}"
-            # do not print tokens with ~0.000% probability
+            # do not print tokens with 0.000% probability
             if percent_as_string != "  0.000":
                 print(
                     f"token {_tuple[0]!r:<32} has probability "
@@ -1430,12 +1434,12 @@ class Model:
         self,
         prompt: str | list[int],
         token: int
-    ):
+    ) -> int:
         """
         Given a prompt `str | list[int]` and a token ID `int`, return the index
         (i.e. position) of the token ID among the candidate tokens
 
-        i.e.:
+        In other words:
         - an index of `0` means the given token is the most likely candidate
         - an index of `n_vocab - 1` means the given token is the least
           likely candidate

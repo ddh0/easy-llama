@@ -48,12 +48,12 @@ class SamplerSettings:
         self,
         max_len_tokens    : Optional[int]   = -1,
         top_k             : Optional[int]   = -1,
-        top_p             : Optional[float] = 1.0,
+        top_p             : Optional[float] = 0.99,
         min_p             : Optional[float] = 0.01,
         temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
-        repeat_penalty    : Optional[float] = 1.0
+        repeat_penalty    : Optional[float] = 1.0,
     ):
         """
         Construct a new SamplerSettings instance
@@ -201,7 +201,7 @@ class AdvancedSamplerSettings(SamplerSettings):
         self,
         max_len_tokens    : Optional[int]   = -1,
         top_k             : Optional[int]   = -1,
-        top_p             : Optional[float] = 1.0,
+        top_p             : Optional[float] = 0.99,
         min_p             : Optional[float] = 0.01,
         temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
@@ -287,13 +287,13 @@ DefaultSampling = SamplerSettings()
 # llama.cpp defaults
 LlamaCPPSampling = SamplerSettings(
     top_k = 40,
-    top_p = 0.95,
-    min_p = 0.05,
+    top_p = 0.9,
+    min_p = 0.1,
     temp = 0.8
 )
 
 # unmodified probability distribution (i.e. what the model actually thinks)
-NoSampling = SimpleSampling = SamplerSettings(
+NoSampling = SimpleSampling = Neutralized = SamplerSettings(
     top_k = None,
     top_p = None,
     min_p = None,
@@ -492,7 +492,7 @@ Llama3Creative = SamplerSettings(
 Nemo = MistralNemo = MistralSmall = SamplerSettings(
     top_k = None,
     top_p = None,
-    min_p = 0.01,
+    min_p = None,
     temp = 0.3
 )
 
