@@ -257,7 +257,7 @@ def print_sampler_settings(
     param_names = list(sampler.param_types.keys())
     active_param_names = []
     for name in param_names:
-        value = value = getattr(sampler, name)
+        value = getattr(sampler, name)
         if value != sampler.param_neutralization_values[name]:
             active_param_names.append(name)
     if len(active_param_names) > 0:
@@ -497,10 +497,20 @@ Nemo = MistralNemo = MistralSmall = SamplerSettings(
 )
 
 # https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/blob/main/generation_config.json
-Qwen2_5 = SamplerSettings(
+# weird preset...
+Qwen2_5Official = SamplerSettings(
     top_k = 20,
     top_p = 0.8,
     min_p = None,
     temp = 0.7,
     repeat_penalty = 1.05
+)
+
+# actual good settings
+Qwen2_5Recommended = SamplerSettings(
+    top_k = None,
+    top_p = 0.9,
+    min_p = 0.1,
+    temp = 0.7,
+    repeat_penalty = None
 )

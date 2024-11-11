@@ -832,60 +832,127 @@ class Model:
             return True
     
 
-    def tokenize(self, text: str) -> list[int]:
+    def _validate_token_ids(self, token_ids: list[int]):
         """
-        Tokenize the given text (from `str` to `list[int]`)
+        Take in a list of token IDs and ensure they are valid IDs for the model
         """
-        assert_type(text, str, 'text', 'tokenize')
-        assert_model_is_loaded(self)
-        tokens = self.llama._model.tokenize(
-            text.encode('utf-8'),
-            add_bos=(
-                self.add_bos_token if self.add_bos_token is not None
-                else True
-            ),
-            special=True
-        )
+        for id in token_ids:
+            assert_type(id, int, 'token ID', '_validate_token_ids')
+            if not 0 <= id < self.n_vocab:
+                raise ValueError(
+                    f'_validate_token_ids: token ID {id} is not valid - '
+                    f'acceptable values for this model are between 0 and '
+                    f'{self.n_vocab - 1} inclusive'
+                )
+
+    
+    def _validate_bos_eos(self, token_ids: list[int]) -> list[int]:
+        """
+        Take in a list of tokens and ensure that the BOS and EOS tokens are
+        correctly present or not present based on the model's tokenizer
+
+        Returns the validated list of token IDs
+        """
+        assert_only_ints(token_ids)
+        
         # remove duplicate BOS tokens at the start of the text
-        while len(tokens) >= 2 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
-            tokens.pop(0)
+        while len(token_ids) >= 2 and (
+            token_ids[0] == self.bos_token and token_ids[1] == self.bos_token
+        ):
+            token_ids.pop(0)
             if self.verbose:
-                print_verbose("tokenize: removed duplicate BOS token")
+                print_verbose("_validate_bos_eos: removed duplicate BOS token")
+        
         # remove duplicate EOS tokens at the end of the text
-        while len(tokens) >= 2 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
-            tokens.pop(-1)
+        while len(token_ids) >= 2 and (
+            token_ids[-1] == self.eos_token and token_ids[-2] == self.eos_token
+        ):
+            token_ids.pop(-1)
             if self.verbose:
-                print_verbose("tokenize: removed duplicate EOS token")
-        return tokens
+                print_verbose("_validate_bos_eos: removed duplicate EOS token")
+        
+        if len(token_ids) == 0:           # fix empty list
+            token_ids = [self.bos_token]
+        
+        # add or remove BOS as necessary
+        if self.add_bos_token in [None, True]:
+            if token_ids[0] != self.bos_token:
+                token_ids.insert(0, self.bos_token)
+                print_verbose("_validate_bos_eos: added missing BOS token")
+        else:
+            if token_ids[0] == self.bos_token:
+                token_ids.pop(0)
+                print_verbose("_validate_bos_eos: removed incorrect BOS token")
+        
+        # add or remove EOS as necessary
+        if (self.add_eos_token is not None) and self.add_eos_token:
+            if token_ids[-1] != self.eos_token:
+                token_ids.append(self.eos_token)
+                print_verbose("_validate_bos_eos: added missing EOS token")
+        else:
+            if token_ids[-1] == self.eos_token:
+                token_ids.pop(-1)
+                print_verbose("_validate_bos_eos: removed incorrect EOS token")
+        
+        return token_ids
+
+
+    def tokenize(
+            self,
+            text: str | list[str | int]
+        ) -> list[int]:
+        """
+        Tokenize the given text
+
+        Input may be a string, or a list comprised of strings and/or integers
+        """
+        assert_type(text, (str, list), 'text', 'tokenize')
+
+        if isinstance(text, list):
+            tokens = []
+            assert_model_is_loaded(self) # only run assertion once
+
+            for n in text:
+                assert_type(n, (str, int), 'mixed token', 'tokenize')
+
+                if isinstance(n, str):
+                    new_tokens = self.llama._model.tokenize(
+                        n.encode('utf-8'),
+                        add_bos=False,
+                        special=True
+                    )
+                    tokens.extend(new_tokens)
+                
+                else:
+                    self._validate_token_ids([n])
+                    tokens.append(n)
+
+        else:
+            assert_model_is_loaded(self)
+            tokens = self.llama._model.tokenize(
+                text.encode('utf-8'),
+                add_bos=(
+                    self.add_bos_token if self.add_bos_token is not None
+                    else True
+                ),
+                special=True
+            )
+
+        return self._validate_bos_eos(tokens)
 
 
     def detokenize(self, tokens: list[int] | int) -> str:
         """
         Detokenize the given text (from `int` or `list[int]` to `str`)
         """
-        assert_type(tokens, (list, int), 'tokens', 'detokenize')
         if isinstance(tokens, int):
             tokens = [tokens]  # handle single tokens
-        for tok_id in tokens:
-            if not 0 <= tok_id < self.n_vocab:
-                raise ValueError(
-                    f"detokenize: token id {tok_id} is out of range. "
-                    f"acceptable values for this model are between 0 and "
-                    f"{self.n_vocab-1} inclusive"
-                )
-        # remove duplicate BOS tokens at the start of the text
-        while len(tokens) >= 2 and tokens[0] == self.bos_token and tokens[1] == self.bos_token:
-            tokens.pop(0)
-            if self.verbose:
-                print_verbose("detokenize: removed duplicate BOS token")
-        # remove duplicate EOS tokens at the end of the text
-        while len(tokens) >= 2 and tokens[-1] == self.eos_token and tokens[-2] == self.eos_token:
-            tokens.pop(-1)
-            if self.verbose:
-                print_verbose("detokenize: removed duplicate EOS token")
+        
+        self._validate_token_ids(tokens)
+
         assert_model_is_loaded(self)
         return self.llama._model.detokenize(
-            tokens,
+            tokens=self._validate_bos_eos(tokens),
             special=True
         ).decode('utf-8', errors='ignore')
 
@@ -960,8 +1027,8 @@ class Model:
         
         assert_type(prompt, (str, list), 'prompt', 'generate')
         if isinstance(prompt, list):
-            assert_only_ints(prompt)
-            prompt_tokens = prompt
+            self._validate_token_ids(prompt)
+            prompt_tokens = self._validate_bos_eos(token_ids=prompt)
         else:
             if self.verbose:
                 print_verbose(
@@ -1059,8 +1126,8 @@ class Model:
         
         assert_type(prompt, (str, list), 'prompt', 'stream')
         if isinstance(prompt, list):
-            assert_only_ints(prompt)
-            prompt_tokens = prompt
+            self._validate_token_ids(prompt)
+            prompt_tokens = self._validate_bos_eos(token_ids=prompt)
         else:
             if self.verbose:
                 print_verbose(
@@ -1171,27 +1238,33 @@ class Model:
 
     def raw_generate(
             self,
-            tokens: list[int],
-            sampler: Optional[SamplerSettings] = None
-        ) -> int:
+            tokens: list[int] | int
+        ) -> np.ndarray:
         """
-        Given a list of token IDs, perform a single forward pass and return
-        the inferred next token ID using the specified sampler
+        Given a list of token IDs, perform a single eval and return the raw
+        logits
 
-        If no sampler is specified, the most likely token will always be chosen
-        (greedy decoding)
+        The return value is a `numpy.ndarray` whose length is equal to the
+        model's vocab size. The value at index `n` is the logit of the token
+        with ID `n`.
+    
+        In other words, `array[n]` returns the score for token with ID `n`.
         """
+
+        assert_type(tokens, (list, int), 'tokens', 'raw_generate')
 
         if isinstance(tokens, int):
             tokens = [tokens]
         
-        if len(tokens) == 0:
-            tokens = [self.bos_token]
+        self._validate_token_ids(token_ids=tokens)
         
-        assert_type(tokens, list, 'tokens', 'raw_generate')
-        assert_only_ints(tokens)
-
         input_length = len(tokens)
+
+        if input_length == 0:
+            print_warning(
+                'raw_generate does not accept empty input. using BOS as input'
+            )
+            tokens = self.bos_token
 
         if input_length > self.context_length:
             print(f'easy_llama: raw input: {tokens}')
@@ -1208,37 +1281,23 @@ class Model:
             )
         elif self.verbose:
             print_verbose(
-                f"raw_generate: received prompt with {input_length} tokens"
+                f"raw_generate: received input with {input_length} tokens"
             )
-        
-        if sampler is None:
-            sampler = GreedyDecoding # always select most likely token
-        
+
+        # it is necessary to reset the model before calling llama.eval()
+        elif self.verbose:
+            print_verbose(
+                "raw_generate: reset model state..."
+            )
+        self.llama.reset()
+
         if self.verbose:
             print_verbose(
-                f'raw_generate: using the following sampler settings:'
+                "raw_generate: eval..."
             )
-            print_sampler_settings(sampler)
+        self.llama.eval(tokens)
         
-        if hasattr(sampler, 'bias'):
-            print_warning(
-                "raw_generate does not support the 'bias' sampler parameter"
-            )
-
-        assert_model_is_loaded(self)
-        token_generator = self.llama.generate(
-            tokens=tokens,
-            top_k=sampler.top_k,
-            top_p=sampler.top_p,
-            min_p=sampler.min_p,
-            temp=sampler.temp,
-            repeat_penalty=sampler.repeat_penalty,
-            frequency_penalty=sampler.frequency_penalty,
-            presence_penalty=sampler.presence_penalty,
-            penalize_nl=False,
-        )
-
-        return next(token_generator)
+        return self.llama.scores[len(tokens) - 1]
 
 
     def ingest(self, text: str | list[int]) -> None:
@@ -1248,8 +1307,8 @@ class Model:
 
         assert_type(text, (str, list), 'prompt', 'stream')
         if isinstance(text, list):
-            assert_only_ints(text)
-            tokens = text
+            self._validate_token_ids(text)
+            tokens = self._validate_bos_eos(token_ids=text)
         else:
             if self.verbose:
                 print_verbose(

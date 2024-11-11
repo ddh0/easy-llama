@@ -488,3 +488,5 @@ class WebUI:
             newline()
             self._log_host = None
             self._log_port = None
+        
+        self.log('Flask stopped')

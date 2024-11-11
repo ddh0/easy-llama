@@ -354,7 +354,9 @@ class Thread:
         return inf_str
     
 
-    def inf_str_for_role(self, role: str = Literal['system', 'user', 'bot']):
+    def inf_str_for_role(
+            self, role: str = Literal['system', 'user', 'bot']
+        ) -> str:
         """
         Using the list of messages, construct a string suitable for inference,
         respecting the format of this thread. The `role` parameter specifies
