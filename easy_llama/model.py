@@ -978,7 +978,11 @@ class Model:
         return list(
             zip(
                 token_id_list,
-                [self.detokenize(tok_id) for tok_id in token_id_list]
+                [
+                    self.llama._model.detokenize(
+                        [tok_id], special=True
+                    ).decode('utf-8', 'ignore') for tok_id in token_id_list
+                ]
             )
         )
     

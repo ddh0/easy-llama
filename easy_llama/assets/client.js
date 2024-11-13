@@ -601,13 +601,13 @@ async function swipe() {
     if (isGenerating) {
 
         await cancelGeneration();
-        setTimeout(newBotMessage, 500);
+        setTimeout(newBotMessage, 750);
         await updatePlaceholderText();
 
     } else {
 
         await removeLastMessage();
-        setTimeout(newBotMessage, 500);
+        setTimeout(newBotMessage, 750);
         await updatePlaceholderText();
     }
 

@@ -48,8 +48,8 @@ class SamplerSettings:
         self,
         max_len_tokens    : Optional[int]   = -1,
         top_k             : Optional[int]   = -1,
-        top_p             : Optional[float] = 0.99,
-        min_p             : Optional[float] = 0.01,
+        top_p             : Optional[float] = 0.95,
+        min_p             : Optional[float] = 0.05,
         temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
@@ -142,7 +142,7 @@ class SamplerSettings:
             self.repeat_penalty = \
                 self.param_neutralization_values['repeat_penalty']
         else:
-            if repeat_penalty < 0.0:
+            if repeat_penalty < 1.0:
                 print_warning(
                     f"repeat_penalty value of {repeat_penalty} will actually "
                     f"INCREASE repetition, typical range is 1.0 or greater"
@@ -201,8 +201,8 @@ class AdvancedSamplerSettings(SamplerSettings):
         self,
         max_len_tokens    : Optional[int]   = -1,
         top_k             : Optional[int]   = -1,
-        top_p             : Optional[float] = 0.99,
-        min_p             : Optional[float] = 0.01,
+        top_p             : Optional[float] = 0.95,
+        min_p             : Optional[float] = 0.05,
         temp              : Optional[float] = 0.8,
         frequency_penalty : Optional[float] = 0.0,
         presence_penalty  : Optional[float] = 0.0,
