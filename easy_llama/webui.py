@@ -22,12 +22,14 @@ from .utils import (
 from .thread import Thread
 from cryptography import x509
 from cryptography.x509.oid import NameOID
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from flask import Flask, render_template, request, Response
 from cryptography.hazmat.primitives.serialization import Encoding
+
+UTC = timezone.utc
 
 YELLOW = SPECIAL_STYLE
 GREEN = USER_STYLE

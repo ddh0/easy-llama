@@ -528,11 +528,13 @@ class Model:
         self.is_native: bool = (
             self.context_length <= self.n_ctx_train
         ) and (
-            self.rope_freq_base in [rope_freq_base_train, 0]
+            self.rope_freq_base in [rope_freq_base_train, 0.0]
         )
         self.type_k: int = type_k
         self.type_v: int = type_v
         self.n_gqa: int = n_gqa
+        self.n_attn_heads: int = n_attn_heads
+        self.n_kv_heads: int = n_kv_heads
 
         if verbose:
             print_verbose(
@@ -554,6 +556,8 @@ class Model:
             print_verbose(f"   n_layer              == {self.n_layer}")
             print_verbose(f"   offload_kqv          == {self.offload_kqv}")
             print_verbose(f"   flash_attn           == {self.flash_attn}")
+            print_verbose(f"   n_attn_heads         == {self.n_attn_heads}")
+            print_verbose(f"   n_kv_heads           == {self.n_kv_heads}")
             print_verbose(f"   n_gqa                == {self.n_gqa}")
             print_verbose(
                 f"   type_k               == {self.type_k} "
