@@ -4,9 +4,11 @@
 """Submodule containing various prompt formats used by models"""
 
 import time
+from datetime import datetime, timedelta
 
 from typing import Callable, Any, Optional
 from .utils import assert_type, NoneType
+
 
 class AdvancedFormat:
 
@@ -79,6 +81,14 @@ def short_time_str() -> str:
     """Return a shorter timestamp of the current time as a string"""
     return time.strftime('%a %I:%M %p')
 
+def iso_date_str() -> str:
+    """Return a timestamp of the current date as a string in YYYY-MM-DD"""
+    return time.strftime('%Y-%m-%d')
+
+def _yesterday_iso_date_str():
+    yesterday = datetime.now() - timedelta(days=1)
+    return yesterday.strftime('%Y-%m-%d')
+
 def blank() -> dict[str, str | list]:
     return {
         "system_prefix": "",
@@ -108,6 +118,35 @@ def mistral_instruct() -> dict[str, str | list]:
         "system_prefix": "",
         "system_prompt": "",
         "system_suffix": "",
+        "user_prefix": "[INST] ",
+        "user_suffix": " ",
+        "bot_prefix": "[/INST]",
+        "bot_suffix": "</s>",
+        "stops": []
+    }
+
+def mistral_instruct_v7(system_prompt: Optional[str] = None) -> dict[str, str | list]:
+    return {
+        "system_prefix": "[SYSTEM_PROMPT] ",
+        "system_prompt": system_prompt if system_prompt is not None else f"""You are Mistral, a Large Language Model (LLM) created by Mistral AI, a French startup headquartered in Paris.
+You power an AI assistant called Le Chat.
+Your knowledge base was last updated on 2023-10-01.
+The current date is {iso_date_str()}.
+
+When you're not sure about some information, you say that you don't have the information and don't make up anything.
+If the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. "What are some good restaurants around me?" => "Where are you?" or "When is the next flight to Tokyo" => "Where do you travel from?").
+You are always very attentive to dates, in particular you try to resolve dates (e.g. "yesterday" is {_yesterday_iso_date_str()}) and when asked about information at specific dates, you discard information that is at another date.
+You follow these instructions in all languages, and always respond to the user in the language they use or request.
+Next sections describe the capabilities that you have.
+
+# WEB BROWSING INSTRUCTIONS
+
+You cannot perform any web search or access internet to open URLs, links etc. If it seems like the user is expecting you to do so, you clarify the situation and ask the user to copy paste the text directly in the chat.
+
+# MULTI-MODAL INSTRUCTIONS
+
+You do not have any multimodal capability, in particular you cannot read nor generate images, or transcribe audio files or videos.""",
+        "system_suffix": "[/SYSTEM_PROMPT]",
         "user_prefix": "[INST] ",
         "user_suffix": " ",
         "bot_prefix": "[/INST]",

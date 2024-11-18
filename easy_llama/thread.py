@@ -121,6 +121,13 @@ class Thread:
         """
         
         assert_type(model, Model, 'model', 'Thread')
+
+        # backwards compatability with dict formats
+        if isinstance(format, Callable):
+            _format = format()
+        else:
+            _format = format
+        
         assert_type(format, (dict, AdvancedFormat), 'format', 'Thread')
         
         _format_keys = format.keys() # only read once
@@ -138,7 +145,7 @@ class Thread:
                 "easy_llama.formats.blank for an example"
             )
         
-        assert_type(format['stops'], list, "format['stops']", 'Thread')
+        assert_type(_format['stops'], list, "format['stops']", 'Thread')
 
         sampler = SamplerSettings() if sampler is None else sampler
         
@@ -162,7 +169,7 @@ class Thread:
         # set to `[]` during construction
 
         self.model: Model = model
-        self.format: dict | AdvancedFormat = format
+        self.format: dict | AdvancedFormat = _format
         self.sampler: SamplerSettings = sampler
         self.messages: list[Message] = [
             self.create_message("system", self.format['system_prompt'])
@@ -327,7 +334,7 @@ class Thread:
             role: str = Literal['system', 'user', 'bot']
     ) -> str:
         """
-        Alias to `.inf_str()` for backward compatability
+        Alias to `.inf_str_for_role()` for backward compatability
         """
         return self.inf_str_for_role(role=role)
     
@@ -361,8 +368,7 @@ class Thread:
         Using the list of messages, construct a string suitable for inference,
         respecting the format of this thread. The `role` parameter specifies
         whether the following generated text is from `system`, `user`, or `bot`.
-        If `role` is `bot`, the behaviour is equivalent to
-        `inference_str_from_messages`.
+        If `role` is `bot`, the behaviour is equivalent to `inf_str`.
         """
 
         assert_type(role, str, 'role', 'inf_str_for_role')
@@ -724,7 +730,7 @@ class Thread:
         End your input with a backslash `\\` for multi-line input.
 
         Type `!` and press `ENTER` to enter a basic command prompt. For a list
-        of  commands, type `help` at this prompt.
+        of commands, type `help` at this prompt.
         
         Type `<` and press `ENTER` to prefix the bot's next message, for
         example with `Sure!`.
@@ -899,8 +905,6 @@ class Thread:
             _model = model
         else:
             _model = self.model
-        
-        _model.load()
 
         if messages == []:
             raise ValueError(
@@ -930,7 +934,8 @@ class Thread:
                 self.format['bot_prefix'] + \
                 'After carefully reading through the conversation, here\'s' + \
                 ' a paragraph that explains the most relevant details:\n\n'
-        
+
+        _model.load()
         summary = _model.generate(
             inf_str,
             stops=self.format['stops'] + ['\n\n'],
@@ -948,4 +953,4 @@ class Thread:
         """
         Ingest the text of this thread into the model's cache
         """
-        self.model.ingest(self.inference_str_from_messages())
+        self.model.ingest(self.inf_str())
