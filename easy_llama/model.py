@@ -7,7 +7,10 @@ import os
 import sys
 import uuid
 import numpy as np
+# TODO: wrap return generate functions in try/except to catch lower-level exceptions and
+#       print_verbose(raw_prompt_tokens) for verbosity
 
+# TODO: check for finish reason STOP LENGTH or other not-ok reason before return
 from .utils import (
     _SupportsWriteAndFlush,
     UnreachableException,
@@ -22,7 +25,7 @@ from .utils import (
     softmax
 )
 
-from .samplers import SamplerSettings, print_sampler_settings, GreedyDecoding
+from .samplers import SamplerSettings, print_sampler_settings
 from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional
 
@@ -132,6 +135,7 @@ class Model:
         The GQA (Grouped-Query Attention) factor of the model
     - uuid `uuid.UUID`:
         A randomly generated UUID, unique to this specific model instance
+        (changes on reload)
     """
 
     def __init__(
@@ -206,11 +210,7 @@ class Model:
 
         _kwargs_keys = kwargs.keys() # only read once
 
-        if '__uuid' not in _kwargs_keys:
-            self.uuid = uuid.uuid4()
-        else:
-            # Model.reload() passes this kwarg to preserve the UUID
-            self.uuid = kwargs.get('__uuid')
+        self.uuid = uuid.uuid4()
 
         if 'do_not_load' in _kwargs_keys:
             if kwargs.get('do_not_load') is True:
@@ -558,7 +558,10 @@ class Model:
             print_verbose(f"   flash_attn           == {self.flash_attn}")
             print_verbose(f"   n_attn_heads         == {self.n_attn_heads}")
             print_verbose(f"   n_kv_heads           == {self.n_kv_heads}")
-            print_verbose(f"   n_gqa                == {self.n_gqa}")
+            # NOTE: Commented out because n_gqa can be inferred by
+            #       n_attn_heads / n_kv_heads
+            #
+            # print_verbose(f"   n_gqa                == {self.n_gqa}")
             print_verbose(
                 f"   type_k               == {self.type_k} "
                 f"({'f16' if self.type_k == 1 else 'q8_0'})"
@@ -777,8 +780,9 @@ class Model:
         Re-load the model into memory using the specified parameters
 
         Any parameters unspecified will be unchanged
+
+        Calling this function will change the model's UUID
         """
-        __uuid = self.uuid
         self.unload()
         self.__init__(
             model_path = self._model_path,
@@ -805,8 +809,7 @@ class Model:
             verbose = (
                 self._verbose if verbose is None
                 else verbose
-            ),
-            __uuid = __uuid  # do not change UUID on reload
+            )
         )
         assert_model_is_loaded(self)
     
@@ -840,8 +843,13 @@ class Model:
         """
         Take in a list of token IDs and ensure they are valid IDs for the model
         """
+
+        if isinstance(token_ids, int):
+            token_ids = [token_ids]
+        
+        assert_only_ints(token_ids)
+
         for id in token_ids:
-            assert_type(id, int, 'token ID', '_validate_token_ids')
             if not 0 <= id < self.n_vocab:
                 raise ValueError(
                     f'_validate_token_ids: token ID {id} is not valid - '
@@ -857,6 +865,10 @@ class Model:
 
         Returns the validated list of token IDs
         """
+
+        if isinstance(token_ids, int):
+            token_ids = [token_ids]
+
         assert_only_ints(token_ids)
         
         # remove duplicate BOS tokens at the start of the text
@@ -910,7 +922,10 @@ class Model:
 
         Input may be a string, or a list comprised of strings and/or integers
         """
-        assert_type(text, (str, list), 'text', 'tokenize')
+        assert_type(text, (str, list, int), 'text', 'tokenize')
+
+        if isinstance(text, int):
+            text = [text]
 
         if isinstance(text, list):
             tokens = []
@@ -931,7 +946,7 @@ class Model:
                     self._validate_token_ids([n])
                     tokens.append(n)
 
-        else:
+        else: # text is a string
             assert_model_is_loaded(self)
             tokens = self.llama._model.tokenize(
                 text.encode('utf-8'),
@@ -970,7 +985,7 @@ class Model:
 
     def get_tokenization_mapping(
             self,
-            text: str
+            text: str | list[int] | int
         ) -> list[tuple[int, str]]:
         """
         Tokenize the given text and return a list of tuples where the first
@@ -991,7 +1006,10 @@ class Model:
         )
     
 
-    def print_tokenization_mapping(self, text: str) -> None:
+    def print_tokenization_mapping(
+            self,
+            text: str | list[int] | int
+        ) -> None:
         """
         Tokenize the given text and display a mapping of each
         token ID and its corresponding decoded text
@@ -1007,7 +1025,7 @@ class Model:
     
     def generate(
         self,
-        prompt: str | list[int],
+        prompt: str | list[int] | int,
         stops: Optional[list[str | int]] = None,
         sampler: Optional[SamplerSettings] = None
     ) -> str:
@@ -1033,8 +1051,8 @@ class Model:
         
         sampler = SamplerSettings() if sampler is None else sampler
         
-        assert_type(prompt, (str, list), 'prompt', 'generate')
-        if isinstance(prompt, list):
+        assert_type(prompt, (str, list, int), 'prompt', 'generate')
+        if not isinstance(prompt, str):
             self._validate_token_ids(prompt)
             prompt_tokens = self._validate_bos_eos(token_ids=prompt)
         else:
