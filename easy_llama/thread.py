@@ -132,7 +132,7 @@ class Thread:
                 "code accordingly"
             )
 
-        if any(k not in _format_keys for k in formats_blank.keys()):
+        if any(k not in _format_keys for k in formats_blank().keys()):
             raise KeyError(
                 "Thread: format is missing one or more required keys, see " + \
                 "easy_llama.formats.blank for an example"

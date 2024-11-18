@@ -16,11 +16,11 @@ from enum      import IntEnum
 
 # color codes used in Thread.interact()
 RESET_ALL     = '\x1b[39m'
-USER_STYLE    = '\x1b[39m\x1b[32m'
-BOT_STYLE     = '\x1b[39m\x1b[36m'
-DIM_STYLE     = '\x1b[39m\x1b[90m'
-SPECIAL_STYLE = '\x1b[39m\x1b[33m'
-ERROR_STYLE   = '\x1b[39m\x1b[91m'
+USER_STYLE    = '\x1b[39m\x1b[32m' # green
+BOT_STYLE     = '\x1b[39m\x1b[36m' # blue
+DIM_STYLE     = '\x1b[39m\x1b[90m' # grey
+SPECIAL_STYLE = '\x1b[39m\x1b[33m' # yellow
+ERROR_STYLE   = '\x1b[39m\x1b[91m' # red
 
 NoneType: type = type(None)
 
@@ -119,7 +119,10 @@ def print_info(text: str) -> None:
     print("easy_llama: info:", text, file=sys.stderr, flush=True)
 
 def print_warning(text: str) -> None:
-    print("easy_llama: WARNING:", text, file=sys.stderr, flush=True)
+    print(
+        f"{RESET_ALL}easy_llama: {SPECIAL_STYLE}WARNING{RESET_ALL}:", text,
+        file=sys.stderr, flush=True
+    )
 
 def assert_type(
     obj: object,
