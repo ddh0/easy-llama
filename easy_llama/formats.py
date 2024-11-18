@@ -358,10 +358,10 @@ def bagel(system_prompt: Optional[str] = None) -> dict[str, str | list]:
         "stops": ['user\n', 'assistant\n', 'system\n']
     }
 
-def solar_instruct() -> dict[str, str | list]:
+def solar_instruct(system_prompt: Optional[str] = None) -> dict[str, str | list]:
     return {
-        "system_prefix": "",
-        "system_prompt": "",
+        "system_prefix": "### System:\n",
+        "system_prompt": system_prompt if system_prompt is not None else "",
         "system_suffix": "",
         "user_prefix": "### User:\n",
         "user_suffix": "\n\n",
