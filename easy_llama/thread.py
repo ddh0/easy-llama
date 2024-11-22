@@ -128,9 +128,9 @@ class Thread:
         else:
             _format = format
         
-        assert_type(format, (dict, AdvancedFormat), 'format', 'Thread')
+        assert_type(_format, (dict, AdvancedFormat), 'format', 'Thread')
         
-        _format_keys = format.keys() # only read once
+        _format_keys = _format.keys() # only read once
 
         if 'system_prompt' not in _format_keys and 'system_content' in _format_keys:
             raise KeyError(
