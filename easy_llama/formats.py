@@ -274,7 +274,7 @@ def markup(system_prompt: Optional[str] = None) -> dict[str, str | list]:
         "stops": ['</message>']
     }
 
-def pygmalion(system_prompt: Optional[str] = None) -> dict[str, str | list]:
+def metharme(system_prompt: Optional[str] = None) -> dict[str, str | list]:
     return {
         "system_prefix": "<|system|>",
         "system_prompt": system_prompt if system_prompt is not None else """Enter RP mode. Pretend to be {{char}} whose persona follows:
@@ -288,6 +288,8 @@ You shall reply to the user while staying in character, and generate long respon
         "bot_suffix": "</s>",
         "stops": ["<|",]
     }
+
+pygmalion = metharme # backwards compatability
 
 def guanaco(system_prompt: Optional[str] = None) -> dict[str, str | list]:
     return {
@@ -304,7 +306,7 @@ def guanaco(system_prompt: Optional[str] = None) -> dict[str, str | list]:
 def orca_mini(system_prompt: Optional[str] = None) -> dict[str, str | list]:
     return {
         "system_prefix": "### System:\n",
-        "system_prompt": system_prompt if system_prompt is not None else "You are an AI assistant that follows instruction extremely well. Help as much as you can.",
+        "system_prompt": system_prompt if system_prompt is not None else "You are an AI assistant that follows instructions extremely well. Help as much as you can.",
         "system_suffix": "\n\n",
         "user_prefix": "### User:\n",
         "user_suffix": "\n\n",

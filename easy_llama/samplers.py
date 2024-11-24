@@ -120,8 +120,15 @@ class SamplerSettings:
         else:
             if frequency_penalty < 0.0:
                 print_warning(
-                    f"frequency_penalty value of {frequency_penalty} may cause "
-                    f"unexpected behaviour, typical range is 0.0 or greater"
+                    f"frequency_penalty value of {frequency_penalty} will "
+                    f"increase repetition of tokens, use positive values to "
+                    f"reduce repetition"
+                )
+            if (frequency_penalty > 2.0) or (frequency_penalty < -2.0):
+                print_warning(
+                    f"presence_penalty value of {frequency_penalty} may cause "
+                    f"unexpected behaviour, typical range is -2.0 to 2.0 "
+                    f"inclusive"
                 )
             self.frequency_penalty = frequency_penalty
 
@@ -132,8 +139,15 @@ class SamplerSettings:
         else:
             if presence_penalty < 0.0:
                 print_warning(
+                    f"presence_penalty value of {presence_penalty} will "
+                    f"increase repetition of tokens, use positive values to "
+                    f"reduce repetition"
+                )
+            if (presence_penalty > 2.0) or (presence_penalty < -2.0):
+                print_warning(
                     f"presence_penalty value of {presence_penalty} may cause "
-                    f"unexpected behaviour, typical range is 0.0 or greater"
+                    f"unexpected behaviour, typical range is -2.0 to 2.0 "
+                    f"inclusive"
                 )
             self.presence_penalty = presence_penalty
 
@@ -144,8 +158,8 @@ class SamplerSettings:
         else:
             if repeat_penalty < 1.0:
                 print_warning(
-                    f"repeat_penalty value of {repeat_penalty} will actually "
-                    f"INCREASE repetition, typical range is 1.0 or greater"
+                    f"repeat_penalty value of {repeat_penalty} will increase "
+                    f"repetition, typical range is 1.0 to 1.2 inclusive"
                 )
             if repeat_penalty > 1.2:
                 print_warning(

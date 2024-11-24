@@ -101,11 +101,11 @@ class Model:
         The end-of-turn token ID (or `None` if not found)
     - nl_token `int`:
         The newline token ID (or `None` if not found)
-    - prefix_token `int`:
+    - fim_prefix_token `int`:
         The infill prefix token ID (or `None` if not found)
-    - middle_token `int`:
+    - fim_middle_token `int`:
         The infill middle token ID (or `None` if not found)
-    - suffix_token `int`:
+    - fim_suffix_token `int`:
         The infill suffix token ID (or `None` if not found)
     - cls_token `int`:
         The classifier token ID (or `None` if not found)
@@ -286,6 +286,8 @@ class Model:
 
         if n_attn_heads is not None and n_kv_heads is not None:
             n_gqa = int(n_attn_heads / n_kv_heads)
+        else:
+            n_gqa = None
         
         if context_length is not None and context_length <= 0:
             context_length = None
@@ -467,17 +469,17 @@ class Model:
         if self.nl_token < 0:
             self.nl_token = None
 
-        self.prefix_token = int(self.llama._model.token_prefix())
-        if self.prefix_token < 0:
-            self.prefix_token = None
+        self.fim_prefix_token = int(self.llama._model.token_prefix())
+        if self.fim_prefix_token < 0:
+            self.fim_prefix_token = None
 
-        self.middle_token = int(self.llama._model.token_middle())
-        if self.middle_token < 0:
-            self.middle_token = None
+        self.fim_middle_token = int(self.llama._model.token_middle())
+        if self.fim_middle_token < 0:
+            self.fim_middle_token = None
 
-        self.suffix_token = int(self.llama._model.token_suffix())
-        if self.suffix_token < 0:
-            self.suffix_token = None
+        self.fim_suffix_token = int(self.llama._model.token_suffix())
+        if self.fim_suffix_token < 0:
+            self.fim_suffix_token = None
 
         self.cls_token = int(self.llama._model.token_cls())
         if self.cls_token < 0:
@@ -538,7 +540,7 @@ class Model:
 
         if verbose:
             print_verbose(
-                f"{'new' if '__uuid' not in _kwargs_keys else 'reloaded'} "
+                f"{'new' if '__reload' not in _kwargs_keys else 'reloaded'} "
                 f"Model instance with the following attributes:"
             )
             print_verbose(f"   uuid                 == {self.uuid}")
@@ -572,10 +574,10 @@ class Model:
             )
             print_verbose(f"   n_batch              == {self.n_batch}")
             print_verbose(
-                f"   n_threads            == {self.n_threads}/{cpu_count}"
+                f"   n_threads            == {self.n_threads} / {cpu_count}"
             )
             print_verbose(
-                f"   n_threads_batch      == {self.n_threads_batch}/{cpu_count}"
+                f"   n_threads_batch      == {self.n_threads_batch} / {cpu_count}"
             )
             print_verbose(f"   n_ctx_train          == {self.n_ctx_train}")
             print_verbose(f"   n_ctx                == {self.n_ctx}")
@@ -591,12 +593,12 @@ class Model:
                 print_verbose(f"   eot_token            == {self.eot_token}")
             if self.nl_token is not None:
                 print_verbose(f"   nl_token             == {self.nl_token}")
-            if self.prefix_token is not None:
-                print_verbose(f"   prefix_token         == {self.prefix_token}")
-            if self.middle_token is not None:
-                print_verbose(f"   middle_token         == {self.middle_token}")
-            if self.suffix_token is not None:
-                print_verbose(f"   suffix_token         == {self.suffix_token}")
+            if self.fim_prefix_token is not None:
+                print_verbose(f"   fim_prefix_token     == {self.fim_prefix_token}")
+            if self.fim_middle_token is not None:
+                print_verbose(f"   fim_middle_token     == {self.fim_middle_token}")
+            if self.fim_suffix_token is not None:
+                print_verbose(f"   fim_suffix_token     == {self.fim_suffix_token}")
             if self.cls_token is not None:
                 print_verbose(f"   cls_token            == {self.cls_token}")
             if self.sep_token is not None:
@@ -809,7 +811,8 @@ class Model:
             verbose = (
                 self._verbose if verbose is None
                 else verbose
-            )
+            ),
+            __reload = True
         )
         assert_model_is_loaded(self)
     
@@ -887,28 +890,25 @@ class Model:
             if self.verbose:
                 print_verbose("_validate_bos_eos: removed duplicate EOS token")
         
-        if len(token_ids) == 0:           # fix empty list
-            token_ids = [self.bos_token]
-        
         # add or remove BOS as necessary
         if self.add_bos_token in [None, True]:
-            if token_ids[0] != self.bos_token:
-                token_ids.insert(0, self.bos_token)
-                print_verbose("_validate_bos_eos: added missing BOS token")
+            if len(token_ids) >= 1:
+                if token_ids[0] != self.bos_token:
+                    token_ids.insert(0, self.bos_token)
+                    print_verbose("_validate_bos_eos: added missing BOS token")
+            else: # fix empty list
+                token_ids = [self.bos_token]
+                print_verbose("_validate_bos_eos: set empty input to BOS token")
         else:
-            if token_ids[0] == self.bos_token:
+            if len(token_ids) >= 1 and token_ids[0] == self.bos_token:
                 token_ids.pop(0)
                 print_verbose("_validate_bos_eos: removed incorrect BOS token")
         
-        # add or remove EOS as necessary
+        # add EOS as necessary
         if (self.add_eos_token is not None) and self.add_eos_token:
-            if token_ids[-1] != self.eos_token:
+            if len(token_ids) >= 1 and token_ids[-1] != self.eos_token:
                 token_ids.append(self.eos_token)
                 print_verbose("_validate_bos_eos: added missing EOS token")
-        else:
-            if token_ids[-1] == self.eos_token:
-                token_ids.pop(-1)
-                print_verbose("_validate_bos_eos: removed incorrect EOS token")
         
         return token_ids
 
@@ -957,7 +957,9 @@ class Model:
                 special=True
             )
 
-        return self._validate_bos_eos(tokens)
+        return tokens
+        # TODO: this is not always doing the right thing
+        #return self._validate_bos_eos(tokens)
 
 
     def detokenize(self, tokens: list[int] | int) -> str:
@@ -971,7 +973,8 @@ class Model:
 
         assert_model_is_loaded(self)
         return self.llama._model.detokenize(
-            tokens=self._validate_bos_eos(tokens),
+            tokens=tokens,
+            #tokens=self._validate_bos_eos(tokens), # TODO
             special=True
         ).decode('utf-8', errors='ignore')
 
@@ -1017,9 +1020,13 @@ class Model:
         This is meant to be equivalent to `llama.cpp/llama-tokenize`
         """
         token_mapping_list = self.get_tokenization_mapping(text)
+        
+        longest_token_length = max(
+            len(str(token_id)) for token_id, _ in token_mapping_list
+        )
 
         for token_id, token_text in token_mapping_list:
-            print(f"{token_id:>7} -> '{token_text}'")
+            print(f"{token_id:>{longest_token_length}} -> '{token_text}'")
         print(f"Total number of tokens: {len(token_mapping_list)}")
         
     
