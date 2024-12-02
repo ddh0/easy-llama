@@ -9,8 +9,6 @@ import uuid
 import numpy as np
 # TODO: wrap return generate functions in try/except to catch lower-level exceptions and
 #       print_verbose(raw_prompt_tokens) for verbosity
-
-# TODO: check for finish reason STOP LENGTH or other not-ok reason before return
 from .utils import (
     _SupportsWriteAndFlush,
     UnreachableException,
@@ -30,7 +28,7 @@ from llama_cpp import Llama, StoppingCriteriaList
 from typing    import Generator, Optional
 
 
-MAX_DEFAULT_CONTEXT_LENGTH = 131072 # 2^17 ~=~ 128k
+MAX_DEFAULT_CONTEXT_LENGTH = 8192
 
 
 class ModelUnloadedException(Exception):
@@ -176,6 +174,9 @@ class Model:
             If `True`, print additional backend information from llama.cpp
         """
 
+        # - draft_model_path:
+        #      The path to a small GGUF model to use for speculative decoding
+
         assert_type(verbose, bool, 'verbose', 'Model')        
         assert_type(model_path, str, 'model_path', 'Model')
         if not os.path.exists(model_path):
@@ -216,6 +217,44 @@ class Model:
             if kwargs.get('do_not_load') is True:
                  # only save __init__ params to be used later in self.load()
                 return
+        
+        #
+        # NOTE:
+        #
+        # llama-cpp-python does not actually support speculative decoding yet
+        # as of 2024-11-27. relevant code is commented out until proper support
+        # is added.
+        #
+        
+        # if 'draft_model_path' in _kwargs_keys:
+        #     draft_model_path = kwargs.get('draft_model_path')
+        #     assert_type(draft_model_path, str, 'draft_model_path', 'Model')
+        #     if not os.path.exists(draft_model_path):
+        #         raise FileNotFoundError(
+        #             f"Model: the given draft_model_path {model_path!r} does "
+        #             f"not exist"
+        #         )
+        #     if os.path.isdir(draft_model_path):
+        #         raise IsADirectoryError(
+        #             f"Model: the given draft_model_path {model_path!r} is a "
+        #             f"directory, not a GGUF file"
+        #         )
+        #     if not draft_model_path.endswith(('.gguf', '.GGUF')):
+        #         raise ValueError(
+        #             f"Model: the given draft_model_path {model_path!r} does "
+        #             f"not end in '.gguf' or '.GGUF'. easy-llama refuses to "
+        #             f"load from files that do not have the correct extension"
+        #         )
+        #     self.draft_model_metadata = QuickGGUFReader.load_metadata(
+        #         draft_model_path
+        #     )
+        #     self.draft_model_path = draft_model_path
+        #     self.use_draft_model = True
+        #     print_verbose('using draft model for speculative decoding')
+        # else:
+        #     self.draft_model_path = None
+        #     self.draft_model_metadata = None
+        #     self.use_draft_model = False
         
         if verbose:
             print_version_info(file=sys.stderr)
@@ -296,10 +335,10 @@ class Model:
             if n_ctx_train > MAX_DEFAULT_CONTEXT_LENGTH:
                 print_warning(
                     f"you did not specify a context length, and the native "
-                    f"context length of this model is extremely large "
+                    f"context length of this model is very large "
                     f"({n_ctx_train}). defaulting to "
                     f"{MAX_DEFAULT_CONTEXT_LENGTH}. you should manually "
-                    f"specify a higher context length if you really need it"
+                    f"specify a higher context length if you need it"
                 )
                 self.context_length = self.n_ctx = MAX_DEFAULT_CONTEXT_LENGTH
             else:
@@ -352,10 +391,10 @@ class Model:
         n_threads_batch = cpu_count
 
         if flash_attn and n_gpu_layers == 0:
-            flash_attn = False
             print_warning(
                 "disabling flash_attn because n_gpu_layers == 0"
             )
+            flash_attn = False
         
         if quantize_kv_cache:
             # use q8_0 for K, V
@@ -401,7 +440,7 @@ class Model:
             model_path=model_path,
             n_ctx=self.context_length,
             n_gpu_layers=_llama_ngl,
-            use_mmap=False,
+            use_mmap=True,
             use_mlock=False,
             logits_all=True,
             n_batch=n_batch,
@@ -411,6 +450,7 @@ class Model:
             mul_mat_q=True,
             offload_kqv=offload_kqv,
             flash_attn=flash_attn,
+            #draft_model=self.draft_model_path if self.use_draft_model else None,
             type_k=type_k,
             type_v=type_v,
             verbose=_debug
@@ -545,6 +585,13 @@ class Model:
             )
             print_verbose(f"   uuid                 == {self.uuid}")
             print_verbose(f"   filename             == {self.filename}")
+            # if self.use_draft_model:
+            #     print_verbose(
+            #         f"   use_draft_model      == {self.use_draft_model}"
+            #     )
+            #     print_verbose(
+            #         f"   draft_model_path     == {self.draft_model_path}"
+            #     )
             print_verbose(
                 f"   file size            == "
                 f"{self._model_file_size_bytes}"
