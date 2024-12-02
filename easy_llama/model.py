@@ -340,30 +340,29 @@ class Model:
                     f"{MAX_DEFAULT_CONTEXT_LENGTH}. you should manually "
                     f"specify a higher context length if you need it"
                 )
-                self.context_length = self.n_ctx = MAX_DEFAULT_CONTEXT_LENGTH
+                self.n_ctx = __class__._validate_n_ctx(
+                    MAX_DEFAULT_CONTEXT_LENGTH,
+                    n_ctx_train
+                )
             else:
-                self.context_length = self.n_ctx = n_ctx_train
+                self.n_ctx = n_ctx_train
 
-        elif context_length <= n_ctx_train:
-            self.context_length = self.n_ctx = context_length
+        else:
+            self.n_ctx = __class__._validate_n_ctx(context_length, n_ctx_train)
         
-        elif context_length > n_ctx_train:
+        if self.n_ctx > n_ctx_train:
             print_warning(
                 f"you have specified a context length that is greater than "
                 f"the natively supported context length of this model "
-                f"({context_length} > {n_ctx_train}). the model will still "
+                f"({self.n_ctx} > {n_ctx_train}). the model will still "
                 f"work, but the quality of output may be subpar. consider "
                 f"decreasing the context length to {n_ctx_train} or lower "
                 f"for best results"
             )
-            self.context_length = self.n_ctx = context_length
-        
-        else:
-            raise UnreachableException
         
         rope_freq_base = __class__._calculate_rope_freq_base(
             n_ctx_train,
-            context_length if context_length is not None else n_ctx_train,
+            self.n_ctx,
             rope_freq_base_train
         )
 
@@ -438,7 +437,7 @@ class Model:
 
         self.llama = Llama(
             model_path=model_path,
-            n_ctx=self.context_length,
+            n_ctx=self.n_ctx,
             n_gpu_layers=_llama_ngl,
             use_mmap=True,
             use_mlock=False,
@@ -456,17 +455,20 @@ class Model:
             verbose=_debug
         )
         
-        # NOTE: llama.cpp uses the nearest multiple of 32 as the actual
-        #       context length. here we update self.context_length to reflect
-        #       this
-        self.context_length = self.n_ctx = self.llama.n_ctx()
-
-        if self.n_ctx < 512:
+        _ctx = self.n_ctx
+        self.n_ctx = self.llama.n_ctx()
+        if _ctx != self.n_ctx:
             print_warning(
-                f'the currently loaded context length is less than 512 tokens '
-                f'({self.n_ctx} < 512). sometimes this can cause problems in '
-                f'llama.cpp. consider increasing the context length to at '
-                f'least 512 tokens'
+                f'MISMATCH between easy-llama n_ctx and llama.cpp n_ctx:'
+            )
+            print_warning(
+                f' -- easy-llama n_ctx: {_ctx}'
+            )
+            print_warning(
+                f' -- llama.cpp n_ctx: {self.n_ctx}'
+            )
+            print_warning(
+                f'using llama.cpp n_ctx'
             )
 
         try:
@@ -553,6 +555,7 @@ class Model:
             )
 
         self.filename: str = os.path.basename(model_path)
+        self.context_length: int = self.n_ctx # alias
         self.n_ctx_train: int = n_ctx_train
         self.rope_freq_base_train: float = rope_freq_base_train
         self.rope_freq_base: float = rope_freq_base
@@ -692,6 +695,39 @@ class Model:
         #   return ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
     
 
+    @staticmethod
+    def _validate_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
+        assert_type(n_ctx, int, 'n_ctx', '_validate_n_ctx')
+        assert_type(n_ctx_train, int, 'n_ctx_train', '_validate_n_ctx')
+        
+        if n_ctx < 512:
+            print_warning(
+                f'context length {n_ctx} is too small. rounding up to minimum '
+                f'context length of 512'
+            )
+            return 512
+        
+        # make sure n_ctx is a multiple of 512
+
+        if n_ctx % 512 == 0:
+            return n_ctx
+        else:
+            rounded = (n_ctx + 511) // 512 * 512
+            # do not exceed n_ctx_train if n_ctx did not already exceed it
+            if (rounded > n_ctx_train) and (n_ctx <= n_ctx_train):
+                print_warning(
+                    f'context length {n_ctx} is not a multiple of 512, '
+                    f'rounding up to {n_ctx_train} (native context length)'
+                )
+                return n_ctx_train
+            else:
+                print_warning(
+                    f'context length {n_ctx} is not a multiple of 512, '
+                    f'rounding up to {rounded}'
+                )
+                return rounded
+
+    
     @staticmethod
     def _get_bpw_quality_hint(bpw: float) -> str:
         if bpw < 1.0:

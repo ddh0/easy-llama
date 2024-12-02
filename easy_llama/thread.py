@@ -31,6 +31,7 @@ class Message(dict):
 
     Works just like a normal `dict`, but adds a new method:
     - `.as_string` - Return the full message string
+    - `.in_api_format` - Return the message in the format expected by most APIs
 
     Messages should have these keys:
     - `role` -  The role of the speaker: 'system', 'user', or 'bot'
@@ -54,6 +55,16 @@ class Message(dict):
     def as_string(self) -> str:
         """Return the full message string (prefix + content + suffix)"""
         return self['prefix'] + self['content'] + self['suffix']
+    
+    def in_api_format(self) -> dict[str, str]:
+        """
+        Return the message as a dictionary suitable for HuggingFace, OpenAI,
+        Le Platforme, etc
+        """
+        return {
+            'role': 'assistant' if self['role'] == 'bot' else self['role'],
+            'content': self['content']
+        }
 
 
 class Thread:
@@ -954,3 +965,11 @@ class Thread:
         Ingest the text of this thread into the model's cache
         """
         self.model.ingest(self.inf_str())
+    
+
+    def messages_in_api_format(self) -> list[dict[str, str]]:
+        """
+        Return this thread's messages in the format expected by HuggingFace,
+        OpenAI, Le Platforme, etc.
+        """
+        return [msg.in_api_format() for msg in self.messages]
