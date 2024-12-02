@@ -9,7 +9,7 @@
 > The documentation assumes you have imported easy-llama as `ez`:
 > 
 > ```python
-import easy_llama as ez
+> import easy_llama as ez
 > ```
 
 # `class ez.Model`
