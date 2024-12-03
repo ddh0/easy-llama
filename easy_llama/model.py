@@ -395,14 +395,32 @@ class Model:
             )
             flash_attn = False
         
+        # NOTE: these types come from llama.cpp/ggml/ggml.h:
+        #
+        # enum ggml_type {
+        #     GGML_TYPE_F32     = 0,
+        #     GGML_TYPE_F16     = 1,
+        #     GGML_TYPE_Q4_0    = 2,
+        #     GGML_TYPE_Q4_1    = 3,
+        #     // GGML_TYPE_Q4_2 = 4, support has been removed
+        #     // GGML_TYPE_Q4_3 = 5, support has been removed
+        #     GGML_TYPE_Q5_0    = 6,
+        #     GGML_TYPE_Q5_1    = 7,
+        #     GGML_TYPE_Q8_0    = 8,
+        #     ...
+        # }
+        #
+        # ref: https://github.com/ggerganov/llama.cpp/pull/7527
+
         if quantize_kv_cache:
-            # use q8_0 for K, V
+            # use q8_0 for K
+            # use q5_1 for V
             if flash_attn:
                 type_k = 8
-                type_v = 8
+                type_v = 7
                 if verbose:
                    print_verbose(
-                        "using q8_0 KV cache"
+                        "using q8_0 K cache, q5_1 V cache"
                     )
             else:           # llama.cpp requires flash_attn for V quantization
                 type_k = 8
