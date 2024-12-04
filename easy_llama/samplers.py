@@ -457,6 +457,15 @@ StrictTopPSampling = SamplerSettings(
     temp = None
 )
 
+# good starting point for RP / chat models
+RoleplayChat = SamplerSettings(
+    max_len_tokens=1024,
+    top_k=None,
+    top_p=None,
+    min_p=0.04,
+    temp=1.0
+)
+
 #
 # Samplers below this line are for specific models / model families
 #
@@ -527,4 +536,18 @@ Qwen2_5Recommended = SamplerSettings(
     min_p = 0.1,
     temp = 0.7,
     repeat_penalty = None
+)
+
+# unofficial, personal favorite
+Cydonia = AdvancedSamplerSettings(
+    top_k=None,
+    top_p=None,
+    min_p=0.03,
+    temp=1.0,
+    bias={
+        1869: -1.0, # "..."
+        4618: -1.0, # " ..."
+        6202: -1.0, # " Oh"
+        6923: -1.0, # "Oh"
+    }
 )

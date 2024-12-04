@@ -413,14 +413,13 @@ class Model:
         # ref: https://github.com/ggerganov/llama.cpp/pull/7527
 
         if quantize_kv_cache:
-            # use q8_0 for K
-            # use q5_1 for V
+            # use q8_0/q8_0 for K/V
             if flash_attn:
                 type_k = 8
-                type_v = 7
+                type_v = 8
                 if verbose:
                    print_verbose(
-                        "using q8_0 K cache, q5_1 V cache"
+                        "using q8_0 K cache, q8_0 V cache"
                     )
             else:           # llama.cpp requires flash_attn for V quantization
                 type_k = 8
@@ -433,7 +432,7 @@ class Model:
                         "to quantize V cache, flash_attn must be enabled"
                     )
         else:
-            # use f16 for K, V (default)
+            # use f16/f16 for K/V (default)
             type_k = 1
             type_v = 1
         
@@ -459,7 +458,7 @@ class Model:
             n_gpu_layers=_llama_ngl,
             use_mmap=True,
             use_mlock=False,
-            logits_all=True,
+            logits_all=True, # must be True for candidates, raw_generate, etc
             n_batch=n_batch,
             n_threads=n_threads,
             n_threads_batch=n_threads_batch,
@@ -1431,7 +1430,8 @@ class Model:
             )
         self.llama.eval(tokens)
         
-        return self.llama.scores[len(tokens) - 1]
+        return self.llama.scores # TODO: update docstring
+        # return self.llama.scores[len(tokens) - 1]
 
 
     def ingest(self, text: str | list[int]) -> None:
