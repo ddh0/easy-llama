@@ -1,5 +1,6 @@
 // settings.js
 // https://github.com/ddh0/easy-llama/
+// MIT License -- Copyright (c) 2024 Dylan Halladay
 
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('samplerForm');

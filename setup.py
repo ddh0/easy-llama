@@ -1,5 +1,7 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
+# MIT License -- Copyright (c) 2024 Dylan Halladay
+
 __version__ = '0.1.119'
 
 from setuptools import setup

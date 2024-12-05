@@ -1,5 +1,7 @@
 # utils.py
 # https://github.com/ddh0/easy-llama/
+# MIT License -- Copyright (c) 2024 Dylan Halladay
+
 from ._version import __version__, __llama_cpp_version__
 
 """Submodule containing convenience functions and QuickGGUFReader"""

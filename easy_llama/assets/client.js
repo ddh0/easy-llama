@@ -1,5 +1,6 @@
 // client.js
 // https://github.com/ddh0/easy-llama/
+// MIT License -- Copyright (c) 2024 Dylan Halladay
 
 marked.setOptions({
     pedantic: false,  // more relaxed parsing
