@@ -258,6 +258,4 @@ easy-llama stands on the shoulders of giants. Thank you to [Andrei Betlen](https
 All language models tend to produce writing that is factually inaccurate, stereotypically biased, and fundamentally disconnected from reality.
 
 ###### LICENSE
-> [The Unlicense](LICENSE)
-> 
-> *easy-llama is free and unencumbered software released into the public domain*
+[MIT](LICENSE)
