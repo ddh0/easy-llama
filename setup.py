@@ -1,6 +1,6 @@
 # setup.py
 # https://github.com/ddh0/easy-llama/
-__version__ = '0.1.118'
+__version__ = '0.1.119'
 
 from setuptools import setup
 
@@ -14,7 +14,7 @@ setup(
     url='https://github.com/ddh0/easy-llama/',
     author='Dylan Halladay',
     author_email='dylanhalladay02@icloud.com',
-    license='The Unlicense',
+    license='MIT',
     include_package_data=True,
     packages=['easy_llama', 'easy_llama.assets'],
     package_data={
