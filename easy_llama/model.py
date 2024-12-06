@@ -8,8 +8,7 @@ import os
 import sys
 import uuid
 import numpy as np
-# TODO: wrap return generate functions in try/except to catch lower-level exceptions and
-#       print_verbose(raw_prompt_tokens) for verbosity
+
 from .utils import (
     _SupportsWriteAndFlush,
     UnreachableException,
@@ -24,12 +23,10 @@ from .utils import (
     softmax
 )
 
-from .samplers import SamplerSettings, print_sampler_settings
-from llama_cpp import Llama, StoppingCriteriaList
-from typing    import Generator, Optional
-
-
-MAX_DEFAULT_CONTEXT_LENGTH = 8192
+from .samplers  import SamplerSettings, print_sampler_settings
+from llama_cpp  import Llama, StoppingCriteriaList
+from .constants import MAX_DEFAULT_CONTEXT_LENGTH
+from typing     import Generator, Optional
 
 
 class ModelUnloadedException(Exception):
@@ -1718,3 +1715,46 @@ def assert_model_is_loaded(model) -> None:
         )
     
     raise exc
+
+
+class InferenceLock:
+    """
+    A context manager that can be used to prevent the model from accepting more
+    than one generation at a time, which is not supported and can cause a hard
+    crash.
+
+    This is mostly useful in asychronous / multi-threaded contexts
+    """
+
+    class LockFailure(Exception):
+        pass
+
+    def __init__(self):
+        self.locked = False
+
+    def __enter__(self):
+        return self.acquire()
+    
+    def __exit__(self, *_):
+        return self.release()
+
+    async def __aenter__(self):
+        return self.__enter__()
+
+    async def __aexit__(self, *_):
+       return self.__exit__()
+    
+    def acquire(self):
+        if self.locked:
+            raise self.LockFailure(
+                'failed to acquire InferenceLock (already locked)'
+            )
+        self.locked = True
+        return self
+    
+    def release(self):
+        if not self.locked:
+            raise self.LockFailure(
+                'tried to release InferenceLock that is not acquired'
+            )
+        self.locked = False

@@ -11,18 +11,18 @@ import sys
 import struct
 import numpy as np
 
-from typing    import Iterable, TextIO, Optional
-from io        import BufferedReader
-from enum      import IntEnum
+from .constants import Colors, GGUFValueType, GGUF_MAGIC
+from typing     import Iterable, TextIO, Optional
+from io         import BufferedReader
 
 
-# color codes used in Thread.interact()
-RESET_ALL     = '\x1b[39m'
-USER_STYLE    = '\x1b[39m\x1b[32m' # green
-BOT_STYLE     = '\x1b[39m\x1b[36m' # blue
-DIM_STYLE     = '\x1b[39m\x1b[90m' # grey
-SPECIAL_STYLE = '\x1b[39m\x1b[33m' # yellow
-ERROR_STYLE   = '\x1b[39m\x1b[91m' # red
+# color codes used in Thread.interact() and for warnings
+RESET  = RESET_ALL     = Colors.RESET
+GREEN  = USER_STYLE    = Colors.GREEN
+BLUE   = BOT_STYLE     = Colors.BLUE
+GREY   = DIM_STYLE     = Colors.GREY
+YELLOW = SPECIAL_STYLE = Colors.YELLOW
+RED    = ERROR_STYLE   = Colors.RED
 
 NoneType: type = type(None)
 
@@ -60,18 +60,8 @@ def softmax(
     will be used.
     """
     if dtype is None:
-        if hasattr(np, 'float128'):
-            _dtype = np.float128
-        elif hasattr(np, 'float96'):
-            _dtype = np.float96
-        elif hasattr(np, 'float80'):
-            _dtype = np.float80
-        elif hasattr(np, 'float64'):
-            _dtype = np.float64
-        elif hasattr(np, 'float32'):
+        if hasattr(np, 'float32'):
             _dtype = np.float32
-        elif hasattr(np, 'float16'):
-            _dtype = np.float16
         else:
             _dtype = float
     else:
@@ -111,19 +101,25 @@ def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
 def print_version_info(file: _SupportsWriteAndFlush = sys.stderr) -> None:
-    print(f"easy_llama package version: {__version__}", file=file)
-    print(f"llama_cpp package version: {__llama_cpp_version__}", file=file)
+    print(f"easy_llama: easy_llama package version: {__version__}", file=file)
+    print(f"easy_llama: llama_cpp package version: {__llama_cpp_version__}", file=file)
 
 def print_verbose(text: str) -> None:
-    print("easy_llama:", text, file=sys.stderr, flush=True)
+    print(
+        f"easy_llama:",
+        text, file=sys.stderr, flush=True
+    )
 
 def print_info(text: str) -> None:
-    print("easy_llama: info:", text, file=sys.stderr, flush=True)
+    print(
+        f"{RESET}easy_llama: {GREEN}INFO{RESET}:",
+        text, file=sys.stderr, flush=True
+    )
 
 def print_warning(text: str) -> None:
     print(
-        f"{RESET_ALL}easy_llama: {SPECIAL_STYLE}WARNING{RESET_ALL}:", text,
-        file=sys.stderr, flush=True
+        f"{RESET}easy_llama: {YELLOW}WARNING{RESET}:",
+        text, file=sys.stderr, flush=True
     )
 
 def assert_type(
@@ -177,65 +173,6 @@ def assert_only_ints(iterable: Iterable) -> None:
             f"assert_only_ints: some item in the given iterable is not an int"
         )
 
-
-class InferenceLock:
-    """
-    A context manager that can be used to prevent the model from accepting more
-    than one generation at a time, which is not supported and can cause a hard
-    crash.
-
-    This is mostly useful in asychronous / multi-threaded contexts
-    """
-
-    class LockFailure(Exception):
-        pass
-
-    def __init__(self):
-        self.locked = False
-
-    def __enter__(self):
-        return self.acquire()
-    
-    def __exit__(self, *_):
-        return self.release()
-
-    async def __aenter__(self):
-        return self.__enter__()
-
-    async def __aexit__(self, *_):
-       return self.__exit__()
-    
-    def acquire(self):
-        if self.locked:
-            raise self.LockFailure(
-                'failed to acquire InferenceLock (already locked)'
-            )
-        self.locked = True
-        return self
-    
-    def release(self):
-        if not self.locked:
-            raise self.LockFailure(
-                'tried to release InferenceLock that is not acquired'
-            )
-        self.locked = False
-
-
-class GGUFValueType(IntEnum):
-    # Occasionally check to ensure this class is consistent with gguf
-    UINT8   = 0
-    INT8    = 1
-    UINT16  = 2
-    INT16   = 3
-    UINT32  = 4
-    INT32   = 5
-    FLOAT32 = 6
-    BOOL    = 7
-    STRING  = 8
-    ARRAY   = 9
-    UINT64  = 10
-    INT64   = 11
-    FLOAT64 = 12
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
@@ -296,7 +233,16 @@ class QuickGGUFReader:
             string_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
             value = file.read(string_length)
             # officially, strings that cannot be decoded into utf-8 are invalid
-            value = value.decode("utf-8")
+            try:
+                value = value.decode("utf-8")
+            except UnicodeDecodeError:
+                print_warning(
+                    f'UnicodeDecodeError was raised while reading a string '
+                    f'from the GGUF metadata. the GGUF format specifies that '
+                    f'all strings in file metadata should be valid UTF-8. the '
+                    f'affected string will be left blank.'
+                )
+                value = ''
         else:
             value = QuickGGUFReader.unpack(value_type, file=file)
         return value
@@ -316,11 +262,11 @@ class QuickGGUFReader:
         with open(fn, "rb") as file:
             magic = file.read(4)
 
-            if magic != b'GGUF':
+            if magic != GGUF_MAGIC:
                 raise ValueError(
-                    "your model file is not a valid GGUF file "
+                    f"your model file is not a valid GGUF file "
                     f"(magic number mismatch, got {magic}, "
-                    "expected b'GGUF')"
+                    f"expected {GGUF_MAGIC})"
                 )
             
             version = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
@@ -329,8 +275,8 @@ class QuickGGUFReader:
                 raise ValueError(
                     f"your model file reports GGUF version {version}, but "
                     f"only versions {QuickGGUFReader.SUPPORTED_GGUF_VERSIONS} "
-                    "are supported. re-convert your model or download a newer "
-                    "version"
+                    f"are supported. re-convert your model or download a newer "
+                    f"version"
                 )
             
             tensor_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)

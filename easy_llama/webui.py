@@ -9,18 +9,11 @@ import sys
 import json
 import base64
 
-from .utils import (
-    InferenceLock,
-    print_verbose,
-    SPECIAL_STYLE,
-    assert_type,
-    ERROR_STYLE,
-    USER_STYLE,
-    BOT_STYLE,
-    RESET_ALL
-)
-
 from .thread import Thread
+from .constants import Colors
+from .model import InferenceLock
+from .utils import print_verbose, assert_type
+
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from datetime import datetime, timedelta, timezone
@@ -32,11 +25,11 @@ from cryptography.hazmat.primitives.serialization import Encoding
 
 UTC = timezone.utc
 
-YELLOW = SPECIAL_STYLE
-GREEN = USER_STYLE
-RED = ERROR_STYLE
-RESET = RESET_ALL
-BLUE = BOT_STYLE
+RESET  = Colors.RESET
+GREEN  = Colors.GREEN
+YELLOW = Colors.YELLOW
+RED    = Colors.RED
+BLUE   = Colors.BLUE
 
 
 WARNING = f"""{RED}
@@ -66,6 +59,12 @@ f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
 
 
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
+
+if not os.path.exists(ASSETS_FOLDER):
+    raise RuntimeError(
+        f'the easy-llama/assets folder was moved or deleted, so the WebUI '
+        f'cannot start. consider re-installing easy-llama.'
+    )
 
 
 MAX_LENGTH_INPUT = 1_000_000 # one million characters
@@ -163,10 +162,11 @@ def decode(text: str) -> str:
 
 
 def assert_max_length(text: str) -> None:
-    """Fail if the given text exceeds 100k characters"""
+    """Fail if the given text exceeds the allowed input length"""
     if len(text) > MAX_LENGTH_INPUT:
         raise AssertionError(
-            'length of input exceeds maximum allowed length of 100k characters'
+            f'length of input exceeds maximum allowed length of '
+            f'{MAX_LENGTH_INPUT:,} characters'
         )
 
 
