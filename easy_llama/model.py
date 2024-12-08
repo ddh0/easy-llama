@@ -139,7 +139,7 @@ class Model:
         model_path: str,
         context_length: Optional[int] = None,
         n_gpu_layers: int = 0,
-        offload_kqv: bool = True,
+        offload_kv_cache: bool = True,
         flash_attn: bool = False,
         quantize_kv_cache: bool = False,
         verbose: bool = False,
@@ -155,8 +155,8 @@ class Model:
             The context length at which to load the model, in tokens
         - n_gpu_layers:
             The number of layers to be offloaded to the GPU
-        - offload_kqv:
-            Whether the KQV cache (context) should be offloaded
+        - offload_kv_cache:
+            Whether the KV cache (context) should be offloaded
         - flash_attn:
             Whether to use Flash Attention
         - quantize_kv_cache:
@@ -175,6 +175,13 @@ class Model:
         # - draft_model_path:
         #      The path to a small GGUF model to use for speculative decoding
 
+        if 'offload_kqv' in kwargs:
+            print_warning(
+                f'using deprecated argument "offload_kqv". use '
+                f'"offload_kv_cache" instead'
+            )
+            offload_kv_cache = kwargs.pop('offload_kqv')
+
         assert_type(verbose, bool, 'verbose', 'Model')        
         assert_type(model_path, str, 'model_path', 'Model')
         if not os.path.exists(model_path):
@@ -189,12 +196,12 @@ class Model:
         if not model_path.endswith(('.gguf', '.GGUF')):
             raise ValueError(
                 f"Model: the given model_path {model_path!r} does not end in "
-                "'.gguf' or '.GGUF'. easy-llama refuses to load from files "
-                "that do not have the correct extension"
+                f"'.gguf' or '.GGUF'. easy-llama refuses to load from files "
+                f"that do not have the correct extension"
             )
         assert_type(context_length, (int, NoneType), 'context_length', 'Model')
         assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
-        assert_type(offload_kqv, bool, 'offload_kqv', 'Model')
+        assert_type(offload_kv_cache, bool, 'offload_kv_cache', 'Model')
         assert_type(flash_attn, bool, 'flash_attn', 'Model')
         assert_type(quantize_kv_cache, bool, 'quantize_kv_cache', 'Model')
 
@@ -202,7 +209,7 @@ class Model:
         self._model_path = model_path
         self._context_length = context_length
         self._n_gpu_layers = n_gpu_layers
-        self._offload_kqv = offload_kqv
+        self._offload_kv_cache = offload_kv_cache
         self._flash_attn = flash_attn
         self._verbose = self.verbose = verbose
         self._quantize_kv_cache = quantize_kv_cache
@@ -462,7 +469,7 @@ class Model:
             n_threads_batch=n_threads_batch,
             rope_freq_base=rope_freq_base,
             mul_mat_q=True,
-            offload_kqv=offload_kqv,
+            offload_kqv=offload_kv_cache,
             flash_attn=flash_attn,
             #draft_model=self.draft_model_path if self.use_draft_model else None,
             type_k=type_k,
@@ -584,7 +591,7 @@ class Model:
         self.n_vocab: int = len(self.vocab)
         self.n_layer: int = n_layer
         self.n_gpu_layers: int = n_gpu_layers
-        self.offload_kqv = offload_kqv
+        self.offload_kv_cache = offload_kv_cache
         self.is_native: bool = (
             self.context_length <= self.n_ctx_train
         ) and (
@@ -621,7 +628,7 @@ class Model:
             )
             print_verbose(f"   n_gpu_layers         == {self.n_gpu_layers}")
             print_verbose(f"   n_layer              == {self.n_layer}")
-            print_verbose(f"   offload_kqv          == {self.offload_kqv}")
+            print_verbose(f"   offload_kv_cache     == {self.offload_kv_cache}")
             print_verbose(f"   flash_attn           == {self.flash_attn}")
             print_verbose(f"   n_attn_heads         == {self.n_attn_heads}")
             print_verbose(f"   n_kv_heads           == {self.n_kv_heads}")
@@ -789,7 +796,7 @@ class Model:
             f"Model({self._model_path!r}, "
             f"context_length={self._context_length}, "
             f"n_gpu_layers={self._n_gpu_layers}, "
-            f"offload_kqv={self._offload_kqv}, "
+            f"offload_kv_cache={self._offload_kv_cache}, "
             f"flash_attn={self._flash_attn}, "
             f"quantize_kv_cache={self._quantize_kv_cache}, "
             f"verbose={self._verbose})"
@@ -871,10 +878,11 @@ class Model:
         self,
         context_length: Optional[int] = None,
         n_gpu_layers: Optional[int] = None,
-        offload_kqv: Optional[bool] = None,
+        offload_kv_cache: Optional[bool] = None,
         flash_attn: Optional[bool] = None,
         quantize_kv_cache: Optional[bool] = None,
-        verbose: Optional[bool] = None
+        verbose: bool = None,
+        **kwargs
     ):
         """
         Re-load the model into memory using the specified parameters
@@ -883,7 +891,14 @@ class Model:
 
         Calling this function will change the model's UUID
         """
-        self.unload()
+
+        # backwards compatibility
+        if 'offload_kqv' in kwargs:
+            offload_kv_cache = kwargs.pop('offload_kqv')
+
+        if self.is_loaded():
+            self.unload()
+        
         self.__init__(
             model_path = self._model_path,
             context_length = (
@@ -894,9 +909,9 @@ class Model:
                 self._n_gpu_layers if n_gpu_layers is None
                 else n_gpu_layers
             ),
-            offload_kqv = (
-                self._offload_kqv if offload_kqv is None
-                else offload_kqv
+            offload_kv_cache = (
+                self._offload_kv_cache if offload_kv_cache is None
+                else offload_kv_cache
             ),
             flash_attn = (
                 self._flash_attn if flash_attn is None
