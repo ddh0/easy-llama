@@ -11,9 +11,10 @@ import sys
 import struct
 import numpy as np
 
-from .constants import Colors, GGUFValueType, GGUF_MAGIC
 from typing     import Iterable, TextIO, Optional
+from .constants import Colors, GGUFValueType
 from io         import BufferedReader
+from .llama_cpp import GGUF_MAGIC
 
 
 # color codes used in Thread.interact() and for warnings

@@ -4,23 +4,7 @@
 
 from enum import IntEnum
 
-# "official" constants
-LLAMA_DEFAULT_SEED = 0xFFFFFFFF
-LLAMA_TOKEN_NULL = -1
-LLAMA_FILE_MAGIC_GGLA = 0x67676C61
-LLAMA_FILE_MAGIC_GGSN = 0x6767736E
-LLAMA_FILE_MAGIC_GGSQ = 0x67677371
-LLAMA_SESSION_MAGIC = LLAMA_FILE_MAGIC_GGSN
-LLAMA_SESSION_VERSION = 9
-LLAMA_STATE_SEQ_MAGIC = LLAMA_FILE_MAGIC_GGSQ
-LLAMA_STATE_SEQ_VERSION = 2
-
-# "unofficial" constants added by ddh0
-MAX_LAYERS = 0x7FFFFFFF # maximum int32 value used for n_gpu_layers
-GGUF_MAGIC = b'GGUF'
 MAX_DEFAULT_CONTEXT_LENGTH = 8192
-
-# enums and dataclasses
 
 class Colors:
     """
@@ -33,6 +17,7 @@ class Colors:
     YELLOW = '\x1b[39m\x1b[33m'
     RED    = '\x1b[39m\x1b[91m'
 
+# these values are from llama.cpp/gguf-py/gguf/constants.py
 class GGUFValueType(IntEnum):
     UINT8   = 0
     INT8    = 1

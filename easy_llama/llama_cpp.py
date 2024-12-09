@@ -6,6 +6,12 @@ import ctypes
 
 from enum import IntEnum
 
+class Deprecated(Exception):
+    """
+    Exception raised when calling functions marked with DEPRECATED in the
+    llama C interface
+    """
+
 #
 # Import shared library
 #
@@ -13,13 +19,133 @@ from enum import IntEnum
 libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama.dylib')
 
 #
-# Type hint(s)
+# Type hints
 #
 
 class ptr:
     """
-    Type hint representing a ctypes pointer
+    Type hint representing a ctypes pointer, most commonly to a struct
     """
+
+class C:
+    """
+    Type hints for `ctypes` types based on libllama
+    """
+
+    ptr = ctypes.c_void_p
+
+    bool = ctypes.c_bool
+
+    size_t = ctypes.c_ulong
+
+    llama_model   = ptr
+    llama_context = ptr
+    llama_sampler = ptr
+
+    llama_pos    = ctypes.c_int32
+    llama_token  = ctypes.c_int32
+    llama_seq_id = ctypes.c_int32
+
+    llama_token_data       = ptr
+    llama_token_data_array = ptr
+
+    llama_batch = ptr
+
+    llama_model_kv_override = ptr
+
+    llama_model_params = ptr
+
+    llama_context_params = ptr
+
+    llama_model_quantize_params = ptr
+
+    llama_logit_bias = ptr
+
+    llama_sampler_chain_params = ptr
+
+    llama_chat_message = ptr
+
+    llama_lora_adapter = ptr
+
+#
+# Constants
+#
+
+LLAMA_DEFAULT_SEED = 0xFFFFFFFF
+
+LLAMA_TOKEN_NULL = -1
+
+LLAMA_FILE_MAGIC_GGLA = 0x67676c61 # 'ggla'
+LLAMA_FILE_MAGIC_GGSN = 0x6767736e # 'ggsn'
+LLAMA_FILE_MAGIC_GGSQ = 0x67677371 # 'ggsq'
+
+LLAMA_SESSION_MAGIC   = LLAMA_FILE_MAGIC_GGSN
+LLAMA_SESSION_VERSION = 9
+
+LLAMA_STATE_SEQ_MAGIC   = LLAMA_FILE_MAGIC_GGSQ
+LLAMA_STATE_SEQ_VERSION = 2
+
+# this constant is added by ddh0
+# it is the maximum value for int32, it is used as the value for n_gpu_layers
+# when all layers should be offloaded
+MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
+
+#
+# Stuff from llama.cpp/ggml/include/ggml.h
+#
+
+GGML_EXIT_SUCCESS = 0
+GGML_EXIT_ABORTED = 1
+
+GGML_ROPE_TYPE_NEOX = 2
+
+GGUF_MAGIC = 0x46554747 # "GGUF"
+
+GGUF_VERSION = 3
+
+GGUF_DEFAULT_ALIGNMENT = 32
+
+class GGMLType(IntEnum):
+    GGML_TYPE_F32     = 0
+    GGML_TYPE_F16     = 1
+    GGML_TYPE_Q4_0    = 2
+    GGML_TYPE_Q4_1    = 3
+    # GGML_TYPE_Q4_2  = 4 -- support has been removed
+    # GGML_TYPE_Q4_3  = 5 -- support has been removed
+    GGML_TYPE_Q5_0    = 6
+    GGML_TYPE_Q5_1    = 7
+    GGML_TYPE_Q8_0    = 8
+    GGML_TYPE_Q8_1    = 9
+    GGML_TYPE_Q2_K    = 10
+    GGML_TYPE_Q3_K    = 11
+    GGML_TYPE_Q4_K    = 12
+    GGML_TYPE_Q5_K    = 13
+    GGML_TYPE_Q6_K    = 14
+    GGML_TYPE_Q8_K    = 15
+    GGML_TYPE_IQ2_XXS = 16
+    GGML_TYPE_IQ2_XS  = 17
+    GGML_TYPE_IQ3_XXS = 18
+    GGML_TYPE_IQ1_S   = 19
+    GGML_TYPE_IQ4_NL  = 20
+    GGML_TYPE_IQ3_S   = 21
+    GGML_TYPE_IQ2_S   = 22
+    GGML_TYPE_IQ4_XS  = 23
+    GGML_TYPE_I8      = 24
+    GGML_TYPE_I16     = 25
+    GGML_TYPE_I32     = 26
+    GGML_TYPE_I64     = 27
+    GGML_TYPE_F64     = 28
+    GGML_TYPE_IQ1_M   = 29
+    GGML_TYPE_BF16    = 30
+    # GGML_TYPE_Q4_0_4_4 = 31 -- support has been removed from gguf files
+    # GGML_TYPE_Q4_0_4_8 = 32
+    # GGML_TYPE_Q4_0_8_8 = 33
+    GGML_TYPE_TQ1_0   = 3,
+    GGML_TYPE_TQ2_0   = 35
+    # GGML_TYPE_IQ4_NL_4_4 = 36
+    # GGML_TYPE_IQ4_NL_4_8 = 37
+    # GGML_TYPE_IQ4_NL_8_8 = 38
+    GGML_TYPE_COUNT   = 39
 
 #
 # Enums
@@ -66,7 +192,7 @@ class LlamaVocabPreType(IntEnum):
 class LlamaRopeType(IntEnum):
     LLAMA_ROPE_TYPE_NONE = -1
     LLAMA_ROPE_TYPE_NORM = 0
-    LLAMA_ROPE_TYPE_NEOX = GGML_ROPE_TYPE_NEOX # TODO: worry about defining this later
+    LLAMA_ROPE_TYPE_NEOX = GGML_ROPE_TYPE_NEOX
 
 class LlamaTokenType(IntEnum):
     LLAMA_TOKEN_TYPE_UNDEFINED    = 0
@@ -201,21 +327,24 @@ def llama_numa_init(numa: int) -> None:
     libllama.llama_numa_init.restype = None
     libllama.llama_numa_init(numa)
 
-def llama_attach_threadpool(llama_context: ptr, ggml_threadpool: ptr, threadpool_batch: ptr) -> None:
+def llama_attach_threadpool(ctx: ptr, ggml_threadpool: ptr, threadpool_batch: ptr) -> None:
     """Attach a threadpool to a llama_context"""
     libllama.llama_attach_threadpool.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_attach_threadpool.restype = None
-    libllama.llama_attach_threadpool(llama_context, ggml_threadpool, threadpool_batch)
+    libllama.llama_attach_threadpool(ctx, ggml_threadpool, threadpool_batch)
 
-def llama_detach_threadpool(llama_context: ptr) -> None:
+def llama_detach_threadpool(ctx: ptr) -> None:
     """Detach a threadpool from a llama_context"""
     libllama.llama_detach_threadpool.argtypes = [ctypes.c_void_p]
     libllama.llama_detach_threadpool.restype = None
-    libllama.llama_detach_threadpool(llama_context)
+    libllama.llama_detach_threadpool(ctx)
 
 def llama_backend_free() -> None:
-    """Free the llama + ggml backend"""
-    # Call once at the end of the program - currently only used for MPI
+    """
+    Free the llama + ggml backend
+    
+    Call once at the end of the program - currently only used for MPI
+    """
     libllama.llama_backend_free.argtypes = []
     libllama.llama_backend_free.restype = None
     libllama.llama_backend_free()
@@ -238,11 +367,11 @@ def llama_new_context_with_model(model: ptr, params: ptr) -> ptr:
     libllama.llama_new_context_with_model.restype = ctypes.c_void_p
     return libllama.llama_new_context_with_model(model, params)
 
-def llama_free(llama_context: ptr) -> None:
+def llama_free(ctx: ptr) -> None:
     """Frees all allocated memory"""
     libllama.llama_free.argtypes = [ctypes.c_void_p]
     libllama.llama_free.restype = None
-    libllama.llama_free(llama_context)
+    libllama.llama_free(ctx)
 
 #
 # Llama backend helper functions
@@ -288,29 +417,29 @@ def llama_supports_rpc() -> bool:
 # Getters for llama_context attributes
 #
 
-def llama_n_ctx(llama_context: ptr) -> int:
+def llama_n_ctx(ctx: ptr) -> int:
     """Get the context size"""
     libllama.llama_n_ctx.argtypes = [ctypes.c_void_p]
     libllama.llama_n_ctx.restype = ctypes.c_int
-    return libllama.llama_n_ctx(llama_context)
+    return libllama.llama_n_ctx(ctx)
 
-def llama_n_batch(llama_context: ptr) -> int:
+def llama_n_batch(ctx: ptr) -> int:
     """Get the logical maximum batch size"""
     libllama.llama_n_batch.argtypes = [ctypes.c_void_p]
     libllama.llama_n_batch.restype = ctypes.c_int
-    return libllama.llama_n_batch(llama_context)
+    return libllama.llama_n_batch(ctx)
 
-def llama_n_ubatch(llama_context: ptr) -> int:
+def llama_n_ubatch(ctx: ptr) -> int:
     """Get the physical maximum batch size"""
     libllama.llama_n_ubatch.argtypes = [ctypes.c_void_p]
     libllama.llama_n_ubatch.restype = ctypes.c_int
-    return libllama.llama_n_ubatch(llama_context)
+    return libllama.llama_n_ubatch(ctx)
 
-def llama_n_seq_max(llama_context: ptr) -> int:
+def llama_n_seq_max(ctx: ptr) -> int:
     """Get the maximum number of sequences"""
     libllama.llama_n_seq_max.argtypes = [ctypes.c_void_p]
     libllama.llama_n_seq_max.restype = ctypes.c_int
-    return libllama.llama_n_seq_max(llama_context)
+    return libllama.llama_n_seq_max(ctx)
 
 #
 # Getters for model attributes
@@ -348,17 +477,17 @@ def llama_n_head(model: ptr) -> int:
 
 # More getters for llama_context ...
 
-def llama_get_model(llama_context: ptr) -> ptr:
+def llama_get_model(ctx: ptr) -> ptr:
     """Get the model associated with a context"""
     libllama.llama_get_model.argtypes = [ctypes.c_void_p]
     libllama.llama_get_model.restype = ctypes.c_void_p
-    return libllama.llama_get_model(llama_context)
+    return libllama.llama_get_model(ctx)
 
-def llama_pooling_type(llama_context: ptr) -> int:
+def llama_pooling_type(ctx: ptr) -> int:
     """Get the pooling type used by a context"""
     libllama.llama_pooling_type.argtypes = [ctypes.c_void_p]
     libllama.llama_pooling_type.restype = ctypes.c_int
-    return libllama.llama_pooling_type(llama_context)
+    return libllama.llama_pooling_type(ctx)
 
 # More getters for llama_model ...
 
@@ -472,23 +601,23 @@ def llama_lora_adapter_init(model: ptr, path_lora: str) -> ptr:
     libllama.llama_lora_adapter_init.restype = ctypes.c_void_p
     return libllama.llama_lora_adapter_init(model, path_lora.encode('utf-8'))
 
-def llama_lora_adapter_set(llama_context: ptr, adapter: ptr, scale: float) -> int:
+def llama_lora_adapter_set(ctx: ptr, adapter: ptr, scale: float) -> int:
     """Set a LoRA adapter for a context"""
     libllama.llama_lora_adapter_set.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_float]
     libllama.llama_lora_adapter_set.restype = ctypes.c_int
-    return libllama.llama_lora_adapter_set(llama_context, adapter, scale)
+    return libllama.llama_lora_adapter_set(ctx, adapter, scale)
 
-def llama_lora_adapter_remove(llama_context: ptr, adapter: ptr) -> int:
+def llama_lora_adapter_remove(ctx: ptr, adapter: ptr) -> int:
     """Remove a LoRA adapter from a context"""
     libllama.llama_lora_adapter_remove.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_lora_adapter_remove.restype = ctypes.c_int
-    return libllama.llama_lora_adapter_remove(llama_context, adapter)
+    return libllama.llama_lora_adapter_remove(ctx, adapter)
 
-def llama_lora_adapter_clear(llama_context: ptr) -> None:
+def llama_lora_adapter_clear(ctx: ptr) -> None:
     """Clear all LoRA adapters from a context"""
     libllama.llama_lora_adapter_clear.argtypes = [ctypes.c_void_p]
     libllama.llama_lora_adapter_clear.restype = None
-    libllama.llama_lora_adapter_clear(llama_context)
+    libllama.llama_lora_adapter_clear(ctx)
 
 def llama_lora_adapter_free(adapter: ptr) -> None:
     """Free a LoRA adapter"""
@@ -500,196 +629,325 @@ def llama_lora_adapter_free(adapter: ptr) -> None:
 # Control vector
 #
 
-def llama_control_vector_apply(llama_context: ptr, data: ptr, len: int, n_embd: int, il_start: int, il_end: int) -> int:
+def llama_control_vector_apply(ctx: ptr, data: ptr, len: int, n_embd: int, il_start: int, il_end: int) -> int:
     """Apply a control vector to a context"""
     libllama.llama_control_vector_apply.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     libllama.llama_control_vector_apply.restype = ctypes.c_int
-    return libllama.llama_control_vector_apply(llama_context, data, len, n_embd, il_start, il_end)
+    return libllama.llama_control_vector_apply(ctx, data, len, n_embd, il_start, il_end)
 
 #
 # KV cache
 #
 
-def llama_kv_cache_view_init(llama_context: ptr, n_seq_max: int) -> ptr:
-    """Create an empty KV cache view (use only for debugging purposes)"""
+def llama_kv_cache_view_init(ctx: ptr, n_seq_max: int) -> ptr:
+    """
+    DEBUG ONLY
+
+    Create an empty KV cache view (use only for debugging purposes)
+    """
     libllama.llama_kv_cache_view_init.argtypes = [ctypes.c_void_p, ctypes.c_int]
     libllama.llama_kv_cache_view_init.restype = ctypes.c_void_p
-    return libllama.llama_kv_cache_view_init(llama_context, n_seq_max)
+    return libllama.llama_kv_cache_view_init(ctx, n_seq_max)
 
 def llama_kv_cache_view_free(view: ptr) -> None:
-    """Free a KV cache view (use only for debugging purposes)"""
+    """
+    DEBUG ONLY
+
+    Free a KV cache view
+    """
     libllama.llama_kv_cache_view_free.argtypes = [ctypes.c_void_p]
     libllama.llama_kv_cache_view_free.restype = None
     libllama.llama_kv_cache_view_free(view)
 
-def llama_kv_cache_view_update(llama_context: ptr, view: ptr) -> None:
-    """Update a KV cache view with the current state of the KV cache (use only for debugging purposes)"""
+def llama_kv_cache_view_update(ctx: ptr, view: ptr) -> None:
+    """
+    DEBUG ONLY
+    
+    Update a KV cache view with the current state of the KV cache
+    """
     libllama.llama_kv_cache_view_update.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_kv_cache_view_update.restype = None
-    libllama.llama_kv_cache_view_update(llama_context, view)
+    libllama.llama_kv_cache_view_update(ctx, view)
 
-def llama_get_kv_cache_token_count(llama_context: ptr) -> int:
-    """Get the number of tokens in the KV cache (slow, use only for debug)"""
+def llama_get_kv_cache_token_count(ctx: ptr) -> int:
+    """
+    DEBUG ONLY & SLOW
+    
+    Get the number of tokens in the KV cache
+    """
     libllama.llama_get_kv_cache_token_count.argtypes = [ctypes.c_void_p]
     libllama.llama_get_kv_cache_token_count.restype = ctypes.c_int
-    return libllama.llama_get_kv_cache_token_count(llama_context)
+    return libllama.llama_get_kv_cache_token_count(ctx)
 
-def llama_get_kv_cache_used_cells(llama_context: ptr) -> int:
+def llama_get_kv_cache_used_cells(ctx: ptr) -> int:
     """Get the number of used KV cells"""
     libllama.llama_get_kv_cache_used_cells.argtypes = [ctypes.c_void_p]
     libllama.llama_get_kv_cache_used_cells.restype = ctypes.c_int
-    return libllama.llama_get_kv_cache_used_cells(llama_context)
+    return libllama.llama_get_kv_cache_used_cells(ctx)
 
-def llama_kv_cache_clear(llama_context: ptr) -> None:
+def llama_kv_cache_clear(ctx: ptr) -> None:
     """Clear the KV cache"""
     libllama.llama_kv_cache_clear.argtypes = [ctypes.c_void_p]
     libllama.llama_kv_cache_clear.restype = None
-    libllama.llama_kv_cache_clear(llama_context)
+    libllama.llama_kv_cache_clear(ctx)
 
-def llama_kv_cache_seq_rm(llama_context: ptr, seq_id: int, p0: int, p1: int) -> bool:
+def llama_kv_cache_seq_rm(ctx: ptr, seq_id: int, p0: int, p1: int) -> bool:
     """Remove tokens from a sequence in the KV cache"""
     libllama.llama_kv_cache_seq_rm.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     libllama.llama_kv_cache_seq_rm.restype = ctypes.c_bool
-    return libllama.llama_kv_cache_seq_rm(llama_context, seq_id, p0, p1)
+    return libllama.llama_kv_cache_seq_rm(ctx, seq_id, p0, p1)
 
-def llama_kv_cache_seq_cp(llama_context: ptr, seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
+def llama_kv_cache_seq_cp(ctx: ptr, seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
     """Copy tokens from one sequence to another in the KV cache"""
     libllama.llama_kv_cache_seq_cp.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     libllama.llama_kv_cache_seq_cp.restype = None
-    libllama.llama_kv_cache_seq_cp(llama_context, seq_id_src, seq_id_dst, p0, p1)
+    libllama.llama_kv_cache_seq_cp(ctx, seq_id_src, seq_id_dst, p0, p1)
 
-def llama_kv_cache_seq_keep(llama_context: ptr, seq_id: int) -> None:
+def llama_kv_cache_seq_keep(ctx: ptr, seq_id: int) -> None:
     """Keep only the tokens of a sequence in the KV cache"""
     libllama.llama_kv_cache_seq_keep.argtypes = [ctypes.c_void_p, ctypes.c_int]
     libllama.llama_kv_cache_seq_keep.restype = None
-    libllama.llama_kv_cache_seq_keep(llama_context, seq_id)
+    libllama.llama_kv_cache_seq_keep(ctx, seq_id)
 
-def llama_kv_cache_seq_add(llama_context: ptr, seq_id: int, p0: int, p1: int, delta: int) -> None:
+def llama_kv_cache_seq_add(ctx: ptr, seq_id: int, p0: int, p1: int, delta: int) -> None:
     """Add a relative position to tokens in a sequence in the KV cache"""
     libllama.llama_kv_cache_seq_add.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     libllama.llama_kv_cache_seq_add.restype = None
-    libllama.llama_kv_cache_seq_add(llama_context, seq_id, p0, p1, delta)
+    libllama.llama_kv_cache_seq_add(ctx, seq_id, p0, p1, delta)
 
-def llama_kv_cache_seq_div(llama_context: ptr, seq_id: int, p0: int, p1: int, d: int) -> None:
+def llama_kv_cache_seq_div(ctx: ptr, seq_id: int, p0: int, p1: int, d: int) -> None:
     """Divide the positions of tokens in a sequence in the KV cache by a factor"""
     libllama.llama_kv_cache_seq_div.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     libllama.llama_kv_cache_seq_div.restype = None
-    libllama.llama_kv_cache_seq_div(llama_context, seq_id, p0, p1, d)
+    libllama.llama_kv_cache_seq_div(ctx, seq_id, p0, p1, d)
 
-def llama_kv_cache_seq_pos_max(llama_context: ptr, seq_id: int) -> int:
+def llama_kv_cache_seq_pos_max(ctx: ptr, seq_id: int) -> int:
     """Get the maximum position of a sequence in the KV cache"""
     libllama.llama_kv_cache_seq_pos_max.argtypes = [ctypes.c_void_p, ctypes.c_int]
     libllama.llama_kv_cache_seq_pos_max.restype = ctypes.c_int
-    return libllama.llama_kv_cache_seq_pos_max(llama_context, seq_id)
+    return libllama.llama_kv_cache_seq_pos_max(ctx, seq_id)
 
-def llama_kv_cache_defrag(llama_context: ptr) -> None:
+def llama_kv_cache_defrag(ctx: ptr) -> None:
     """Defragment the KV cache"""
     libllama.llama_kv_cache_defrag.argtypes = [ctypes.c_void_p]
     libllama.llama_kv_cache_defrag.restype = None
-    libllama.llama_kv_cache_defrag(llama_context)
+    libllama.llama_kv_cache_defrag(ctx)
 
-def llama_kv_cache_update(llama_context: ptr) -> None:
+def llama_kv_cache_update(ctx: ptr) -> None:
     """Apply KV cache updates"""
     libllama.llama_kv_cache_update.argtypes = [ctypes.c_void_p]
     libllama.llama_kv_cache_update.restype = None
-    libllama.llama_kv_cache_update(llama_context)
+    libllama.llama_kv_cache_update(ctx)
 
-def llama_kv_cache_can_shift(llama_context: ptr) -> bool:
+def llama_kv_cache_can_shift(ctx: ptr) -> bool:
     """Check if the context supports KV cache shifting"""
     libllama.llama_kv_cache_can_shift.argtypes = [ctypes.c_void_p]
     libllama.llama_kv_cache_can_shift.restype = ctypes.c_bool
-    return libllama.llama_kv_cache_can_shift(llama_context)
+    return libllama.llama_kv_cache_can_shift(ctx)
 
 #
 # State / session management
 #
 
-def llama_state_get_size(llama_context: ptr) -> int:
+def llama_state_get_size(ctx: ptr) -> int:
     """Get the size of the state in bytes"""
     libllama.llama_state_get_size.argtypes = [ctypes.c_void_p]
     libllama.llama_state_get_size.restype = ctypes.c_int
-    return libllama.llama_state_get_size(llama_context)
+    return libllama.llama_state_get_size(ctx)
 
-def llama_state_get_data(llama_context: ptr, dst: ptr, size: int) -> int:
+def llama_get_state_size(*args):
+    """
+    DEPRECATED
+    
+    Use llama_state_get_size instead
+    """
+    raise Deprecated(
+        f"function llama_get_state_size is marked as deprecated. use "
+        f"llama_state_get_size instead."
+    )
+
+def llama_state_get_data(ctx: ptr, dst: ptr, size: int) -> int:
     """Copy the state to a destination address"""
     libllama.llama_state_get_data.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
     libllama.llama_state_get_data.restype = ctypes.c_int
-    return libllama.llama_state_get_data(llama_context, dst, size)
+    return libllama.llama_state_get_data(ctx, dst, size)
 
-def llama_state_set_data(llama_context: ptr, src: ptr, size: int) -> int:
+def llama_copy_state_data(*args):
+    """
+    DEPRECATED
+    
+    Use llama_state_get_data instead
+    """
+    raise Deprecated(
+        f"function llama_copy_state_data is marked as deprecated. use "
+        f"llama_state_get_data instead."
+    )
+
+def llama_state_set_data(ctx: ptr, src: ptr, size: int) -> int:
     """Set the state from a source address"""
     libllama.llama_state_set_data.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
     libllama.llama_state_set_data.restype = ctypes.c_int
-    return libllama.llama_state_set_data(llama_context, src, size)
+    return libllama.llama_state_set_data(ctx, src, size)
 
-def llama_state_load_file(llama_context: ptr, path_session: str, tokens_out: ptr, n_token_capacity: int, n_token_count_out: ptr) -> bool:
+def llama_set_state_data(*args):
+    """
+    DEPRECATED
+    
+    Use llama_state_set_dat instead
+    """
+    raise Deprecated(
+        f"function llama_set_state_data is marked as deprecated. use "
+        f"llama_state_set_dat instead."
+    )
+
+def llama_state_load_file(ctx: ptr, path_session: str, tokens_out: ptr, n_token_capacity: int, n_token_count_out: ptr) -> bool:
     """Load a state from a file"""
     libllama.llama_state_load_file.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
     libllama.llama_state_load_file.restype = ctypes.c_bool
-    return libllama.llama_state_load_file(llama_context, path_session.encode('utf-8'), tokens_out, n_token_capacity, n_token_count_out)
+    return libllama.llama_state_load_file(ctx, path_session.encode('utf-8'), tokens_out, n_token_capacity, n_token_count_out)
 
-def llama_state_save_file(llama_context: ptr, path_session: str, tokens: ptr, n_token_count: int) -> bool:
+def llama_load_session_file(*args):
+    """
+    DEPRECATED
+    
+    Use llama_state_load_file instead
+    """
+    raise Deprecated(
+        f"function llama_load_session_file is marked as deprecated. use "
+        f"llama_state_load_file instead."
+    )
+
+def llama_state_save_file(ctx: ptr, path_session: str, tokens: ptr, n_token_count: int) -> bool:
     """Save a state to a file"""
     libllama.llama_state_save_file.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int]
     libllama.llama_state_save_file.restype = ctypes.c_bool
-    return libllama.llama_state_save_file(llama_context, path_session.encode('utf-8'), tokens, n_token_count)
+    return libllama.llama_state_save_file(ctx, path_session.encode('utf-8'), tokens, n_token_count)
 
-# TODO: add all llama_state_seq_* here
-# TODO: add llama_batch_* here
+def llama_save_session_file(*args):
+    """
+    DEPRECATED
+    
+    Use llama_state_save_file instead
+    """
+    raise Deprecated(
+        f"function llama_save_session_file is marked as deprecated. use "
+        f"llama_state_save_file instead."
+    )
+
+def llama_state_seq_get_size(ctx: ptr, llama_seq_id: int) -> int:
+    """Get the exact size needed to copy the KV cache of a single sequence"""
+    libllama.llama_state_seq_get_size.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+    libllama.llama_state_seq_get_size.restype = ctypes.c_ulong
+    return libllama.llama_state_seq_get_size(ctx, llama_seq_id)
+
+def llama_state_seq_get_data(ctx: ptr, dst: int, size: int, seq_id: int) -> int:
+    """Copy the KV cache of a single sequence into the specified buffer"""
+    libllama.llama_state_seq_get_data.argtypes = [ctypes.c_void_p, ctypes.c_ubyte, ctypes.c_ulong, ctypes.c_int32]
+    libllama.llama_state_seq_get_data.restype = ctypes.c_ulong
+    return libllama.llama_state_seq_get_data(ctx, dst, size, seq_id)
+
+def llama_state_seq_set_data(ctx: ptr, src: int, size: int, dest_seq_id: int) -> int:
+    """
+    Copy the sequence data (originally copied with `llama_state_seq_get_data`)
+    into the specified sequence
+    
+    Returns:
+    - Positive: Ok
+    - Zero: Failed to load
+    """
+    libllama.llama_state_seq_set_data.argtypes = [ctypes.c_void_p, ctypes.c_ubyte, ctypes.c_ulong, ctypes.c_int32]
+    libllama.llama_state_seq_set_data.restype = ctypes.c_ulong
+    return libllama.llama_state_seq_set_data(ctx, src, size, dest_seq_id)
+
+def llama_state_seq_save_file(ctx: ptr, filepath: str, seq_id: int, tokens: ptr, n_token_count: int) -> int:
+    libllama.llama_state_seq_save_file.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int32, ctypes.c_void_p, ctypes.c_ulong]
+    libllama.llama_state_seq_save_file.restype = ctypes.c_ulong
+    return libllama.llama_state_seq_save_file(ctx, filepath.encode('utf-8'), seq_id, tokens, n_token_count)
+
+def llama_state_seq_load_file(ctx: ptr, filepath: str, dest_seq_id: int, tokens_out: ptr, n_token_capacity: int, n_token_count_out: ptr) -> int:
+    libllama.llama_state_seq_load_file.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int32, ctypes.c_void_p, ctypes.c_int32, ctypes.c_void_p]
+    libllama.llama_state_seq_load_file.restype = ctypes.c_ulong
+    return libllama.llama_state_seq_load_file(ctx, filepath, dest_seq_id, tokens_out, n_token_capacity, n_token_count_out)
+
+#
+# Batch
+#
+
+def llama_batch_get_one(tokens: ptr, n_tokens: int) -> ptr:
+    """
+    AVOID USING
+
+    Return batch for single sequence of tokens
+    """
+    libllama.llama_batch_get_one.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+    libllama.llama_batch_get_one.restype = ctypes.c_void_p
+    return libllama.llama_batch_get_one(tokens, n_tokens)
+
+def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> ptr:
+    """Allocates a batch of tokens"""
+    libllama.llama_batch_init.argtypes = [ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
+    libllama.llama_batch_init.restype = ctypes.c_void_p
+    return libllama.llama_batch_init(n_tokens, embd, n_seq_max)
+
+def llama_batch_free(batch: ptr) -> None:
+    """Frees a batch of tokens"""
+    libllama.llama_batch_free.argtypes = [ctypes.c_void_p]
+    libllama.llama_batch_free.restype = None
+    libllama.llama_batch_free(batch)
 
 #
 # Encode / decode
 #
 
-def llama_encode(llama_context: ptr, batch: ptr) -> int:
+def llama_encode(ctx: ptr, batch: ptr) -> int:
     """Process a batch of tokens with the encoder part of the encoder-decoder model"""
     libllama.llama_encode.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_encode.restype = ctypes.c_int
-    return libllama.llama_encode(llama_context, batch)
+    return libllama.llama_encode(ctx, batch)
 
-def llama_decode(llama_context: ptr, batch: ptr) -> int:
+def llama_decode(ctx: ptr, batch: ptr) -> int:
     """Process a batch of tokens with the decoder part of the encoder-decoder model"""
     libllama.llama_decode.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_decode.restype = ctypes.c_int
-    return libllama.llama_decode(llama_context, batch)
+    return libllama.llama_decode(ctx, batch)
 
-def llama_set_n_threads(llama_context: ptr, n_threads: int, n_threads_batch: int) -> None:
+def llama_set_n_threads(ctx: ptr, n_threads: int, n_threads_batch: int) -> None:
     """Set the number of threads used for decoding"""
     libllama.llama_set_n_threads.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
     libllama.llama_set_n_threads.restype = None
-    libllama.llama_set_n_threads(llama_context, n_threads, n_threads_batch)
+    libllama.llama_set_n_threads(ctx, n_threads, n_threads_batch)
 
-def llama_n_threads(llama_context: ptr) -> int:
+def llama_n_threads(ctx: ptr) -> int:
     """Get the number of threads used for generation of a single token"""
     libllama.llama_n_threads.argtypes = [ctypes.c_void_p]
     libllama.llama_n_threads.restype = ctypes.c_int
-    return libllama.llama_n_threads(llama_context)
+    return libllama.llama_n_threads(ctx)
 
-def llama_n_threads_batch(llama_context: ptr) -> int:
+def llama_n_threads_batch(ctx: ptr) -> int:
     """Get the number of threads used for prompt and batch processing"""
     libllama.llama_n_threads_batch.argtypes = [ctypes.c_void_p]
     libllama.llama_n_threads_batch.restype = ctypes.c_int
-    return libllama.llama_n_threads_batch(llama_context)
+    return libllama.llama_n_threads_batch(ctx)
 
-def llama_set_embeddings(llama_context: ptr, embeddings: bool) -> None:
+def llama_set_embeddings(ctx: ptr, embeddings: bool) -> None:
     """Set whether to use embeddings mode or not"""
     libllama.llama_set_embeddings.argtypes = [ctypes.c_void_p, ctypes.c_bool]
     libllama.llama_set_embeddings.restype = None
-    libllama.llama_set_embeddings(llama_context, embeddings)
+    libllama.llama_set_embeddings(ctx, embeddings)
 
-def llama_set_causal_attn(llama_context: ptr, causal_attn: bool) -> None:
+def llama_set_causal_attn(ctx: ptr, causal_attn: bool) -> None:
     """Set whether to use causal attention or not"""
     libllama.llama_set_causal_attn.argtypes = [ctypes.c_void_p, ctypes.c_bool]
     libllama.llama_set_causal_attn.restype = None
-    libllama.llama_set_causal_attn(llama_context, causal_attn)
+    libllama.llama_set_causal_attn(ctx, causal_attn)
 
-def llama_set_abort_callback(llama_context: ptr, abort_callback: ptr, abort_callback_data: ptr) -> None:
+def llama_set_abort_callback(ctx: ptr, abort_callback: ptr, abort_callback_data: ptr) -> None:
     """Set an abort callback"""
     libllama.llama_set_abort_callback.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_set_abort_callback.restype = None
-    libllama.llama_set_abort_callback(llama_context, abort_callback, abort_callback_data)
+    libllama.llama_set_abort_callback(ctx, abort_callback, abort_callback_data)
 
-def llama_synchronize(llama_context: ptr) -> None:
+def llama_synchronize(ctx: ptr) -> None:
     """
     Wait until all computations are finished
 
@@ -697,9 +955,9 @@ def llama_synchronize(llama_context: ptr) -> None:
     """
     libllama.llama_synchronize.argtypes = [ctypes.c_void_p]
     libllama.llama_synchronize.restype = None
-    libllama.llama_synchronize(llama_context)
+    libllama.llama_synchronize(ctx)
 
-def llama_get_logits(llama_context: ptr) -> ptr:
+def llama_get_logits(ctx: ptr) -> ptr:
     """
     Get the token logits obtained from the last call to llama_decode()
     
@@ -708,31 +966,31 @@ def llama_get_logits(llama_context: ptr) -> ptr:
     """
     libllama.llama_get_logits.argtypes = [ctypes.c_void_p]
     libllama.llama_get_logits.restype = ctypes.c_void_p
-    return libllama.llama_get_logits(llama_context)
+    return libllama.llama_get_logits(ctx)
 
-def llama_get_logits_ith(llama_context: ptr, i: int) -> ptr:
+def llama_get_logits_ith(ctx: ptr, i: int) -> ptr:
     """Get the logits for the ith token"""
     libllama.llama_get_logits_ith.argtypes = [ctypes.c_void_p, ctypes.c_int]
     libllama.llama_get_logits_ith.restype = ctypes.c_void_p
-    return libllama.llama_get_logits_ith(llama_context, i)
+    return libllama.llama_get_logits_ith(ctx, i)
 
-def llama_get_embeddings(llama_context: ptr) -> ptr:
+def llama_get_embeddings(ctx: ptr) -> ptr:
     """Get all output token embeddings"""
     libllama.llama_get_embeddings.argtypes = [ctypes.c_void_p]
     libllama.llama_get_embeddings.restype = ctypes.c_void_p
-    return libllama.llama_get_embeddings(llama_context)
+    return libllama.llama_get_embeddings(ctx)
 
-def llama_get_embeddings_ith(llama_context: ptr, i: int) -> ptr:
+def llama_get_embeddings_ith(ctx: ptr, i: int) -> ptr:
     """Get the embeddings for the ith token"""
     libllama.llama_get_embeddings_ith.argtypes = [ctypes.c_void_p, ctypes.c_int]
     libllama.llama_get_embeddings_ith.restype = ctypes.c_void_p
-    return libllama.llama_get_embeddings_ith(llama_context, i)
+    return libllama.llama_get_embeddings_ith(ctx, i)
 
-def llama_get_embeddings_seq(llama_context: ptr, seq_id: int) -> ptr:
+def llama_get_embeddings_seq(ctx: ptr, seq_id: int) -> ptr:
     """Get the embeddings for a sequence id"""
     libllama.llama_get_embeddings_seq.argtypes = [ctypes.c_void_p, ctypes.c_int]
     libllama.llama_get_embeddings_seq.restype = ctypes.c_void_p
-    return libllama.llama_get_embeddings_seq(llama_context, seq_id)
+    return libllama.llama_get_embeddings_seq(ctx, seq_id)
 
 #
 # Vocab
@@ -827,7 +1085,11 @@ def llama_add_eos_token(model: ptr) -> bool:
     return libllama.llama_add_eos_token(model)
 
 def llama_token_fim_pre(model: ptr) -> int:
-    pass
+    libllama.llama_token_fim_pre.argtypes = [ctypes.c_void_p]
+    libllama.llama_token_fim_pre.restype = ctypes.c_int32
+    # TODO: return
+
+# TODO: finish all these
 
 def llama_token_fim_suf(model: ptr) -> int:
     pass
@@ -866,7 +1128,19 @@ def llama_detokenize(model: ptr, tokens: ptr, n_tokens: int, text: ptr, text_len
     libllama.llama_detokenize.restype = ctypes.c_int
     return libllama.llama_detokenize(model, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
 
-# NOTE: chat template etc. goes here, but is not implemented for the time being
+#
+# Chat templating (not implemented)
+#
+
+def llama_chat_apply_template(*args):
+    raise NotImplementedError
+
+def llama_chat_builtin_templates(*args):
+    raise NotImplementedError
+
+#
+# Sampling
+#
 
 def llama_sampler_name(smpl: ptr) -> str:
     """Get the name of a sampler"""
@@ -902,7 +1176,8 @@ def llama_sampler_free(smpl: ptr) -> None:
     """
     Free a sampler
     
-    NOTE: Do not free if the sampler has been added to a llama_sampler_chain (via llama_sampler_chain_add)
+    NOTE: Do not free if the sampler has been added to a llama_sampler_chain
+    (via llama_sampler_chain_add)
     """
     libllama.llama_sampler_free.argtypes = [ctypes.c_void_p]
     libllama.llama_sampler_free.restype = None
@@ -911,8 +1186,6 @@ def llama_sampler_free(smpl: ptr) -> None:
 #
 # Sampler chains
 #
-
-# NOTE: A type of llama_sampler that can chain multiple samplers one after another
 
 def llama_sampler_chain_init(params: ptr) -> ptr:
     """Initialize a sampler chain"""
@@ -953,7 +1226,7 @@ def llama_sampler_chain_remove(chain: ptr, i: int) -> ptr:
     return libllama.llama_sampler_chain_remove(chain, i)
 
 #
-# Available samplers
+# Samplers
 #
 
 def llama_sampler_init_greedy() -> ptr:
@@ -1077,13 +1350,13 @@ def llama_sampler_get_seed(smpl: ptr) -> int:
     libllama.llama_sampler_get_seed.restype = ctypes.c_int
     return libllama.llama_sampler_get_seed(smpl)
 
-def llama_sampler_sample(smpl: ptr, llama_context: ptr, idx: int) -> int:
+def llama_sampler_sample(smpl: ptr, ctx: ptr, idx: int) -> int:
     """
     Sample and accept a token from the idx-th output of the last evaluation
     """
     libllama.llama_sampler_sample.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
     libllama.llama_sampler_sample.restype = ctypes.c_int
-    return libllama.llama_sampler_sample(smpl, llama_context, idx)
+    return libllama.llama_sampler_sample(smpl, ctx, idx)
 
 #
 # Model split
@@ -1127,23 +1400,23 @@ def llama_log_set(log_callback: ptr, user_data: ptr) -> None:
 
 # NOTE: Used by llama.cpp examples, avoid using in third-party apps. Instead, do your own performance measurements.
 
-def llama_perf_context(llama_context: ptr) -> ptr:
+def llama_perf_context(ctx: ptr) -> ptr:
     """Get performance data for a context"""
     libllama.llama_perf_context.argtypes = [ctypes.c_void_p]
     libllama.llama_perf_context.restype = ctypes.c_void_p
-    return libllama.llama_perf_context(llama_context)
+    return libllama.llama_perf_context(ctx)
 
-def llama_perf_context_print(llama_context: ptr) -> None:
+def llama_perf_context_print(ctx: ptr) -> None:
     """Print performance data for a context"""
     libllama.llama_perf_context_print.argtypes = [ctypes.c_void_p]
     libllama.llama_perf_context_print.restype = None
-    libllama.llama_perf_context_print(llama_context)
+    libllama.llama_perf_context_print(ctx)
 
-def llama_perf_context_reset(llama_context: ptr) -> None:
+def llama_perf_context_reset(ctx: ptr) -> None:
     """Reset performance data for a context"""
     libllama.llama_perf_context_reset.argtypes = [ctypes.c_void_p]
     libllama.llama_perf_context_reset.restype = None
-    libllama.llama_perf_context_reset(llama_context)
+    libllama.llama_perf_context_reset(ctx)
 
 # NOTE: the following work only with samplers constructed via llama_sampler_chain_init
 
