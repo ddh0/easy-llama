@@ -22,7 +22,7 @@ import ctypes
 import faulthandler
 
 from enum import IntEnum
-from typing import Optional, NewType
+from typing import Optional
 
 faulthandler.enable()
 
@@ -64,8 +64,6 @@ libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama
 #
 # Type hints
 #
-
-byref = ctypes.byref # shorthand
 
 class ptr:
     """Generic type hint representing any ctypes pointer"""
@@ -1576,11 +1574,11 @@ def llama_split_prefix(split_prefix: ctypes.c_char_p, maxlen: int, split_path: s
 # Print system info
 #
 
-def llama_print_system_info() -> None:
-    """Print system information"""
+def llama_print_system_info() -> str:
+    """Get system information"""
     libllama.llama_print_system_info.argtypes = []
     libllama.llama_print_system_info.restype = ctypes.c_char_p
-    libllama.llama_print_system_info()
+    return libllama.llama_print_system_info().decode('utf-8')
 
 #
 # Log callback
@@ -1655,3 +1653,49 @@ def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
     libllama.llama_perf_sampler_reset.argtypes = [llama_sampler_p]
     libllama.llama_perf_sampler_reset.restype = None
     libllama.llama_perf_sampler_reset(smpl)
+
+if __name__ == '__main__':
+
+    # Handy-dandy basic test of libllama
+    # Assumes model.gguf is available in the current working directory
+
+    import os
+    import sys
+
+    if not os.path.exists('./model.gguf'):
+        raise FileNotFoundError('the file ./model.gguf was not found')
+
+    def _print(text: str) -> None:
+        print(f'easy_llama:', text, file=sys.stderr, flush=True)
+
+    _print(f"begin basic libllama test")
+    
+    print("-" * 80)
+
+    _print(f"calling llama_backend_init ...")
+    llama_backend_init()
+
+    _print(f"calling llama_print_system_info ... ")
+    print(llama_print_system_info(), file=sys.stderr, flush=True)
+
+    _print(f"calling llama_model_default_params ...")
+    model_params = llama_model_default_params()
+
+    _print(f"calling llama_load_model_from_file ...")
+    model = llama_load_model_from_file('./model.gguf', model_params)
+
+    _print(f"calling llama_context_default_params ...")
+    ctx_params = llama_context_default_params()
+
+    _print(f"calling llama_new_context_with_model ...")
+    ctx = llama_new_context_with_model(model, ctx_params)
+
+    _print(f"calling llama_free(ctx) ...")
+    llama_free(ctx)
+
+    _print(f"calling llama_free_model ...")
+    llama_free_model(model)
+
+    print("-" * 80)
+
+    _print("basic libllama test complete")
