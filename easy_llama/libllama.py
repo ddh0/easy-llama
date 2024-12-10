@@ -18,13 +18,14 @@ Helpful references:
 # - tqdm for prompt eval???
 # 
 
+import sys
 import ctypes
 import faulthandler
 
 from enum import IntEnum
 from typing import Optional
 
-faulthandler.enable()
+faulthandler.enable() # prints more helpful info if python crashes
 
 class Deprecated(Exception):
     """
@@ -53,6 +54,11 @@ def DEPRECATED(new_func_name: Optional[str] = None):
         return deprecator
     
     return decorator
+
+def _libprint(text: str) -> None:
+    for line in text.split("\n"):
+        print('easy_llama: libllama:', line, file=sys.stderr)
+    sys.stderr.flush()
 
 #
 # Import shared library
@@ -1578,7 +1584,7 @@ def llama_print_system_info() -> str:
     """Get system information"""
     libllama.llama_print_system_info.argtypes = []
     libllama.llama_print_system_info.restype = ctypes.c_char_p
-    return libllama.llama_print_system_info().decode('utf-8')
+    _libprint(libllama.llama_print_system_info().decode('utf-8'))
 
 #
 # Log callback
@@ -1617,19 +1623,31 @@ llama_perf_sampler_data_p = ctypes.POINTER(llama_perf_sampler_data)
 # NOTE: Used by llama.cpp examples, avoid using in third-party apps. Instead, do your own performance measurements.
 
 def llama_perf_context(ctx: llama_context) -> llama_perf_context_data:
-    """Get performance data for a context"""
+    """
+    AVOID USING
+
+    Get performance data for a context
+    """
     libllama.llama_perf_context.argtypes = [llama_context_p]
     libllama.llama_perf_context.restype = llama_perf_context_data_p
     return libllama.llama_perf_context(ctx)
 
 def llama_perf_context_print(ctx: llama_context) -> None:
-    """Print performance data for a context"""
+    """
+    AVOID USING
+
+    Print performance data for a context
+    """
     libllama.llama_perf_context_print.argtypes = [llama_context_p]
     libllama.llama_perf_context_print.restype = None
     libllama.llama_perf_context_print(ctx)
 
 def llama_perf_context_reset(ctx: llama_context) -> None:
-    """Reset performance data for a context"""
+    """
+    AVOID USING
+    
+    Reset performance data for a context
+    """
     libllama.llama_perf_context_reset.argtypes = [llama_context_p]
     libllama.llama_perf_context_reset.restype = None
     libllama.llama_perf_context_reset(ctx)
@@ -1660,42 +1678,41 @@ if __name__ == '__main__':
     # Assumes model.gguf is available in the current working directory
 
     import os
-    import sys
 
     if not os.path.exists('./model.gguf'):
         raise FileNotFoundError('the file ./model.gguf was not found')
 
-    def _print(text: str) -> None:
+    def test_print(text: str) -> None:
         print(f'easy_llama:', text, file=sys.stderr, flush=True)
 
-    _print(f"begin basic libllama test")
+    test_print(f"begin basic libllama test")
     
     print("-" * 80)
 
-    _print(f"calling llama_backend_init ...")
+    test_print(f"calling llama_backend_init ...")
     llama_backend_init()
 
-    _print(f"calling llama_print_system_info ... ")
-    print(llama_print_system_info(), file=sys.stderr, flush=True)
+    test_print(f"calling llama_print_system_info ... ")
+    llama_print_system_info()
 
-    _print(f"calling llama_model_default_params ...")
+    test_print(f"calling llama_model_default_params ...")
     model_params = llama_model_default_params()
 
-    _print(f"calling llama_load_model_from_file ...")
+    test_print(f"calling llama_load_model_from_file ...")
     model = llama_load_model_from_file('./model.gguf', model_params)
 
-    _print(f"calling llama_context_default_params ...")
+    test_print(f"calling llama_context_default_params ...")
     ctx_params = llama_context_default_params()
 
-    _print(f"calling llama_new_context_with_model ...")
+    test_print(f"calling llama_new_context_with_model ...")
     ctx = llama_new_context_with_model(model, ctx_params)
 
-    _print(f"calling llama_free(ctx) ...")
+    test_print(f"calling llama_free(ctx) ...")
     llama_free(ctx)
 
-    _print(f"calling llama_free_model ...")
+    test_print(f"calling llama_free_model ...")
     llama_free_model(model)
 
     print("-" * 80)
 
-    _print("basic libllama test complete")
+    test_print("basic libllama test complete")
