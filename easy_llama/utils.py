@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-from ._version import __version__, __llama_cpp_version__
+from ._version import __version__
 
 """Submodule containing convenience functions and QuickGGUFReader"""
 
@@ -14,7 +14,7 @@ import numpy as np
 from typing     import Iterable, TextIO, Optional
 from .constants import Colors, GGUFValueType
 from io         import BufferedReader
-from .llama_cpp import GGUF_MAGIC
+from .libllama  import GGUF_MAGIC
 
 
 # color codes used in Thread.interact() and for warnings
@@ -102,8 +102,7 @@ def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
 def print_version_info(file: _SupportsWriteAndFlush = sys.stderr) -> None:
-    print(f"easy_llama: easy_llama package version: {__version__}", file=file)
-    print(f"easy_llama: llama_cpp package version: {__llama_cpp_version__}", file=file)
+    print(f"easy_llama: package version: {__version__}", file=file)
 
 def print_verbose(text: str) -> None:
     print(

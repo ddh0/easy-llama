@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-__version__ = '0.1.119'
+__version__ = '0.2.0'
 
 from setuptools import setup
 
@@ -30,10 +30,9 @@ setup(
         ]
     },
     install_requires=[
-        'llama_cpp_python',
+        'cryptography',
         'numpy',
-        'Flask',
-        'cryptography'
+        'Flask'
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
