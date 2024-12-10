@@ -20,9 +20,9 @@ Helpful references:
 
 import ctypes
 import faulthandler
-from typing import Optional
 
 from enum import IntEnum
+from typing import Optional, NewType
 
 faulthandler.enable()
 
@@ -65,16 +65,24 @@ libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama
 # Type hints
 #
 
+byref = ctypes.byref # shorthand
+
 class ptr:
     """Generic type hint representing any ctypes pointer"""
 
-llama_model = ptr
-llama_context = ptr
+class llama_model(ctypes.Structure):
+    """Dummy `ctypes.Structure`"""
+
+llama_model_p = ctypes.POINTER(llama_model)
+"""Pointer to a llama_model struct"""
+
+class llama_context(ctypes.Structure):
+    """Dummy `ctypes.Structure`"""
+
+llama_context_p = ctypes.POINTER(llama_context)
+"""Pointer to a llama_context struct"""
 
 size_t = ctypes.c_ulong
-
-llama_model_p   = ctypes.c_void_p
-llama_context_p = ctypes.c_void_p
 
 llama_pos    = ctypes.c_int32
 llama_token  = ctypes.c_int32
@@ -440,7 +448,7 @@ class llama_chat_message(ctypes.Structure):
 llama_chat_message_p = ctypes.POINTER(llama_chat_message)
 
 class llama_lora_adapter(ctypes.Structure):
-    _fields_ = [] # TODO ?
+    pass
 
 llama_lora_adapter_p = ctypes.POINTER(llama_lora_adapter)
 
@@ -451,25 +459,25 @@ llama_lora_adapter_p = ctypes.POINTER(llama_lora_adapter)
 def llama_model_default_params() -> llama_model_params:
     """Get the default parameters for a llama model"""
     libllama.llama_model_default_params.argtypes = []
-    libllama.llama_model_default_params.restype = llama_model_params_p
+    libllama.llama_model_default_params.restype = llama_model_params
     return libllama.llama_model_default_params()
 
 def llama_context_default_params() -> llama_context_params:
     """Get the default parameters for a llama context"""
     libllama.llama_context_default_params.argtypes = []
-    libllama.llama_context_default_params.restype = llama_context_params_p
+    libllama.llama_context_default_params.restype = llama_context_params
     return libllama.llama_context_default_params()
 
 def llama_sampler_chain_default_params() -> llama_sampler_chain_params:
     """Get the default parameters for a sampler chain"""
     libllama.llama_sampler_chain_default_params.argtypes = []
-    libllama.llama_sampler_chain_default_params.restype = llama_sampler_chain_params_p
+    libllama.llama_sampler_chain_default_params.restype = llama_sampler_chain_params
     return libllama.llama_sampler_chain_default_params()
 
 def llama_model_quantize_default_params() -> llama_model_quantize_params:
     """Get the default parameters for model quantization"""
     libllama.llama_model_quantize_default_params.argtypes = []
-    libllama.llama_model_quantize_default_params.restype = llama_model_quantize_params_p
+    libllama.llama_model_quantize_default_params.restype = llama_model_quantize_params
     return libllama.llama_model_quantize_default_params()
 
 #
@@ -510,11 +518,11 @@ def llama_backend_free() -> None:
     libllama.llama_backend_free.restype = None
     libllama.llama_backend_free()
 
-def llama_load_model_from_file(path_model: str, params: llama_model_params) -> llama_model:
-    """Load a llama model from a file"""
+def llama_load_model_from_file(path_model: str, params: llama_model_params) -> llama_model_p: # type: ignore
+    """Load a llama model from a file - returns a pointer"""
     libllama.llama_load_model_from_file.argtypes = [ctypes.c_char_p, llama_model_params_p]
     libllama.llama_load_model_from_file.restype = llama_model_p
-    return libllama.llama_load_model_from_file(ctypes.c_char_p(path_model.encode('utf-8')), params)
+    return libllama.llama_load_model_from_file(path_model.encode('utf-8'), ctypes.byref(params))
 
 def llama_free_model(model: llama_model) -> None:
     """Free a model"""
@@ -522,11 +530,11 @@ def llama_free_model(model: llama_model) -> None:
     libllama.llama_free_model.restype = None
     libllama.llama_free_model(model)
 
-def llama_new_context_with_model(model: llama_model, params: llama_context_params) -> llama_context:
+def llama_new_context_with_model(model: llama_model, params: llama_context_params) -> llama_context_p: # type: ignore
     """Create a new llama context with a loaded model"""
     libllama.llama_new_context_with_model.argtypes = [llama_model_p, llama_context_params_p]
     libllama.llama_new_context_with_model.restype = llama_context_p
-    return libllama.llama_new_context_with_model(model, params)
+    return libllama.llama_new_context_with_model(model, ctypes.byref(params))
 
 def llama_free(ctx: llama_context) -> None:
     """Frees all allocated memory"""
@@ -638,7 +646,7 @@ def llama_n_head(model: llama_model) -> int:
 
 # More getters for llama_context ...
 
-def llama_get_model(ctx: llama_context) -> llama_model:
+def llama_get_model(ctx: llama_context) -> llama_model_p: # type: ignore
     """Get the model associated with a context"""
     libllama.llama_get_model.argtypes = [llama_context_p]
     libllama.llama_get_model.restype = llama_model_p
@@ -670,9 +678,9 @@ def llama_rope_freq_scale_train(model: llama_model) -> float:
     libllama.llama_rope_freq_scale_train.restype = ctypes.c_float
     return libllama.llama_rope_freq_scale_train(model)
 
-def llama_model_meta_val_str(model: llama_model, key: str, buf: ptr, buf_size: int) -> int:
+def llama_model_meta_val_str(model: llama_model, key: str, buf: ctypes.c_char_p, buf_size: int) -> int:
     """Get a metadata value as a string"""
-    libllama.llama_model_meta_val_str.argtypes = [llama_model, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int]
+    libllama.llama_model_meta_val_str.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
     libllama.llama_model_meta_val_str.restype = ctypes.c_int
     return libllama.llama_model_meta_val_str(model, key.encode('utf-8'), buf, buf_size)
 
@@ -682,21 +690,21 @@ def llama_model_meta_count(model: llama_model) -> int:
     libllama.llama_model_meta_count.restype = ctypes.c_int
     return libllama.llama_model_meta_count(model)
 
-def llama_model_meta_key_by_index(model: llama_model, i: int, buf: ptr, buf_size: int) -> int:
+def llama_model_meta_key_by_index(model: llama_model, i: int, buf: ctypes.c_char_p, buf_size: int) -> int:
     """Get a metadata key by index"""
-    libllama.llama_model_meta_key_by_index.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+    libllama.llama_model_meta_key_by_index.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
     libllama.llama_model_meta_key_by_index.restype = ctypes.c_int
     return libllama.llama_model_meta_key_by_index(model, i, buf, buf_size)
 
-def llama_model_meta_val_str_by_index(model: llama_model, i: int, buf: ptr, buf_size: int) -> int:
+def llama_model_meta_val_str_by_index(model: llama_model, i: int, buf: ctypes.c_char_p, buf_size: int) -> int:
     """Get a metadata value by index"""
-    libllama.llama_model_meta_val_str_by_index.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+    libllama.llama_model_meta_val_str_by_index.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
     libllama.llama_model_meta_val_str_by_index.restype = ctypes.c_int
     return libllama.llama_model_meta_val_str_by_index(model, i, buf, buf_size)
 
-def llama_model_desc(model: llama_model, buf: ptr, buf_size: int) -> int:
+def llama_model_desc(model: llama_model, buf: ctypes.c_char_p, buf_size: int) -> int:
     """Get a string describing the model type"""
-    libllama.llama_model_desc.argtypes = [llama_model_p, ctypes.c_void_p, ctypes.c_int]
+    libllama.llama_model_desc.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_int]
     libllama.llama_model_desc.restype = ctypes.c_int
     return libllama.llama_model_desc(model, buf, buf_size)
 
@@ -712,7 +720,7 @@ def llama_model_n_params(model: llama_model) -> int:
     libllama.llama_model_n_params.restype = ctypes.c_int
     return libllama.llama_model_n_params(model)
 
-def llama_get_model_tensor(model: llama_model, name: str) -> ptr:
+def llama_get_model_tensor(model: llama_model, name: str) -> ctypes.c_void_p:
     """Get a model tensor by name"""
     libllama.llama_get_model_tensor.argtypes = [llama_model_p, ctypes.c_char_p]
     libllama.llama_get_model_tensor.restype = ctypes.c_void_p
@@ -750,13 +758,13 @@ def llama_model_quantize(fname_inp: str, fname_out: str, params: llama_model_qua
     """Quantize a model. Returns 0 on success"""
     libllama.llama_model_quantize.argtypes = [ctypes.c_char_p, ctypes.c_char_p, llama_model_quantize_params_p]
     libllama.llama_model_quantize.restype = ctypes.c_int
-    return libllama.llama_model_quantize(fname_inp.encode('utf-8'), fname_out.encode('utf-8'), params)
+    return libllama.llama_model_quantize(fname_inp.encode('utf-8'), fname_out.encode('utf-8'), ctypes.byref(params))
 
 #
 # LoRA
 #
 
-def llama_lora_adapter_init(model: llama_model, path_lora: str) -> llama_lora_adapter:
+def llama_lora_adapter_init(model: llama_model, path_lora: str) -> llama_lora_adapter_p: # type: ignore
     """Initialize a LoRA adapter"""
     libllama.llama_lora_adapter_init.argtypes = [llama_model_p, ctypes.c_char_p]
     libllama.llama_lora_adapter_init.restype = llama_lora_adapter_p
@@ -790,9 +798,9 @@ def llama_lora_adapter_free(adapter: llama_lora_adapter) -> None:
 # Control vector
 #
 
-def llama_control_vector_apply(ctx: llama_context, data: ptr, len: int, n_embd: int, il_start: int, il_end: int) -> int:
+def llama_control_vector_apply(ctx: llama_context, data: ctypes.c_void_p, len: int, n_embd: int, il_start: int, il_end: int) -> int:
     """Apply a control vector to a context"""
-    libllama.llama_control_vector_apply.argtypes = [llama_context, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    libllama.llama_control_vector_apply.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     libllama.llama_control_vector_apply.restype = ctypes.c_int
     return libllama.llama_control_vector_apply(ctx, data, len, n_embd, il_start, il_end)
 
@@ -821,7 +829,7 @@ class llama_kv_cache_view(ctypes.Structure):
 
 llama_kv_cache_view_p = ctypes.POINTER(llama_kv_cache_view)
 
-def llama_kv_cache_view_init(ctx: llama_context, n_seq_max: int) -> llama_kv_cache_view:
+def llama_kv_cache_view_init(ctx: llama_context, n_seq_max: int) -> llama_kv_cache_view_p: # type: ignore
     """
     DEBUG ONLY
 
@@ -941,7 +949,7 @@ def llama_state_get_size(ctx: llama_context) -> int:
 def llama_get_state_size(*args):
     pass
 
-def llama_state_get_data(ctx: llama_context, dst: ptr, size: int) -> int:
+def llama_state_get_data(ctx: llama_context, dst: ctypes.c_void_p, size: int) -> int:
     """Copy the state to a destination address"""
     libllama.llama_state_get_data.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_int]
     libllama.llama_state_get_data.restype = ctypes.c_int
@@ -951,7 +959,7 @@ def llama_state_get_data(ctx: llama_context, dst: ptr, size: int) -> int:
 def llama_copy_state_data(*args):
     pass
 
-def llama_state_set_data(ctx: llama_context, src: ptr, size: int) -> int:
+def llama_state_set_data(ctx: llama_context, src: ctypes.c_void_p, size: int) -> int:
     """Set the state from a source address"""
     libllama.llama_state_set_data.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_int]
     libllama.llama_state_set_data.restype = ctypes.c_int
@@ -961,9 +969,9 @@ def llama_state_set_data(ctx: llama_context, src: ptr, size: int) -> int:
 def llama_set_state_data(*args):
     pass
 
-def llama_state_load_file(ctx: llama_context, path_session: str, tokens_out: ptr, n_token_capacity: int, n_token_count_out: ptr) -> bool:
+def llama_state_load_file(ctx: llama_context, path_session: str, tokens_out: ctypes.POINTER(ctypes.c_int), n_token_capacity: int, n_token_count_out: ctypes.POINTER(ctypes.c_int)) -> bool: # type: ignore
     """Load a state from a file"""
-    libllama.llama_state_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+    libllama.llama_state_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
     libllama.llama_state_load_file.restype = ctypes.c_bool
     return libllama.llama_state_load_file(ctx, path_session.encode('utf-8'), tokens_out, n_token_capacity, n_token_count_out)
 
@@ -971,9 +979,9 @@ def llama_state_load_file(ctx: llama_context, path_session: str, tokens_out: ptr
 def llama_load_session_file(*args):
     pass
 
-def llama_state_save_file(ctx: llama_context, path_session: str, tokens: ptr, n_token_count: int) -> bool:
+def llama_state_save_file(ctx: llama_context, path_session: str, tokens: ctypes.POINTER(ctypes.c_int), n_token_count: int) -> bool: # type: ignore
     """Save a state to a file"""
-    libllama.llama_state_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_int]
+    libllama.llama_state_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int]
     libllama.llama_state_save_file.restype = ctypes.c_bool
     return libllama.llama_state_save_file(ctx, path_session.encode('utf-8'), tokens, n_token_count)
 
@@ -987,13 +995,13 @@ def llama_state_seq_get_size(ctx: llama_context, llama_seq_id: int) -> int:
     libllama.llama_state_seq_get_size.restype = ctypes.c_ulong
     return libllama.llama_state_seq_get_size(ctx, llama_seq_id)
 
-def llama_state_seq_get_data(ctx: llama_context, dst: int, size: int, seq_id: int) -> int:
+def llama_state_seq_get_data(ctx: llama_context, dst: ctypes.c_void_p, size: int, seq_id: int) -> int:
     """Copy the KV cache of a single sequence into the specified buffer"""
-    libllama.llama_state_seq_get_data.argtypes = [llama_context_p, ctypes.c_ubyte, ctypes.c_ulong, ctypes.c_int32]
+    libllama.llama_state_seq_get_data.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int32]
     libllama.llama_state_seq_get_data.restype = ctypes.c_ulong
     return libllama.llama_state_seq_get_data(ctx, dst, size, seq_id)
 
-def llama_state_seq_set_data(ctx: llama_context, src: int, size: int, dest_seq_id: int) -> int:
+def llama_state_seq_set_data(ctx: llama_context, src: ctypes.c_void_p, size: int, dest_seq_id: int) -> int:
     """
     Copy the sequence data (originally copied with `llama_state_seq_get_data`)
     into the specified sequence
@@ -1002,17 +1010,17 @@ def llama_state_seq_set_data(ctx: llama_context, src: int, size: int, dest_seq_i
     - Positive: Ok
     - Zero: Failed to load
     """
-    libllama.llama_state_seq_set_data.argtypes = [llama_context_p, ctypes.c_ubyte, ctypes.c_ulong, ctypes.c_int32]
+    libllama.llama_state_seq_set_data.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int32]
     libllama.llama_state_seq_set_data.restype = ctypes.c_ulong
     return libllama.llama_state_seq_set_data(ctx, src, size, dest_seq_id)
 
-def llama_state_seq_save_file(ctx: llama_context, filepath: str, seq_id: int, tokens: ptr, n_token_count: int) -> int:
-    libllama.llama_state_seq_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_int32, ctypes.c_void_p, ctypes.c_ulong]
+def llama_state_seq_save_file(ctx: llama_context, filepath: str, seq_id: int, tokens: ctypes.POINTER(ctypes.c_int), n_token_count: int) -> int: # type: ignore
+    libllama.llama_state_seq_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(ctypes.c_int), ctypes.c_ulong]
     libllama.llama_state_seq_save_file.restype = ctypes.c_ulong
     return libllama.llama_state_seq_save_file(ctx, filepath.encode('utf-8'), seq_id, tokens, n_token_count)
 
-def llama_state_seq_load_file(ctx: llama_context, filepath: str, dest_seq_id: int, tokens_out: ptr, n_token_capacity: int, n_token_count_out: ptr) -> int:
-    libllama.llama_state_seq_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_int32, ctypes.c_void_p, ctypes.c_int32, ctypes.c_void_p]
+def llama_state_seq_load_file(ctx: llama_context, filepath: str, dest_seq_id: int, tokens_out: ctypes.POINTER(ctypes.c_int), n_token_capacity: int, n_token_count_out: ctypes.POINTER(ctypes.c_int)) -> int: # type: ignore
+    libllama.llama_state_seq_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(ctypes.c_int), ctypes.c_int32, ctypes.POINTER(ctypes.c_int)]
     libllama.llama_state_seq_load_file.restype = ctypes.c_ulong
     return libllama.llama_state_seq_load_file(ctx, filepath, dest_seq_id, tokens_out, n_token_capacity, n_token_count_out)
 
@@ -1020,20 +1028,20 @@ def llama_state_seq_load_file(ctx: llama_context, filepath: str, dest_seq_id: in
 # Batch
 #
 
-def llama_batch_get_one(tokens: ptr, n_tokens: int) -> llama_batch:
+def llama_batch_get_one(tokens: ctypes.POINTER(ctypes.c_int), n_tokens: int) -> llama_batch_p: # type: ignore
     """
     AVOID USING
 
     Return batch for single sequence of tokens
     """
-    libllama.llama_batch_get_one.argtypes = [ctypes.c_void_p, ctypes.c_int32]
-    libllama.llama_batch_get_one.restype = ctypes.c_void_p
+    libllama.llama_batch_get_one.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int32]
+    libllama.llama_batch_get_one.restype = llama_batch_p
     return libllama.llama_batch_get_one(tokens, n_tokens)
 
-def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> llama_batch:
-    """Allocates a batch of tokens"""
+def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> llama_batch_p: # type: ignore
+    """Allocate a batch of tokens"""
     libllama.llama_batch_init.argtypes = [ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
-    libllama.llama_batch_init.restype = ctypes.c_void_p
+    libllama.llama_batch_init.restype = llama_batch_p
     return libllama.llama_batch_init(n_tokens, embd, n_seq_max)
 
 def llama_batch_free(batch: llama_batch) -> None:
@@ -1088,7 +1096,7 @@ def llama_set_causal_attn(ctx: llama_context, causal_attn: bool) -> None:
     libllama.llama_set_causal_attn.restype = None
     libllama.llama_set_causal_attn(ctx, causal_attn)
 
-def llama_set_abort_callback(ctx: llama_context, abort_callback: ptr, abort_callback_data: ptr) -> None:
+def llama_set_abort_callback(ctx: llama_context, abort_callback: ctypes.c_void_p, abort_callback_data: ctypes.c_void_p) -> None:
     """Set an abort callback"""
     libllama.llama_set_abort_callback.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_set_abort_callback.restype = None
@@ -1104,7 +1112,7 @@ def llama_synchronize(ctx: llama_context) -> None:
     libllama.llama_synchronize.restype = None
     libllama.llama_synchronize(ctx)
 
-def llama_get_logits(ctx: llama_context) -> ptr:
+def llama_get_logits(ctx: llama_context) -> ctypes.POINTER(ctypes.c_float): # type: ignore
     """
     Get the token logits obtained from the last call to llama_decode()
     
@@ -1112,31 +1120,31 @@ def llama_get_logits(ctx: llama_context) -> ptr:
     Cols: n_vocab
     """
     libllama.llama_get_logits.argtypes = [llama_context_p]
-    libllama.llama_get_logits.restype = ctypes.c_void_p
+    libllama.llama_get_logits.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_logits(ctx)
 
-def llama_get_logits_ith(ctx: llama_context, i: int) -> ptr:
+def llama_get_logits_ith(ctx: llama_context, i: int) -> ctypes.POINTER(ctypes.c_float): # type: ignore
     """Get the logits for the ith token"""
-    libllama.llama_get_logits_ith.argtypes = [llama_context, ctypes.c_int]
-    libllama.llama_get_logits_ith.restype = ctypes.c_void_p
+    libllama.llama_get_logits_ith.argtypes = [llama_context_p, ctypes.c_int]
+    libllama.llama_get_logits_ith.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_logits_ith(ctx, i)
 
-def llama_get_embeddings(ctx: llama_context) -> ptr:
+def llama_get_embeddings(ctx: llama_context) -> ctypes.POINTER(ctypes.c_float): # type: ignore
     """Get all output token embeddings"""
     libllama.llama_get_embeddings.argtypes = [llama_context_p]
-    libllama.llama_get_embeddings.restype = ctypes.c_void_p
+    libllama.llama_get_embeddings.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_embeddings(ctx)
 
-def llama_get_embeddings_ith(ctx: llama_context, i: int) -> ptr:
+def llama_get_embeddings_ith(ctx: llama_context, i: int) -> ctypes.POINTER(ctypes.c_float): # type: ignore
     """Get the embeddings for the ith token"""
     libllama.llama_get_embeddings_ith.argtypes = [llama_context_p, ctypes.c_int]
-    libllama.llama_get_embeddings_ith.restype = ctypes.c_void_p
+    libllama.llama_get_embeddings_ith.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_embeddings_ith(ctx, i)
 
-def llama_get_embeddings_seq(ctx: llama_context, seq_id: int) -> ptr:
+def llama_get_embeddings_seq(ctx: llama_context, seq_id: int) -> ctypes.POINTER(ctypes.c_float): # type: ignore
     """Get the embeddings for a sequence id"""
     libllama.llama_get_embeddings_seq.argtypes = [llama_context_p, ctypes.c_int]
-    libllama.llama_get_embeddings_seq.restype = ctypes.c_void_p
+    libllama.llama_get_embeddings_seq.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_embeddings_seq(ctx, seq_id)
 
 #
@@ -1178,43 +1186,43 @@ def llama_token_is_control(model: llama_model, token: int) -> bool:
 #
 
 def llama_token_bos(model: llama_model) -> int:
-    """Get the BOS token"""
+    """Get the BOS token. Returns -1 if not found."""
     libllama.llama_token_bos.argtypes = [llama_model_p]
     libllama.llama_token_bos.restype = ctypes.c_int
     return libllama.llama_token_bos(model)
 
 def llama_token_eos(model: llama_model) -> int:
-    """Get the EOS token"""
+    """Get the EOS token. Returns -1 if not found."""
     libllama.llama_token_eos.argtypes = [llama_model_p]
     libllama.llama_token_eos.restype = ctypes.c_int
     return libllama.llama_token_eos(model)
 
 def llama_token_eot(model: llama_model) -> int:
-    """Get the end-of-turn token"""
+    """Get the end-of-turn token. Returns -1 if not found."""
     libllama.llama_token_eot.argtypes = [llama_model_p]
     libllama.llama_token_eot.restype = ctypes.c_int
     return libllama.llama_token_eot(model)
 
 def llama_token_cls(model: llama_model) -> int:
-    """Get the classification token"""
+    """Get the classification token. Returns -1 if not found."""
     libllama.llama_token_cls.argtypes = [llama_model_p]
     libllama.llama_token_cls.restype = ctypes.c_int
     return libllama.llama_token_cls(model)
 
 def llama_token_sep(model: llama_model) -> int:
-    """Get the sentence separator token"""
+    """Get the sentence separator token. Returns -1 if not found."""
     libllama.llama_token_sep.argtypes = [llama_model_p]
     libllama.llama_token_sep.restype = ctypes.c_int
     return libllama.llama_token_sep(model)
 
 def llama_token_nl(model: llama_model) -> int:
-    """Get the next-line token"""
+    """Get the newline token. Returns -1 if not found."""
     libllama.llama_token_nl.argtypes = [llama_model_p]
     libllama.llama_token_nl.restype = ctypes.c_int
     return libllama.llama_token_nl(model)
 
 def llama_token_pad(model: llama_model) -> int:
-    """Get the padding token"""
+    """Get the padding token. Returns -1 if not found."""
     libllama.llama_token_pad.argtypes = [llama_model_p]
     libllama.llama_token_pad.restype = ctypes.c_int
     return libllama.llama_token_pad(model)
@@ -1244,37 +1252,37 @@ def llama_token_suffix(*args):
     pass
 
 def llama_token_fim_pre(model: llama_model) -> int:
-    """Infill prefix token"""
+    """Get the infill prefix token. Returns -1 if not found."""
     libllama.llama_token_fim_pre.argtypes = [llama_model_p]
     libllama.llama_token_fim_pre.restype = ctypes.c_int32
     return libllama.llama_token_fim_pre(model)
 
 def llama_token_fim_suf(model: llama_model) -> int:
-    """Infill suffix token"""
+    """Get the infill suffix token. Returns -1 if not found."""
     libllama.llama_token_fim_suf.argtypes = [llama_model_p]
     libllama.llama_token_fim_suf.restype = ctypes.c_int32
     return libllama.llama_token_fim_suf(model)
 
 def llama_token_fim_mid(model: llama_model) -> int:
-    """Infill middle token"""
+    """Get the infill middle token. Returns -1 if not found."""
     libllama.llama_token_fim_mid.argtypes = [llama_model_p]
     libllama.llama_token_fim_mid.restype = ctypes.c_int32
     return libllama.llama_token_fim_mid(model)
 
 def llama_token_fim_pad(model: llama_model) -> int:
-    """Infill pad token"""
+    """Get the infill pad token. Returns -1 if not found."""
     libllama.llama_token_fim_pad.argtypes = [llama_model_p]
     libllama.llama_token_fim_pad.restype = ctypes.c_int32
     return libllama.llama_token_fim_pad(model)
 
 def llama_token_fim_rep(model: llama_model) -> int:
-    """Infill repo token"""
+    """Get the infill repo token. Returns -1 if not found."""
     libllama.llama_token_fim_rep.argtypes = [llama_model_p]
     libllama.llama_token_fim_rep.restype = ctypes.c_int32
     return libllama.llama_token_fim_rep(model)
 
 def llama_token_fim_sep(model: llama_model) -> int:
-    """Infill sep token"""
+    """Get the infill separator token. Returns -1 if not found."""
     libllama.llama_token_fim_sep.argtypes = [llama_model_p]
     libllama.llama_token_fim_sep.restype = ctypes.c_int32
     return libllama.llama_token_fim_sep(model)
@@ -1283,21 +1291,21 @@ def llama_token_fim_sep(model: llama_model) -> int:
 # Tokenization
 #
 
-def llama_tokenize(model: llama_model, text: str, text_len: int, tokens: ptr, n_tokens_max: int, add_special: bool, parse_special: bool) -> int:
+def llama_tokenize(model: llama_model, text: str, text_len: int, tokens: ctypes.POINTER(ctypes.c_int), n_tokens_max: int, add_special: bool, parse_special: bool) -> int: # type: ignore
     """Tokenize a text into tokens"""
-    libllama.llama_tokenize.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
+    libllama.llama_tokenize.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_tokenize.restype = ctypes.c_int
     return libllama.llama_tokenize(model, text.encode('utf-8'), text_len, tokens, n_tokens_max, add_special, parse_special)
 
-def llama_token_to_piece(model: llama_model, token: int, buf: ptr, length: int, lstrip: int, special: bool) -> int:
+def llama_token_to_piece(model: llama_model, token: int, buf: ctypes.c_char_p, length: int, lstrip: int, special: bool) -> int:
     """Convert a token to a piece of text"""
-    libllama.llama_token_to_piece.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
+    libllama.llama_token_to_piece.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
     libllama.llama_token_to_piece.restype = ctypes.c_int
     return libllama.llama_token_to_piece(model, token, buf, length, lstrip, special)
 
-def llama_detokenize(model: llama_model, tokens: ptr, n_tokens: int, text: ptr, text_len_max: int, remove_special: bool, unparse_special: bool) -> int:
+def llama_detokenize(model: llama_model, tokens: ctypes.POINTER(ctypes.c_int), n_tokens: int, text: ctypes.c_char_p, text_len_max: int, remove_special: bool, unparse_special: bool) -> int: # type: ignore
     """Detokenize tokens into a text"""
-    libllama.llama_detokenize.argtypes = [llama_model_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
+    libllama.llama_detokenize.argtypes = [llama_model_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_detokenize.restype = ctypes.c_int
     return libllama.llama_detokenize(model, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
 
@@ -1508,9 +1516,9 @@ def llama_sampler_init_penalties(n_vocab: int, special_eos_id: int, linefeed_id:
     libllama.llama_sampler_init_penalties.restype = llama_sampler_p
     return libllama.llama_sampler_init_penalties(n_vocab, special_eos_id, linefeed_id, penalty_last_n, penalty_repeat, penalty_freq, penalty_present, penalize_nl, ignore_eos)
 
-def llama_sampler_init_dry(model: llama_model, dry_multiplier: float, dry_base: float, dry_allowed_length: int, dry_penalty_last_n: int, seq_breakers: ptr, num_breakers: int) -> llama_sampler:
+def llama_sampler_init_dry(model: llama_model, dry_multiplier: float, dry_base: float, dry_allowed_length: int, dry_penalty_last_n: int, seq_breakers: ctypes.POINTER(ctypes.c_char_p), num_breakers: int) -> llama_sampler: # type: ignore
     """Initialize a DRY sampler"""
-    libllama.llama_sampler_init_dry.argtypes = [llama_model_p, ctypes.c_float, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+    libllama.llama_sampler_init_dry.argtypes = [llama_model_p, ctypes.c_float, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
     libllama.llama_sampler_init_dry.restype = llama_sampler_p
     return libllama.llama_sampler_init_dry(model, dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, seq_breakers, num_breakers)
 
@@ -1524,7 +1532,8 @@ def llama_sampler_init_infill(model: llama_model) -> llama_sampler:
     """
     Initialize an infill sampler
     
-    This sampler is meant to be used for fill-in-the-middle infilling. It's supposed to be used after top_k + top_p sampling"""
+    This sampler is meant to be used for fill-in-the-middle infilling. It's supposed to be used after top_k + top_p sampling
+    """
     libllama.llama_sampler_init_infill.argtypes = [llama_model_p]
     libllama.llama_sampler_init_infill.restype = llama_sampler_p
     return libllama.llama_sampler_init_infill(model)
@@ -1550,16 +1559,16 @@ def llama_sampler_sample(smpl: llama_sampler, ctx: llama_context, idx: int) -> i
 #
 
 # llama_split_path(split_path, sizeof(split_path), "/models/ggml-model-q4_0", 2, 4) => split_path = "/models/ggml-model-q4_0-00002-of-00004.gguf"
-def llama_split_path(split_path: ptr, maxlen: int, path_prefix: str, split_no: int, split_count: int) -> int:
+def llama_split_path(split_path: ctypes.c_char_p, maxlen: int, path_prefix: str, split_no: int, split_count: int) -> int:
     """Build a split GGUF final path for a chunk"""
-    libllama.llama_split_path.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    libllama.llama_split_path.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
     libllama.llama_split_path.restype = ctypes.c_int
     return libllama.llama_split_path(split_path, maxlen, path_prefix.encode('utf-8'), split_no, split_count)
 
 # llama_split_prefix(split_prefix, 64, "/models/ggml-model-q4_0-00002-of-00004.gguf", 2, 4) => split_prefix = "/models/ggml-model-q4_0"
-def llama_split_prefix(split_prefix: ptr, maxlen: int, split_path: str, split_no: int, split_count: int) -> int:
+def llama_split_prefix(split_prefix: ctypes.c_char_p, maxlen: int, split_path: str, split_no: int, split_count: int) -> int:
     """Extract the path prefix from a split path"""
-    libllama.llama_split_prefix.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    libllama.llama_split_prefix.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
     libllama.llama_split_prefix.restype = ctypes.c_int
     return libllama.llama_split_prefix(split_prefix, maxlen, split_path.encode('utf-8'), split_no, split_count)
 
@@ -1577,7 +1586,7 @@ def llama_print_system_info() -> None:
 # Log callback
 #
 
-def llama_log_set(log_callback: ptr, user_data: ptr) -> None:
+def llama_log_set(log_callback: ctypes.c_void_p, user_data: ctypes.c_void_p) -> None:
     """Set a callback for logging events"""
     libllama.llama_log_set.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     libllama.llama_log_set.restype = None
