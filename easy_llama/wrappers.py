@@ -102,7 +102,7 @@ class CtxWrapper:
         n_ctx = 512,
         n_batch = 2048,
         n_ubatch = 512,
-        #n_seq_max = 1, # AKA n_parallel, values >1 unsupported
+        n_seq_max = 1,
         n_threads = 0,
         n_threads_batch = 0,
         rope_scaling_type = lib.LlamaRopeScalingType.LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED,
@@ -137,7 +137,11 @@ class CtxWrapper:
         self.params.n_ctx = n_ctx
         self.params.n_batch = n_batch
         self.params.n_ubatch = n_ubatch
-        self.params.n_seq_max = 1
+        self.params.n_seq_max = n_seq_max
+        if self.params.n_seq_max != 1:
+            print_verbose(
+                f'WARNING: n_seq_max is not 1, this is not recommended'
+            )
         self.params.n_threads = _get_optimal_n_threads() if n_threads <= 0 else n_threads
         self.params.n_threads_batch = (
                 _get_optimal_n_threads_batch()
@@ -211,8 +215,11 @@ def _get_optimal_n_threads_batch() -> int:
 # End of functions / Begin test
 #
 
-# Example usage
 if __name__ == '__main__':
+
+    # Handy-dandy basic test of wrappers
+    # Assumes model.gguf is available in the current working directory
+
     import os
 
     if not os.path.exists('./model.gguf'):
@@ -224,10 +231,10 @@ if __name__ == '__main__':
     print("-" * 80)
 
     test_print("constructing model wrapper (loading model)")
-    model_wrapper = ModelWrapper('./model.gguf', n_gpu_layers=-1)
+    model_wrapper = ModelWrapper('./model.gguf')
 
     test_print("constructing context wrapper (loading context)")
-    ctx_wrapper = CtxWrapper(model_wrapper, n_ctx=131072, flash_attn=True)
+    ctx_wrapper = CtxWrapper(model_wrapper)
 
     test_print("freeing context via wrapper")
     ctx_wrapper.free()
