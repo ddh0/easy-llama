@@ -11,10 +11,10 @@ https://github.com/ddh0/easy-llama/blob/main/DOCS.md
 """
 
 from . import libllama
-from . import wrappers
 from . import samplers
 from . import formats
 from . import thread
+from . import llama
 from . import webui
 from . import utils
 from . import model

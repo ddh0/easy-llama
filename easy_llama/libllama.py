@@ -27,7 +27,7 @@ from typing import Optional
 
 faulthandler.enable() # prints more helpful info if python crashes
 
-class Deprecated(Exception):
+class LlamaDeprecatedException(Exception):
     """
     Exception raised when calling functions marked with DEPRECATED in libllama
     """
@@ -41,12 +41,12 @@ def DEPRECATED(new_func_name: Optional[str] = None):
 
         def deprecator(*args, **kwargs):
             if new_func_name is None:
-                raise Deprecated(
+                raise LlamaDeprecatedException(
                     f"the function {func.__name__} is marked as deprecated. you "
                     f"cannot use it."
                 )
             else:
-                raise Deprecated(
+                raise LlamaDeprecatedException(
                     f"the function {func.__name__} is marked as deprecated. you "
                     f"cannot use it. use {new_func_name} instead."
                 )
@@ -740,7 +740,7 @@ def llama_model_desc(model: llama_model, buf: ctypes.c_char_p, buf_size: int) ->
     return libllama.llama_model_desc(model, buf, buf_size)
 
 def llama_model_size(model: llama_model) -> int:
-    """Get the total size of all tensors in the model"""
+    """Get the total size of all tensors in the model in bytes"""
     libllama.llama_model_size.argtypes = [llama_model_p]
     libllama.llama_model_size.restype = ctypes.c_int
     return libllama.llama_model_size(model)
