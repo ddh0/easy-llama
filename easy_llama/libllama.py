@@ -55,8 +55,12 @@ def DEPRECATED(new_func_name: Optional[str] = None):
     
     return decorator
 
-def _libprint(text: str) -> None:
-    for line in text.split("\n"):
+def _libllama_decode_and_print(text: bytes) -> None:
+    """
+    Given some utf-8 encoded text, decode it and print to stderr with prefix
+    """
+    decoded_text = text.decode('utf-8')
+    for line in decoded_text.split("\n"):
         print('easy_llama: libllama:', line, file=sys.stderr)
     sys.stderr.flush()
 
@@ -1190,43 +1194,43 @@ def llama_token_is_control(model: llama_model, token: int) -> bool:
 #
 
 def llama_token_bos(model: llama_model) -> int:
-    """Get the BOS token. Returns -1 if not found."""
+    """Get the BOS token ID. Returns -1 if not found."""
     libllama.llama_token_bos.argtypes = [llama_model_p]
     libllama.llama_token_bos.restype = ctypes.c_int
     return libllama.llama_token_bos(model)
 
 def llama_token_eos(model: llama_model) -> int:
-    """Get the EOS token. Returns -1 if not found."""
+    """Get the EOS token ID. Returns -1 if not found."""
     libllama.llama_token_eos.argtypes = [llama_model_p]
     libllama.llama_token_eos.restype = ctypes.c_int
     return libllama.llama_token_eos(model)
 
 def llama_token_eot(model: llama_model) -> int:
-    """Get the end-of-turn token. Returns -1 if not found."""
+    """Get the end-of-turn token ID. Returns -1 if not found."""
     libllama.llama_token_eot.argtypes = [llama_model_p]
     libllama.llama_token_eot.restype = ctypes.c_int
     return libllama.llama_token_eot(model)
 
 def llama_token_cls(model: llama_model) -> int:
-    """Get the classification token. Returns -1 if not found."""
+    """Get the classification token ID. Returns -1 if not found."""
     libllama.llama_token_cls.argtypes = [llama_model_p]
     libllama.llama_token_cls.restype = ctypes.c_int
     return libllama.llama_token_cls(model)
 
 def llama_token_sep(model: llama_model) -> int:
-    """Get the sentence separator token. Returns -1 if not found."""
+    """Get the sentence separator token ID. Returns -1 if not found."""
     libllama.llama_token_sep.argtypes = [llama_model_p]
     libllama.llama_token_sep.restype = ctypes.c_int
     return libllama.llama_token_sep(model)
 
 def llama_token_nl(model: llama_model) -> int:
-    """Get the newline token. Returns -1 if not found."""
+    """Get the newline token ID. Returns -1 if not found."""
     libllama.llama_token_nl.argtypes = [llama_model_p]
     libllama.llama_token_nl.restype = ctypes.c_int
     return libllama.llama_token_nl(model)
 
 def llama_token_pad(model: llama_model) -> int:
-    """Get the padding token. Returns -1 if not found."""
+    """Get the padding token ID. Returns -1 if not found."""
     libllama.llama_token_pad.argtypes = [llama_model_p]
     libllama.llama_token_pad.restype = ctypes.c_int
     return libllama.llama_token_pad(model)
@@ -1256,37 +1260,37 @@ def llama_token_suffix(*args):
     pass
 
 def llama_token_fim_pre(model: llama_model) -> int:
-    """Get the infill prefix token. Returns -1 if not found."""
+    """Get the infill prefix token ID. Returns -1 if not found."""
     libllama.llama_token_fim_pre.argtypes = [llama_model_p]
     libllama.llama_token_fim_pre.restype = ctypes.c_int32
     return libllama.llama_token_fim_pre(model)
 
 def llama_token_fim_suf(model: llama_model) -> int:
-    """Get the infill suffix token. Returns -1 if not found."""
+    """Get the infill suffix token ID. Returns -1 if not found."""
     libllama.llama_token_fim_suf.argtypes = [llama_model_p]
     libllama.llama_token_fim_suf.restype = ctypes.c_int32
     return libllama.llama_token_fim_suf(model)
 
 def llama_token_fim_mid(model: llama_model) -> int:
-    """Get the infill middle token. Returns -1 if not found."""
+    """Get the infill middle token ID. Returns -1 if not found."""
     libllama.llama_token_fim_mid.argtypes = [llama_model_p]
     libllama.llama_token_fim_mid.restype = ctypes.c_int32
     return libllama.llama_token_fim_mid(model)
 
 def llama_token_fim_pad(model: llama_model) -> int:
-    """Get the infill pad token. Returns -1 if not found."""
+    """Get the infill pad token ID. Returns -1 if not found."""
     libllama.llama_token_fim_pad.argtypes = [llama_model_p]
     libllama.llama_token_fim_pad.restype = ctypes.c_int32
     return libllama.llama_token_fim_pad(model)
 
 def llama_token_fim_rep(model: llama_model) -> int:
-    """Get the infill repo token. Returns -1 if not found."""
+    """Get the infill repo token ID. Returns -1 if not found."""
     libllama.llama_token_fim_rep.argtypes = [llama_model_p]
     libllama.llama_token_fim_rep.restype = ctypes.c_int32
     return libllama.llama_token_fim_rep(model)
 
 def llama_token_fim_sep(model: llama_model) -> int:
-    """Get the infill separator token. Returns -1 if not found."""
+    """Get the infill separator token ID. Returns -1 if not found."""
     libllama.llama_token_fim_sep.argtypes = [llama_model_p]
     libllama.llama_token_fim_sep.restype = ctypes.c_int32
     return libllama.llama_token_fim_sep(model)
@@ -1296,7 +1300,29 @@ def llama_token_fim_sep(model: llama_model) -> int:
 #
 
 def llama_tokenize(model: llama_model, text: str, text_len: int, tokens: ctypes.POINTER(ctypes.c_int), n_tokens_max: int, add_special: bool, parse_special: bool) -> int: # type: ignore
-    """Tokenize a text into tokens"""
+    """
+    Convert the provided text into tokens
+
+    - model:
+        The llama_model to use.
+    - text:
+        The text to convert.
+    - text_len:
+        TODO
+    - tokens:
+        The tokens pointer must be large enough to hold the resulting tokens.
+    - n_tokens_max:
+        TODO
+    - add_special:
+        Allow to add BOS and EOS tokens if model is configured to do so.
+    - parse_special:
+        Allow tokenizing special and/or control tokens which otherwise are not
+        exposed and treated as plaintext. Does not insert a leading space.
+    
+    Returns the number of tokens on success, no more than n_tokens_max. Returns
+    a negative number on failure - the number of tokens that would have been
+    returned.
+    """
     libllama.llama_tokenize.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_tokenize.restype = ctypes.c_int
     return libllama.llama_tokenize(model, text.encode('utf-8'), text_len, tokens, n_tokens_max, add_special, parse_special)
@@ -1308,7 +1334,28 @@ def llama_token_to_piece(model: llama_model, token: int, buf: ctypes.c_char_p, l
     return libllama.llama_token_to_piece(model, token, buf, length, lstrip, special)
 
 def llama_detokenize(model: llama_model, tokens: ctypes.POINTER(ctypes.c_int), n_tokens: int, text: ctypes.c_char_p, text_len_max: int, remove_special: bool, unparse_special: bool) -> int: # type: ignore
-    """Detokenize tokens into a text"""
+    """
+    Convert the provided tokens into text
+
+    - model:
+        The llama_model to use.
+    - tokens:
+        The tokens to convert.
+    - n_tokens:
+        TODO
+    - text:
+        The char pointer must be large enough to hold the resulting text.
+    - text_len_max:
+        TODO
+    - remove_special:
+        Allow to remove BOS and EOS tokens if model is configured to do so.
+    - unparse_special:
+        If true, special tokens are rendered in the output.
+    
+    Returns the number of chars/bytes on success, no more than text_len_max.
+    Returns a negative number on failure - the number of chars/bytes that would
+    have been returned.
+    """
     libllama.llama_detokenize.argtypes = [llama_model_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_detokenize.restype = ctypes.c_int
     return libllama.llama_detokenize(model, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
@@ -1584,7 +1631,8 @@ def llama_print_system_info() -> str:
     """Get system information"""
     libllama.llama_print_system_info.argtypes = []
     libllama.llama_print_system_info.restype = ctypes.c_char_p
-    _libprint(libllama.llama_print_system_info().decode('utf-8'))
+    text = libllama.llama_print_system_info()
+    _libllama_decode_and_print(text)
 
 #
 # Log callback
@@ -1692,7 +1740,7 @@ if __name__ == '__main__':
     test_print(f"calling llama_backend_init ...")
     llama_backend_init()
 
-    test_print(f"calling llama_print_system_info ... ")
+    test_print(f"calling llama_print_system_info ...")
     llama_print_system_info()
 
     test_print(f"calling llama_model_default_params ...")

@@ -11,6 +11,7 @@ https://github.com/ddh0/easy-llama/blob/main/DOCS.md
 """
 
 from . import libllama
+from . import wrappers
 from . import samplers
 from . import formats
 from . import thread
@@ -20,4 +21,4 @@ from . import model
 
 from .thread import Thread
 from .model  import Model
-from .webui import WebUI
+from .webui  import WebUI
