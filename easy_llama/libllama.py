@@ -75,6 +75,9 @@ libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama
 # Type hints
 #
 
+C_NULL = None
+C_NULLPTR = ctypes.c_void_p(C_NULL)
+
 class ptr:
     """Generic type hint representing any ctypes pointer"""
 
@@ -118,6 +121,12 @@ LLAMA_STATE_SEQ_VERSION = 2
 # it is the maximum value for int32, it is used as the value for n_gpu_layers
 # when all layers should be offloaded
 MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
+
+#
+# Keep state for backend
+#
+
+_BACKEND_INIT = False
 
 #
 # Stuff from llama.cpp/ggml/include/ggml.h
@@ -362,6 +371,10 @@ class llama_model_kv_override(ctypes.Structure):
 
 llama_model_kv_override_p = ctypes.POINTER(llama_model_kv_override)
 
+dummy_progress_callback = ctypes.CFUNCTYPE(
+    ctypes.c_void_p, ctypes.c_float, ctypes.c_void_p
+)
+
 class llama_model_params(ctypes.Structure):
     _fields_ = [
         ("devices", ctypes.POINTER(ctypes.c_void_p)),  # NULL-terminated list of devices to use for offloading (if NULL, all available devices are used)
@@ -370,7 +383,7 @@ class llama_model_params(ctypes.Structure):
         ("main_gpu", ctypes.c_int32),  # the GPU that is used for the entire model when split_mode is LLAMA_SPLIT_MODE_NONE
         ("tensor_split", ctypes.POINTER(ctypes.c_float)),  # proportion of the model (layers or rows) to offload to each GPU, size: llama_max_devices()
         ("rpc_servers", ctypes.c_char_p),  # comma separated list of RPC servers to use for offloading
-        ("progress_callback", ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_float, ctypes.c_void_p)),  # Called with a progress value between 0.0 and 1.0. Pass NULL to disable.
+        ("progress_callback", dummy_progress_callback),  # Called with a progress value between 0.0 and 1.0. Pass NULL to disable.
         ("progress_callback_user_data", ctypes.c_void_p),  # context pointer passed to the progress callback
         ("kv_overrides", ctypes.POINTER(llama_model_kv_override)),  # override key-value pairs of the model meta data
         ("vocab_only", ctypes.c_bool),  # only load the vocabulary, no weights
@@ -380,6 +393,12 @@ class llama_model_params(ctypes.Structure):
     ]
 
 llama_model_params_p = ctypes.POINTER(llama_model_params)
+
+dummy_eval_callback = ctypes.CFUNCTYPE(
+    ctypes.c_void_p, ctypes.c_bool, ctypes.c_void_p
+)
+
+dummy_abort_callback = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p)
 
 class llama_context_params(ctypes.Structure):
     _fields_ = [
@@ -400,7 +419,7 @@ class llama_context_params(ctypes.Structure):
         ("yarn_beta_slow", ctypes.c_float),  # YaRN high correction dim
         ("yarn_orig_ctx", ctypes.c_uint32),  # YaRN original context size
         ("defrag_thold", ctypes.c_float),  # defragment the KV cache if holes/size > thold, < 0 disabled (default)
-        ("cb_eval", ctypes.CFUNCTYPE(None, ctypes.c_void_p)),  # callback for eval
+        ("cb_eval", dummy_eval_callback),  # callback for eval
         ("cb_eval_user_data", ctypes.c_void_p),  # user data for eval callback
         ("type_k", ctypes.c_int),  # data type for K cache [EXPERIMENTAL]
         ("type_v", ctypes.c_int),  # data type for V cache [EXPERIMENTAL]
@@ -409,7 +428,7 @@ class llama_context_params(ctypes.Structure):
         ("offload_kqv", ctypes.c_bool),  # whether to offload the KQV ops (including the KV cache) to GPU
         ("flash_attn", ctypes.c_bool),  # whether to use flash attention [EXPERIMENTAL]
         ("no_perf", ctypes.c_bool),  # whether to measure performance timings
-        ("abort_callback", ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p)),  # callback for abort
+        ("abort_callback", dummy_abort_callback),  # callback for abort
         ("abort_callback_data", ctypes.c_void_p),  # user data for abort callback
     ]
 
@@ -494,9 +513,11 @@ def llama_model_quantize_default_params() -> llama_model_quantize_params:
 
 def llama_backend_init() -> None:
     """Initialize the llama + ggml backend"""
+    global _BACKEND_INIT
     libllama.llama_backend_init.argtypes = []
     libllama.llama_backend_init.restype = None
     libllama.llama_backend_init()
+    _BACKEND_INIT = True
 
 def llama_numa_init(numa: int) -> None:
     """Initialize NUMA optimizations globally"""
@@ -522,9 +543,11 @@ def llama_backend_free() -> None:
     
     Call once at the end of the program - currently only used for MPI
     """
+    global _BACKEND_INIT
     libllama.llama_backend_free.argtypes = []
     libllama.llama_backend_free.restype = None
     libllama.llama_backend_free()
+    _BACKEND_INIT = False
 
 def llama_load_model_from_file(path_model: str, params: llama_model_params) -> llama_model_p: # type: ignore
     """Load a llama model from a file - returns a pointer"""
@@ -538,7 +561,7 @@ def llama_free_model(model: llama_model) -> None:
     libllama.llama_free_model.restype = None
     libllama.llama_free_model(model)
 
-def llama_new_context_with_model(model: llama_model, params: llama_context_params) -> llama_context_p: # type: ignore
+def llama_new_context_with_model(model: llama_model, params: llama_context_params) -> 'llama_context_p': # type: ignore
     """Create a new llama context with a loaded model"""
     libllama.llama_new_context_with_model.argtypes = [llama_model_p, llama_context_params_p]
     libllama.llama_new_context_with_model.restype = llama_context_p
@@ -1719,6 +1742,10 @@ def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
     libllama.llama_perf_sampler_reset.argtypes = [llama_sampler_p]
     libllama.llama_perf_sampler_reset.restype = None
     libllama.llama_perf_sampler_reset(smpl)
+
+#
+# End of LLAMA_API / Begin test
+#
 
 if __name__ == '__main__':
 
