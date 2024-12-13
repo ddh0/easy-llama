@@ -55,13 +55,19 @@ def DEPRECATED(new_func_name: Optional[str] = None):
     
     return decorator
 
+def _print_verbose(text: str) -> None:
+    print(
+        f"easy_llama:",
+        text, file=sys.stderr, flush=True
+    )
+
 def _libllama_decode_and_print(text: bytes) -> None:
     """
     Given some utf-8 encoded text, decode it and print to stderr with prefix
     """
     decoded_text = text.decode('utf-8')
     for line in decoded_text.split("\n"):
-        print('easy_llama: libllama:', line, file=sys.stderr)
+        _print_verbose(f'libllama: {line}')
     sys.stderr.flush()
 
 #
@@ -138,6 +144,7 @@ GGML_EXIT_ABORTED = 1
 GGML_ROPE_TYPE_NEOX = 2
 
 GGUF_MAGIC = 0x46554747 # "GGUF"
+GGUF_MAGIC_BYTES = b'GGUF'
 
 GGUF_VERSION = 3
 
@@ -1757,8 +1764,10 @@ if __name__ == '__main__':
     if not os.path.exists('./model.gguf'):
         raise FileNotFoundError('the file ./model.gguf was not found')
 
+    this_module_name = os.path.splitext(os.path.basename(__file__))[0]
+
     def test_print(text: str) -> None:
-        print(f'easy_llama:', text, file=sys.stderr, flush=True)
+        _print_verbose(f'{this_module_name} test: {text}')
 
     test_print(f"begin basic libllama test")
     

@@ -184,21 +184,7 @@ class Model:
 
         assert_type(verbose, bool, 'verbose', 'Model')        
         assert_type(model_path, str, 'model_path', 'Model')
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(
-                f"Model: the given model_path {model_path!r} does not exist"
-            )
-        if os.path.isdir(model_path):
-            raise IsADirectoryError(
-                f"Model: the given model_path {model_path!r} is a directory, "
-                "not a GGUF file"
-            )
-        if not model_path.endswith(('.gguf', '.GGUF')):
-            raise ValueError(
-                f"Model: the given model_path {model_path!r} does not end in "
-                f"'.gguf' or '.GGUF'. easy-llama refuses to load from files "
-                f"that do not have the correct extension"
-            )
+
         assert_type(context_length, (int, NoneType), 'context_length', 'Model')
         assert_type(n_gpu_layers, int, 'n_gpu_layers', 'Model')
         assert_type(offload_kv_cache, bool, 'offload_kv_cache', 'Model')

@@ -8,12 +8,10 @@ from ._version import __version__
 
 import os
 import sys
-import struct
 import numpy as np
 
 from typing     import Iterable, TextIO, Optional
 from .constants import Colors, GGUFValueType
-from io         import BufferedReader
 from .libllama  import GGUF_MAGIC
 
 
@@ -122,6 +120,12 @@ def print_warning(text: str) -> None:
         text, file=sys.stderr, flush=True
     )
 
+def print_error(text: str) -> None:
+    print(
+        f"{RESET}easy_llama: {RED}ERROR{RESET}:",
+        text, file=sys.stderr, flush=True
+    )
+
 def assert_type(
     obj: object,
     expected_type: type | tuple[type],
@@ -172,154 +176,3 @@ def assert_only_ints(iterable: Iterable) -> None:
         raise TypeAssertionError(
             f"assert_only_ints: some item in the given iterable is not an int"
         )
-
-
-class QuickGGUFReader:
-    # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
-
-    # the GGUF format versions that this class supports
-    SUPPORTED_GGUF_VERSIONS = [2, 3]
-
-    # GGUF only supports execution on little or big endian machines
-    if sys.byteorder not in ['little', 'big']:
-        raise ValueError(
-            "host is not little or big endian - GGUF is unsupported"
-        )
-    
-    # arguments for struct.unpack() based on gguf value type
-    value_packing: dict = {
-        GGUFValueType.UINT8   : "=B",
-        GGUFValueType.INT8    : "=b",
-        GGUFValueType.UINT16  : "=H",
-        GGUFValueType.INT16   : "=h",
-        GGUFValueType.UINT32  : "=I",
-        GGUFValueType.INT32   : "=i",
-        GGUFValueType.FLOAT32 : "=f",
-        GGUFValueType.UINT64  : "=Q",
-        GGUFValueType.INT64   : "=q",
-        GGUFValueType.FLOAT64 : "=d",
-        GGUFValueType.BOOL    : "?"
-    }
-
-    # length in bytes for each gguf value type
-    value_lengths: dict = {
-        GGUFValueType.UINT8   : 1,
-        GGUFValueType.INT8    : 1,
-        GGUFValueType.UINT16  : 2,
-        GGUFValueType.INT16   : 2,
-        GGUFValueType.UINT32  : 4,
-        GGUFValueType.INT32   : 4,
-        GGUFValueType.FLOAT32 : 4,
-        GGUFValueType.UINT64  : 8,
-        GGUFValueType.INT64   : 8,
-        GGUFValueType.FLOAT64 : 8,
-        GGUFValueType.BOOL    : 1
-    }
-
-    @staticmethod
-    def unpack(value_type: GGUFValueType, file: BufferedReader):
-        return struct.unpack(
-            QuickGGUFReader.value_packing.get(value_type),
-            file.read(QuickGGUFReader.value_lengths.get(value_type))
-        )[0]
-
-    @staticmethod
-    def get_single(
-            value_type: GGUFValueType,
-            file: BufferedReader
-        ) -> str | int | float | bool:
-        """Read a single value from an open file"""
-        if value_type == GGUFValueType.STRING:
-            string_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-            value = file.read(string_length)
-            # officially, strings that cannot be decoded into utf-8 are invalid
-            try:
-                value = value.decode("utf-8")
-            except UnicodeDecodeError:
-                print_warning(
-                    f'UnicodeDecodeError was raised while reading a string '
-                    f'from the GGUF metadata. the GGUF format specifies that '
-                    f'all strings in file metadata should be valid UTF-8. the '
-                    f'affected string will be left blank.'
-                )
-                value = ''
-        else:
-            value = QuickGGUFReader.unpack(value_type, file=file)
-        return value
-    
-    @staticmethod
-    def load_metadata(
-            fn: os.PathLike[str] | str
-        ) -> dict[str, str | int | float | bool | list]:
-        """
-        Given a path to a GGUF file, peek at its header for metadata
-
-        Return a dictionary where all keys are strings, and values can be
-        strings, ints, floats, bools, or lists
-        """
-
-        metadata: dict[str, str | int | float | bool | list] = {}
-        with open(fn, "rb") as file:
-            magic = file.read(4)
-
-            if magic != GGUF_MAGIC:
-                raise ValueError(
-                    f"your model file is not a valid GGUF file "
-                    f"(magic number mismatch, got {magic}, "
-                    f"expected {GGUF_MAGIC})"
-                )
-            
-            version = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-
-            if version not in QuickGGUFReader.SUPPORTED_GGUF_VERSIONS:
-                raise ValueError(
-                    f"your model file reports GGUF version {version}, but "
-                    f"only versions {QuickGGUFReader.SUPPORTED_GGUF_VERSIONS} "
-                    f"are supported. re-convert your model or download a newer "
-                    f"version"
-                )
-            
-            tensor_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-            if version == 3:
-                metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-            elif version == 2:
-                metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-
-            for _ in range(metadata_kv_count):
-                if version == 3:
-                    key_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-                elif version == 2:
-                    key_length = 0
-                    while key_length == 0:
-                        # seek until next key is found
-                        key_length = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-                    file.read(4) # 4 byte offset for GGUFv2
-                key = file.read(key_length)
-                value_type = GGUFValueType(
-                    QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-                )
-                if value_type == GGUFValueType.ARRAY:
-                    array_value_type = GGUFValueType(
-                        QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-                    )
-                    # array_length is the number of items in the array
-                    if version == 3:
-                        array_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
-                    elif version == 2:
-                        array_length = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-                        file.read(4) # 4 byte offset for GGUFv2
-                    array = [
-                        QuickGGUFReader.get_single(
-                            array_value_type,
-                            file
-                        ) for _ in range(array_length)
-                    ]
-                    metadata[key.decode()] = array
-                else:
-                    value = QuickGGUFReader.get_single(
-                        value_type,
-                        file
-                    )
-                    metadata[key.decode()] = value
-
-        return metadata
