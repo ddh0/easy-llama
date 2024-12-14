@@ -1329,20 +1329,20 @@ def llama_token_fim_sep(model: llama_model) -> int:
 # Tokenization
 #
 
-def llama_tokenize(model: llama_model, text: str, text_len: int, tokens: ctypes.POINTER(ctypes.c_int), n_tokens_max: int, add_special: bool, parse_special: bool) -> int: # type: ignore
+def llama_tokenize(model: llama_model, text: bytes, text_len: int, tokens: ctypes.POINTER(ctypes.c_int), n_tokens_max: int, add_special: bool, parse_special: bool) -> int: # type: ignore
     """
     Convert the provided text into tokens
 
     - model:
         The llama_model to use.
     - text:
-        The text to convert.
+        The text to convert (as bytes)
     - text_len:
-        TODO
+        The length of the text in bytes
     - tokens:
         The tokens pointer must be large enough to hold the resulting tokens.
     - n_tokens_max:
-        TODO
+        Maximum number of tokens to return (fail if text is too long)
     - add_special:
         Allow to add BOS and EOS tokens if model is configured to do so.
     - parse_special:
@@ -1355,7 +1355,7 @@ def llama_tokenize(model: llama_model, text: str, text_len: int, tokens: ctypes.
     """
     libllama.llama_tokenize.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_tokenize.restype = ctypes.c_int
-    return libllama.llama_tokenize(model, text.encode('utf-8'), text_len, tokens, n_tokens_max, add_special, parse_special)
+    return libllama.llama_tokenize(model, text, text_len, tokens, n_tokens_max, add_special, parse_special)
 
 def llama_token_to_piece(model: llama_model, token: int, buf: ctypes.c_char_p, length: int, lstrip: int, special: bool) -> int:
     """Convert a single token to a piece of text"""

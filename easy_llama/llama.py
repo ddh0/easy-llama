@@ -114,11 +114,11 @@ def _init_backend_if_needed() -> None:
     else:
         _print_warning(
             f"unexpected value for sys.byteorder: {sys.byteorder!r}; "
-            "expected 'little' for little-endian host or 'big' for "
-            "big-endian host"
+            f"expected 'little' for little-endian host or 'big' for "
+            f"big-endian host"
         )
     
-    # actually load the backend now
+    # actually load the backend
     lib.llama_backend_init() # this sets libllama._BACKEND_INIT to True
 
 # NOTE: the optimal n_threads value (for text generation) is equal
@@ -431,27 +431,27 @@ class _LlamaModel:
             not exposed and treated as plaintext. Does not insert a leading
             space.
         """
-        n_ctx_train = self.n_ctx_train()
-        tokens_buf = (ctypes.c_int32 * n_ctx_train)()
-        text_len = len(text) + (2 * add_special)
-        null_ptr_check(self.model, 'self.model', '_LlamaModel.tokenize')
-        n_prompt = -lib.llama_tokenize(
-            model=self.model,
-            text=text,
-            text_len=text_len,
-            tokens=tokens_buf,
-            n_tokens_max=0,
-            add_special=add_special,
-            parse_special=parse_special
-        )
-        print(f"{n_prompt=}")
+        # n_prompt = -lib.llama_tokenize(
+        #     model=self.model,
+        #     text=text,
+        #     text_len=text_len,
+        #     tokens=tokens_buf,
+        #     n_tokens_max=0,
+        #     add_special=add_special,
+        #     parse_special=parse_special
+        # )
+        # print(f"{n_prompt=}")
         #tokens_buf_size = n_prompt # max number of tokens token_buf can hold
         #tokens_buf = (ctypes.c_int32 * tokens_buf_size)()
-        del tokens_buf
+        # del tokens_buf
+        n_ctx_train = self.n_ctx_train()
         tokens_buf = (ctypes.c_int32 * n_ctx_train)()
+        text_bytes = text.encode('utf-8', errors='strict')
+        text_len = len(text_bytes)
+        null_ptr_check(self.model, 'self.model', '_LlamaModel.tokenize')
         n_tokens = lib.llama_tokenize(
             model=self.model,
-            text=text,
+            text=text_bytes,
             text_len=text_len,
             tokens=tokens_buf,
             n_tokens_max=n_ctx_train,
@@ -569,7 +569,6 @@ class _LlamaCtx:
         abort_callback_data = None
     ):
         _init_backend_if_needed()
-        self.model = model
         self.params = lib.llama_context_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaCtx.__init__")
         self.params.n_ctx = n_ctx
@@ -640,9 +639,9 @@ class _LlamaCtx:
                 abort_callback
             ) if abort_callback is not None else lib.dummy_abort_callback()
         self.params.abort_callback_data = abort_callback_data
-
+        null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
         self.ctx = lib.llama_new_context_with_model(
-            self.model.model, self.params
+            model.model, self.params
         )
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
     
@@ -656,11 +655,15 @@ class _LlamaCtx:
     def get_model(self) -> _LlamaModel:
         """The `_LlamaModel` that this context is attached to"""
         # NOTE: _LlamaModel is accessible from _LlamaCtx, but not vice-versa
-        null_ptr_check(self.model, "self.model", "_LlamaCtx.get_model")
-        return self.model
+        null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.get_model")
+        model = lib.llama_get_model(self.ctx)
+        null_ptr_check(model, "model", "_LlamaCtx.get_model")
+        return model
     
     def kv_cache_clear(self):
-        """Clear the KV cache - both cell info is erased and KV data is zeroed"""
+        """
+        Clear the KV cache - both cell info is erased and KV data is zeroed
+        """
         null_ptr_check(self.ctx, 'self.ctx', '_LlamaCtx.kv_cache_clear')
         lib.llama_kv_cache_clear(self.ctx)
     
@@ -898,17 +901,18 @@ if __name__ == '__main__':
         offload_kqv=True,
         flash_attn=True
     )
+
     chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
-    prompt = """Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who's Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn't tell you under other circumstances anyway."""
-    prompt = chktxt
+    prompt = """Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who’s Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn’t tell you under other circumstances anyway."""
+    #prompt = chktxt
     print("-" * 80)
     test_print(f'prompt:\n\n{prompt!r}')
 
-    tokens = TestLlama._model.tokenize(prompt, add_bos=False, special=False)
+    tokens = TestLlama._model.tokenize(prompt, add_special=False, parse_special=False)
     print()
     test_print(f'tokenized prompt:\n\n{tokens!r}')
 
-    detok = TestLlama._model.detokenize(tokens, special=True)
+    detok = TestLlama._model.detokenize(tokens, special=False)
     print()
     test_print(f'detokenized prompt:\n\n{detok!r}')
 
