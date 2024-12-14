@@ -2,16 +2,18 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-import ctypes
-import sys
 import os
-import libllama as lib
+import sys
+import time
 import struct
+import ctypes
 
 from typing    import NoReturn, Optional, Iterable
 from io        import BufferedReader
 from enum      import IntEnum
 from constants import Colors
+
+import libllama as lib
 
 RESET  = Colors.RESET
 GREEN  = Colors.GREEN
@@ -66,8 +68,6 @@ def null_ptr_check(
         raise LlamaNullException(
             f"{loc_hint}: {ptr_name} is NULLPTR"
         )
-
-# TODO: should remove these print functions before release?
 
 def _print_verbose(text: str) -> None:
     print(
@@ -138,7 +138,12 @@ def _get_optimal_n_threads_batch() -> int:
     return _cpu_count
 
 def _get_random_seed() -> int:
-    int.from_bytes(os.urandom(4), sys.byteorder)
+    # uint32_t
+    return int.from_bytes(
+        bytes=os.urandom(4),
+        byteorder=sys.byteorder,
+        signed=False
+    )
 
 def _calculate_rope_freq_base(
         n_ctx_train: int,
@@ -175,10 +180,107 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
         return n_ctx
     else:
         rounded = (n_ctx + 511) // 512 * 512
-        if rounded > n_ctx_train: # do not round beyond n_ctx_train
+        if (rounded > n_ctx_train) and (n_ctx <= n_ctx_train):
+            # do not round beyond n_ctx_train if not already exceeded
             return n_ctx_train
         else:
             return rounded
+
+class LlamaPerformanceTracker:
+    """Track elapsed time, input tokens, output tokens"""
+    #
+    # Q: why don't you use llama_perf_context?
+    #
+    # A: comments in llama.h state to only use that in llama.cpp examples,
+    #    and to do your own performance measurements instead
+    #
+    def __init__(self):
+        self.ingest_start_time = None
+        self.ingest_end_time = None
+        self.eval_start_time = None
+        self.eval_end_time = None
+        self.n_ingest_tokens = None
+        self.n_eval_tokens = None
+    
+    def start_ingest(self):
+        """Start prompt ingestion timer"""
+        self.ingest_start_time = time.time_ns()
+    
+    def stop_ingest(self):
+        """Stop prompt ingestion timer"""
+        self.ingest_end_time = time.time_ns()
+    
+    def start_eval(self):
+        """Start text generation timer"""
+        self.eval_start_time = time.time_ns()
+    
+    def stop_eval(self):
+        """Stop text generation timer"""
+        self.eval_end_time = time.time_ns()
+    
+    def get_elapsed_time_ns(self) -> tuple[int, int]:
+        """
+        Return the number of nanoseconds elapsed during both timers
+
+        (ingest_elapsed, eval_elapsed)
+        """
+        ingest_elapsed = int(self.ingest_end_time - self.ingest_start_time)
+        eval_elapsed = int(self.eval_end_time - self.eval_start_time)
+        return (ingest_elapsed, eval_elapsed)
+    
+    def increment_tokens(self, n_ingest: int, n_eval: int):
+        """
+        Increment the counters
+        """
+        self.n_ingest_tokens += n_ingest
+        self.n_eval_tokens += n_eval
+    
+    def reset(self):
+        """
+        Reset the tracker to its original state
+        """
+        self.ingest_start_time = None
+        self.ingest_end_time = None
+        self.eval_start_time = None
+        self.eval_end_time = None
+        self.n_ingest_tokens = None
+        self.n_eval_tokens = None
+    
+    def print_stats(self):
+        """Print performance statistics using current Tracker state"""
+        ingest_elapsed_ns, eval_elapsed_ns = self.get_elapsed_time_ns()
+
+        ingest_elapsed_ms = ingest_elapsed_ns / 1e6
+        ingest_elapsed_s = ingest_elapsed_ns / 1e9
+
+        if self.n_ingest_tokens > 0:
+            ingest_tps = self.n_ingest_tokens / ingest_elapsed_s
+            _print_info(
+                f'prompt processing for {self.n_ingest_tokens} tokens took '
+                f'{ingest_elapsed_ms:.3f}ms ({ingest_tps:.2} tok/s)'
+            )
+
+        eval_elapsed_ms = eval_elapsed_ns / 1e6
+        eval_elapsed_s = eval_elapsed_ns / 1e9
+
+        if self.n_eval_tokens > 0:
+            eval_tps = self.n_eval_tokens / eval_elapsed_s
+            _print_info(
+                f'generation of {self.n_eval_tokens} tokens took '
+                f'{eval_elapsed_ms:.3f}ms ({eval_tps:.2f} tok/s)'
+            )
+
+        total_elapsed_ns = ingest_elapsed_ns + eval_elapsed_ns
+        total_elapsed_ms = total_elapsed_ns / 1e6
+        total_elapsed_s = total_elapsed_ns / 1e9
+
+        total_tokens = self.n_ingest_tokens + self.n_eval_tokens
+        total_average_tps = total_elapsed_s / total_tokens
+
+        # _print_info(
+        #     f'total: {total_tokens} tokens in {total_elapsed_ms:.3f}ms '
+        #     f'({total_average_tps} tok/s average)'
+        # )
 
 # these values are from llama.cpp/gguf-py/gguf/constants.py
 class GGUFValueType(IntEnum):
@@ -409,129 +511,6 @@ class _LlamaModel:
     def free(self):
         if self.model is not None:
             lib.llama_free_model(self.model)
-    
-    def n_ctx_train(self) -> int:
-        """The native context length of this model"""
-        return lib.llama_n_ctx_train(self.model)
-    
-    # NOTE: easy-llama impl
-    def tokenize(
-        self,
-        text: str,
-        add_special: bool,
-        parse_special: bool
-    ) -> list[int]:
-        """
-        Convert the provided text into tokens
-
-        - add_special:
-            Allow to add BOS and EOS tokens if model is configured to do so.
-        - parse_special:
-            Allow tokenizing special and/or control tokens which otherwise are
-            not exposed and treated as plaintext. Does not insert a leading
-            space.
-        """
-        # n_prompt = -lib.llama_tokenize(
-        #     model=self.model,
-        #     text=text,
-        #     text_len=text_len,
-        #     tokens=tokens_buf,
-        #     n_tokens_max=0,
-        #     add_special=add_special,
-        #     parse_special=parse_special
-        # )
-        # print(f"{n_prompt=}")
-        #tokens_buf_size = n_prompt # max number of tokens token_buf can hold
-        #tokens_buf = (ctypes.c_int32 * tokens_buf_size)()
-        # del tokens_buf
-        n_ctx_train = self.n_ctx_train()
-        tokens_buf = (ctypes.c_int32 * n_ctx_train)()
-        text_bytes = text.encode('utf-8', errors='strict')
-        text_len = len(text_bytes)
-        null_ptr_check(self.model, 'self.model', '_LlamaModel.tokenize')
-        n_tokens = lib.llama_tokenize(
-            model=self.model,
-            text=text_bytes,
-            text_len=text_len,
-            tokens=tokens_buf,
-            n_tokens_max=n_ctx_train,
-            add_special=add_special,
-            parse_special=parse_special
-        )
-        return list(tokens_buf[:n_tokens])
-
-    # NOTE: llama-cpp-python impl
-    # def tokenize(self, text: bytes, add_bos: bool, special: bool):
-    #     n_ctx = self.n_ctx_train()
-    #     tokens = (lib.llama_token * n_ctx)()
-    #     n_tokens = lib.llama_tokenize(
-    #         self.model, text, len(text), tokens, n_ctx, add_bos, special
-    #     )
-    #     if n_tokens < 0:
-    #         n_tokens = abs(n_tokens)
-    #         tokens = (lib.llama_token * n_tokens)()
-    #         n_tokens = lib.llama_tokenize(
-    #             self.model, text, len(text), tokens, n_tokens, add_bos, special
-    #         )
-    #         if n_tokens < 0:
-    #             raise RuntimeError(
-    #                 f'Failed to tokenize: text="{text}" n_tokens={n_tokens}'
-    #             )
-    #     return list(tokens[:n_tokens])
-
-    def token_to_piece(self, token: int, special: bool) -> bytes:
-        """
-        Convert a single token ID into utf-8 bytes
-
-        - special:
-            If True, special tokens are rendered in the output
-        """
-        str_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
-        null_ptr_check(self.model, 'self.model', '_LlamaModel.token_to_piece')
-        n_bytes = lib.llama_token_to_piece(
-            model=self.model,
-            token=token,
-            buf=str_buf,
-            length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
-            lstrip=0, # skip up to 'lstrip' leading spaces
-            special=special
-        )
-        if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
-            raise ValueError(
-                f"_LlamaModel.token_to_piece: the token with ID {token} "
-                f"requires a buffer of size {n_bytes}, but the maximum "
-                f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
-            )
-        # NOTE: do not just do str_buf.value.decode() because the token could
-        #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
-        #       string itself. let the caller handle this
-        return str_buf.raw[:n_bytes]
-
-    def detokenize(
-        self,
-        tokens: Iterable[int],
-        special: bool
-    ) -> str:
-        """
-        Convert the provided tokens into a string
-
-        - special:
-            If True, special tokens are rendered in the output
-        """
-        null_ptr_check(self.model, 'self.model', '_LlamaModel.detokenize')
-        text_bytes = b""
-        for token in tokens:
-            text_bytes += self.token_to_piece(token=token, special=special)
-        
-        try:
-            text = text_bytes.decode(encoding="utf-8", errors="strict")
-        except UnicodeDecodeError:
-            _print_warning(
-                f'UnicodeDecodeError raised during detokenize - ignoring'
-            )
-            text = text_bytes.decode(encoding="utf-8", errors="ignore")
-        
-        return text
 
 
 class _LlamaCtx:
@@ -652,8 +631,8 @@ class _LlamaCtx:
         if self.ctx is not None:
             lib.llama_free(self.ctx)
     
-    def get_model(self) -> _LlamaModel:
-        """The `_LlamaModel` that this context is attached to"""
+    def get_model(self):
+        """Return the `llama_model` that this context is attached to"""
         # NOTE: _LlamaModel is accessible from _LlamaCtx, but not vice-versa
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.get_model")
         model = lib.llama_get_model(self.ctx)
@@ -759,7 +738,7 @@ class Llama:
             use_mlock=use_mlock
         )
 
-        n_ctx_train = self._model.n_ctx_train()
+        n_ctx_train = self.n_ctx_train()
 
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
@@ -825,13 +804,13 @@ class Llama:
         if actual_n_ctx % 512 != 0:
             _print_warning(
                 f"n_ctx value {actual_n_ctx} is not divisible by 512, which "
-                f"can sometimes cause problems with llama.cpp. consider "
+                f"can sometimes cause problems with llama.cpp - consider "
                 f"changing it to "
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
             )
         
         if actual_n_ctx > n_ctx_train:
-            if _rope_freq_base == rope_freq_base:
+            if _rope_freq_base == rope_freq_base: # TODO: this check is not correct
                 # model not guaranteed to work
                 _print_warning(
                     f"n_ctx value {actual_n_ctx} exceeds n_ctx_train value "
@@ -853,6 +832,114 @@ class Llama:
         self._ctx.free()
         self._model.free()
     
+    def n_ctx(self) -> int:
+        """Return the currently loaded context length of this model"""
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_ctx")
+        return lib.llama_n_ctx(self._ctx.ctx)
+
+    def n_ctx_train(self) -> int:
+        """Return the native context length of this model"""
+        null_ptr_check(
+            self._model.model, 'self._model.model', 'Llama.n_ctx_train'
+        )
+        return lib.llama_n_ctx_train(self._model.model)
+    
+    def tokenize(
+        self,
+        text_bytes: bytes,
+        n_tokens_max: int,
+        add_special: bool,
+        parse_special: bool,
+    ) -> list[int]:
+        """
+        Convert the provided text into tokens
+
+        - text_bytes:
+            The text to be tokenized, as bytes
+        - n_tokens_max:
+            Tokenization will fail if the text is more than this many tokens.
+            Larger numbers allow more text to be tokenized but will allocate
+            more memory.
+        - add_special:
+            Allow to add BOS and EOS tokens if model is configured to do so.
+        - parse_special:
+            Allow tokenizing special and/or control tokens which otherwise are
+            not exposed and treated as plaintext. Does not insert a leading
+            space.
+        """
+        tokens_buf = (ctypes.c_int32 * n_tokens_max)()
+        null_ptr_check(
+            self._model.model, 'self._model.model', 'Llama.tokenize'
+        )
+        n_tokens = lib.llama_tokenize(
+            model=self._model.model,
+            text=text_bytes,
+            text_len=len(text_bytes),
+            tokens=tokens_buf,
+            n_tokens_max=n_tokens_max,
+            add_special=add_special,
+            parse_special=parse_special
+        )
+        if n_tokens < 0:
+            raise ValueError(
+                f'_LlamaModel.tokenize: n_tokens value {-n_tokens} exceeds '
+                f'n_tokens_max value {n_tokens_max}'
+            )
+        return list(tokens_buf[:n_tokens])
+
+    def token_to_piece(self, token: int, special: bool) -> bytes:
+        """
+        Convert a single token ID into utf-8 bytes
+
+        - special:
+            If True, special tokens are rendered in the output
+        """
+        str_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
+        null_ptr_check(
+            self._model.model, 'self._model.model', 'Llama.token_to_piece'
+        )
+        n_bytes = lib.llama_token_to_piece(
+            model=self._model.model,
+            token=token,
+            buf=str_buf,
+            length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
+            lstrip=0, # skip up to 'lstrip' leading spaces
+            special=special
+        )
+        if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
+            raise ValueError(
+                f"_LlamaModel.token_to_piece: the token with ID {token} "
+                f"requires a buffer of size {n_bytes}, but the maximum "
+                f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
+            )
+        # NOTE: do not just do str_buf.value.decode() because the token could
+        #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
+        #       string itself. let the caller handle this
+        return str_buf.raw[:n_bytes]
+
+    def detokenize(
+        self,
+        tokens: Iterable[int],
+        special: bool
+    ) -> str:
+        """
+        Convert the provided tokens into a string
+
+        - special:
+            If True, special tokens are rendered in the output
+        """
+        text_bytes = b""
+        for token in tokens:
+            text_bytes += self.token_to_piece(token=token, special=special)
+        try:
+            text = text_bytes.decode(encoding="utf-8", errors="strict")
+        except UnicodeDecodeError:
+            _print_warning(
+                f'UnicodeDecodeError raised during detokenize - ignoring'
+            )
+            text = text_bytes.decode(encoding="utf-8", errors="ignore")
+        return text
+    
     def decode(self, batch: _LlamaBatch) -> int:
         """
         Decode a batch of tokens
@@ -867,7 +954,7 @@ class Llama:
             error. the KV cache state is restored to the state before this 
             call
         """
-        null_ptr_check(_LlamaBatch, 'batch', 'Llama.decode')
+        null_ptr_check(batch, 'batch', 'Llama.decode')
         return lib.llama_decode(self._ctx, batch.batch)
 
 #
@@ -881,8 +968,10 @@ if __name__ == '__main__':
 
     import os
 
-    if not os.path.exists('./model.gguf'):
-        raise FileNotFoundError('the file ./model.gguf was not found')
+    test_model_path = './model_hermes.gguf'
+
+    if not os.path.exists(test_model_path):
+        raise FileNotFoundError(f'the file {test_model_path} was not found')
     
     this_module_name = os.path.splitext(os.path.basename(__file__))[0]
 
@@ -892,7 +981,7 @@ if __name__ == '__main__':
     print("-" * 80)
 
     TestLlama = Llama(
-        path_model='./model.gguf',
+        path_model=test_model_path,
         n_gpu_layers=-1,
         use_mmap=True,
         use_mlock=False,
@@ -904,15 +993,15 @@ if __name__ == '__main__':
 
     chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
     prompt = """Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who’s Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn’t tell you under other circumstances anyway."""
-    #prompt = chktxt
+    prompt = chktxt
     print("-" * 80)
     test_print(f'prompt:\n\n{prompt!r}')
 
-    tokens = TestLlama._model.tokenize(prompt, add_special=False, parse_special=False)
+    tokens = TestLlama.tokenize(prompt.encode(), n_tokens_max=1024, add_special=False, parse_special=False)
     print()
     test_print(f'tokenized prompt:\n\n{tokens!r}')
 
-    detok = TestLlama._model.detokenize(tokens, special=False)
+    detok = TestLlama.detokenize(tokens, special=False)
     print()
     test_print(f'detokenized prompt:\n\n{detok!r}')
 
