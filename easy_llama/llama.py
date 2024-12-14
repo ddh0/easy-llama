@@ -223,9 +223,7 @@ class LlamaPerformanceTracker:
         return int(self.pp_end_time - self.pp_start_time)
     
     def get_elapsed_time_tg(self) -> int:
-        """
-        Return the number of nanoseconds elapsed during text generation
-        """
+        """Return the number of nanoseconds elapsed during text generation"""
         return int(self.tg_end_time - self.tg_start_time)
     
     def increment_pp_tokens(self, n: int):
@@ -235,9 +233,7 @@ class LlamaPerformanceTracker:
         self.n_tg_tokens += n
     
     def reset(self):
-        """
-        Reset the tracker to its original state
-        """
+        """Reset the tracker to its original state"""
         self.pp_start_time = None
         self.tg_end_time = None
         self.pp_start_time = None
@@ -1148,8 +1144,7 @@ if __name__ == '__main__':
     )
 
     print("-" * 80)
-    #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
-    chktxt = input('Enter some text here: ')
+    chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
     test_print(f'prompt:\n\n{chktxt!r}')
 
     tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=False, parse_special=False)
