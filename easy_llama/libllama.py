@@ -14,10 +14,6 @@ Helpful references:
 - [llama.h permalink](https://github.com/ggerganov/llama.cpp/blob/26a8406ba9198eb6fdd8329fa717555b4f77f05f/include/llama.h)
 """
 
-# TODO:
-# - tqdm for prompt eval???
-# 
-
 import sys
 import ctypes
 import faulthandler
