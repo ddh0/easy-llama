@@ -195,92 +195,93 @@ class LlamaPerformanceTracker:
     #    and to do your own performance measurements instead
     #
     def __init__(self):
-        self.ingest_start_time = None
-        self.ingest_end_time = None
-        self.eval_start_time = None
-        self.eval_end_time = None
-        self.n_ingest_tokens = None
-        self.n_eval_tokens = None
+        self.pp_start_time = None
+        self.pp_end_time = None
+        self.tg_start_time = None
+        self.tg_end_time = None
+        self.n_pp_tokens = 0
+        self.n_tg_tokens = 0
     
-    def start_ingest(self):
-        """Start prompt ingestion timer"""
-        self.ingest_start_time = time.time_ns()
+    def start_pp(self):
+        """Start prompt processing timer"""
+        self.pp_start_time = time.time_ns()
     
-    def stop_ingest(self):
-        """Stop prompt ingestion timer"""
-        self.ingest_end_time = time.time_ns()
+    def stop_pp(self):
+        """Stop prompt processing timer"""
+        self.pp_end_time = time.time_ns()
     
-    def start_eval(self):
+    def start_tg(self):
         """Start text generation timer"""
-        self.eval_start_time = time.time_ns()
+        self.tg_start_time = time.time_ns()
     
-    def stop_eval(self):
+    def stop_tg(self):
         """Stop text generation timer"""
-        self.eval_end_time = time.time_ns()
-    
-    def get_elapsed_time_ns(self) -> tuple[int, int]:
-        """
-        Return the number of nanoseconds elapsed during both timers
+        self.tg_end_time = time.time_ns()
 
-        (ingest_elapsed, eval_elapsed)
-        """
-        ingest_elapsed = int(self.ingest_end_time - self.ingest_start_time)
-        eval_elapsed = int(self.eval_end_time - self.eval_start_time)
-        return (ingest_elapsed, eval_elapsed)
+    def get_elapsed_time_pp(self) -> int:
+        """Return the number of nanoseconds elapsed during prompt processing"""
+        return int(self.pp_end_time - self.pp_start_time)
     
-    def increment_tokens(self, n_ingest: int, n_eval: int):
+    def get_elapsed_time_tg(self) -> int:
         """
-        Increment the counters
+        Return the number of nanoseconds elapsed during text generation
         """
-        self.n_ingest_tokens += n_ingest
-        self.n_eval_tokens += n_eval
+        return int(self.tg_end_time - self.tg_start_time)
+    
+    def increment_pp_tokens(self, n: int):
+        self.n_pp_tokens += n
+    
+    def increment_tg_tokens(self, n: int):
+        self.n_tg_tokens += n
     
     def reset(self):
         """
         Reset the tracker to its original state
         """
-        self.ingest_start_time = None
-        self.ingest_end_time = None
-        self.eval_start_time = None
-        self.eval_end_time = None
-        self.n_ingest_tokens = None
-        self.n_eval_tokens = None
+        self.pp_start_time = None
+        self.tg_end_time = None
+        self.pp_start_time = None
+        self.tg_end_time = None
+        self.n_pp_tokens = 0
+        self.n_tg_tokens = 0
     
     def print_stats(self):
-        """Print performance statistics using current Tracker state"""
-        ingest_elapsed_ns, eval_elapsed_ns = self.get_elapsed_time_ns()
+        """Print performance statistics using current tracker state"""
+        pp_elapsed_ns = self.get_elapsed_time_pp()
+        tg_elapsed_ns = self.get_elapsed_time_tg()
 
-        ingest_elapsed_ms = ingest_elapsed_ns / 1e6
-        ingest_elapsed_s = ingest_elapsed_ns / 1e9
+        pp_elapsed_ms = pp_elapsed_ns / 1e6
+        pp_elapsed_s = pp_elapsed_ns / 1e9
 
-        if self.n_ingest_tokens > 0:
-            ingest_tps = self.n_ingest_tokens / ingest_elapsed_s
+        if self.n_pp_tokens > 0:
+            pp_tps = self.n_pp_tokens / pp_elapsed_s
             _print_info(
-                f'prompt processing for {self.n_ingest_tokens} tokens took '
-                f'{ingest_elapsed_ms:.3f}ms ({ingest_tps:.2} tok/s)'
+                f'prompt processing for {self.n_pp_tokens} tokens took '
+                f'{pp_elapsed_ms:.3f}ms ({pp_tps:.2f} tok/s)'
             )
 
-        eval_elapsed_ms = eval_elapsed_ns / 1e6
-        eval_elapsed_s = eval_elapsed_ns / 1e9
+        tg_elapsed_ms = tg_elapsed_ns / 1e6
+        tg_elapsed_s = tg_elapsed_ns / 1e9
 
-        if self.n_eval_tokens > 0:
-            eval_tps = self.n_eval_tokens / eval_elapsed_s
+        if self.n_tg_tokens > 0:
+            tg_tps = self.n_tg_tokens / tg_elapsed_s
             _print_info(
-                f'generation of {self.n_eval_tokens} tokens took '
-                f'{eval_elapsed_ms:.3f}ms ({eval_tps:.2f} tok/s)'
+                f'text generation of {self.n_tg_tokens} tokens took '
+                f'{tg_elapsed_ms:.3f}ms ({tg_tps:.2f} tok/s)'
             )
 
-        total_elapsed_ns = ingest_elapsed_ns + eval_elapsed_ns
+        total_elapsed_ns = pp_elapsed_ns + tg_elapsed_ns
         total_elapsed_ms = total_elapsed_ns / 1e6
         total_elapsed_s = total_elapsed_ns / 1e9
 
-        total_tokens = self.n_ingest_tokens + self.n_eval_tokens
-        total_average_tps = total_elapsed_s / total_tokens
+        total_tokens = self.n_pp_tokens + self.n_tg_tokens
+        if total_tokens > 0:
+            total_average_tps = total_tokens / total_elapsed_s
 
-        # _print_info(
-        #     f'total: {total_tokens} tokens in {total_elapsed_ms:.3f}ms '
-        #     f'({total_average_tps} tok/s average)'
-        # )
+            _print_info(
+                f'total of {total_tokens} tokens took {total_elapsed_ms:.3f}ms '
+                f'({total_average_tps:.2f} tok/s average)'
+            )
 
 # these values are from llama.cpp/gguf-py/gguf/constants.py
 class GGUFValueType(IntEnum):
@@ -536,7 +537,7 @@ class _LlamaCtx:
         yarn_orig_ctx = 0,
         defrag_thold = 0.0,
         cb_eval = None,
-        cb_eval_user_data = None,
+        cb_tg_user_data = None,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
         logits_all = False,
@@ -586,7 +587,7 @@ class _LlamaCtx:
         self.params.cb_eval = (
             cb_eval
         ) if cb_eval is not None else lib.dummy_eval_callback()
-        self.params.cb_eval_user_data = cb_eval_user_data
+        self.params.cb_tg_user_data = cb_tg_user_data
         self.params.type_k = type_k if type_k is not None else _DEFAULT_KV_TYPE
         self.params.type_v = type_v if type_v is not None else _DEFAULT_KV_TYPE
         _k, _v = self.params.type_k, self.params.type_v
@@ -630,31 +631,6 @@ class _LlamaCtx:
     def free(self):
         if self.ctx is not None:
             lib.llama_free(self.ctx)
-    
-    def get_model(self):
-        """Return the `llama_model` that this context is attached to"""
-        # NOTE: _LlamaModel is accessible from _LlamaCtx, but not vice-versa
-        null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.get_model")
-        model = lib.llama_get_model(self.ctx)
-        null_ptr_check(model, "model", "_LlamaCtx.get_model")
-        return model
-    
-    def kv_cache_clear(self):
-        """
-        Clear the KV cache - both cell info is erased and KV data is zeroed
-        """
-        null_ptr_check(self.ctx, 'self.ctx', '_LlamaCtx.kv_cache_clear')
-        lib.llama_kv_cache_clear(self.ctx)
-    
-    def n_ctx(self) -> int:
-        """The currently loaded context length"""
-        null_ptr_check(self.ctx, 'self.ctx', '_LlamaCtx.n_ctx')
-        return lib.llama_n_ctx(self.ctx)
-    
-    def rope_freq_base(self) -> float:
-        """The rope_freq_base value this context was loaded with"""
-        null_ptr_check(self.params, 'self.params', '_LlamaCtx.rope_freq_base')
-        return self.params.rope_freq_base
 
 
 class _LlamaBatch:
@@ -826,6 +802,8 @@ class Llama:
                     f"{rope_freq_base_train}; model will function with "
                     f"potentially degraded output quality"
                 )
+        
+        self.tracker = LlamaPerformanceTracker()
     
     def free(self):
         """Free the context and model"""
@@ -836,6 +814,18 @@ class Llama:
         """Return the currently loaded context length of this model"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_ctx")
         return lib.llama_n_ctx(self._ctx.ctx)
+    
+    def n_batch(self) -> int:
+        pass
+
+    def n_ubatch(self) -> int:
+        pass
+
+    def n_seq_max(self) -> int:
+        pass
+
+    def n_vocab(self) -> int:
+        pass
 
     def n_ctx_train(self) -> int:
         """Return the native context length of this model"""
@@ -843,6 +833,155 @@ class Llama:
             self._model.model, 'self._model.model', 'Llama.n_ctx_train'
         )
         return lib.llama_n_ctx_train(self._model.model)
+    
+    def n_embd(self) -> int:
+        pass
+
+    def n_layer(self) -> int:
+        pass
+
+    def n_head(self) -> int:
+        pass
+
+    def pooling_type(self) -> int:
+        pass
+
+    def vocab_type(self) -> int:
+        pass
+
+    def rope_type(self) -> int:
+        pass
+
+    def rope_freq_scale_train(self) -> int:
+        pass
+
+    def model_size(self) -> int:
+        pass
+
+    def model_n_params(self) -> int:
+        pass
+
+    def model_has_encoder(self) -> bool:
+        pass
+
+    def model_has_decoder(self) -> bool:
+        pass
+
+    def model_is_recurrent(self) -> bool:
+        pass
+
+    def kv_cache_clear(self) -> None:
+        pass
+
+    def kv_cache_seq_rm(self, seq_id: int, p0: int, p1: int) -> bool:
+        pass
+
+    def kv_cache_seq_cp(self, seq_id_src: int, seq_id: int, seq_id_dst: int, p0: int, p1: int) -> None:
+        pass
+
+    def kv_cache_seq_keep(self, seq_id: int) -> None:
+        pass
+
+    def kv_cache_seq_add(self, seq_id: int, p0: int, p1: int, delta: int) -> None:
+        pass
+
+    def kv_cache_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
+        pass
+
+    def kv_cache_seq_pos_max(self, seq_id: int) -> int:
+        pass
+
+    def kv_cache_defrag(self) -> None:
+        pass
+
+    def kv_cache_update(self) -> None:
+        pass
+
+    def kv_cache_can_shift(self) -> bool:
+        pass
+
+    def decode(self, batch: _LlamaBatch) -> int:
+        """
+        Decode a batch of tokens
+        
+        Returns:
+        - 0:
+            success
+        - 1:
+            could not find a KV slot for the batch (try reducing the size of
+            the batch or increase the context)
+        - < 0:
+            error. the KV cache state is restored to the state before this 
+            call
+        """
+        null_ptr_check(batch, 'batch', 'Llama.decode')
+        return lib.llama_decode(self._ctx, batch.batch)
+
+    def n_threads(self) -> int:
+        pass
+
+    def n_threads_batch(self) -> int:
+        pass
+
+    def get_logits(self) -> lib.ptr:
+        pass
+
+    def get_logits_ith(self, i: int) -> lib.ptr:
+        pass
+
+    def token_get_score(self, token: int) -> float:
+        pass
+
+    def token_is_eog(self, token: int) -> bool:
+        pass
+
+    def token_is_control(self, token: int) -> bool:
+        pass
+
+    def token_bos(self) -> int:
+        pass
+
+    def token_eos(self) -> int:
+        pass
+
+    def token_eot(self) -> int:
+        pass
+
+    def token_cls(self) -> int:
+        pass
+
+    def token_sep(self) -> int:
+        pass
+
+    def token_nl(self) -> int:
+        pass
+
+    def token_pad(self) -> int:
+        pass
+
+    def add_bos_token(self) -> bool:
+        pass
+
+    def add_eos_token(self) -> bool:
+        pass
+
+    def token_fim_pre(self) -> int:
+        pass
+
+    def token_fim_suf(self) -> int:
+        pass
+
+    def token_fim_mid(self) -> int:
+        pass
+
+    def token_fim_pad(self) -> int:
+        pass
+
+    def token_fim_rep(self) -> int:
+        pass
+
+    def token_fim_sep(self) -> int:
+        pass
     
     def tokenize(
         self,
@@ -852,10 +991,10 @@ class Llama:
         parse_special: bool,
     ) -> list[int]:
         """
-        Convert the provided text into tokens
+        Convert the provided UTF-8 encoded text into tokens
 
         - text_bytes:
-            The text to be tokenized, as bytes
+            The text to be tokenized
         - n_tokens_max:
             Tokenization will fail if the text is more than this many tokens.
             Larger numbers allow more text to be tokenized but will allocate
@@ -921,24 +1060,36 @@ class Llama:
         self,
         tokens: Iterable[int],
         special: bool
-    ) -> str:
+    ) -> bytes:
         """
-        Convert the provided tokens into a string
+        Convert the provided tokens into UTF-8 encoded text
 
         - special:
             If True, special tokens are rendered in the output
         """
-        text_bytes = b""
+        # this function is just like token_to_piece but in a loop
+        detok_bytes = b""
+        null_ptr_check(
+            self._model.model, 'self._model.model', 'Llama.detokenize'
+        )
         for token in tokens:
-            text_bytes += self.token_to_piece(token=token, special=special)
-        try:
-            text = text_bytes.decode(encoding="utf-8", errors="strict")
-        except UnicodeDecodeError:
-            _print_warning(
-                f'UnicodeDecodeError raised during detokenize - ignoring'
+            tok_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
+            n_bytes = lib.llama_token_to_piece(
+                model=self._model.model,
+                token=token,
+                buf=tok_buf,
+                length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
+                lstrip=0, # skip up to 'lstrip' leading spaces
+                special=special
             )
-            text = text_bytes.decode(encoding="utf-8", errors="ignore")
-        return text
+            if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
+                raise ValueError(
+                    f"_LlamaModel.detokenize: the token with ID {token} "
+                    f"requires a buffer of size {n_bytes}, but the maximum "
+                    f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
+                )
+            detok_bytes += tok_buf.raw[:n_bytes]
+        return detok_bytes
     
     def get_length(
         self,
@@ -961,23 +1112,6 @@ class Llama:
             add_special=add_special,
             parse_special=parse_special
         )
-    
-    def decode(self, batch: _LlamaBatch) -> int:
-        """
-        Decode a batch of tokens
-        
-        Returns:
-        - 0:
-            success
-        - 1:
-            could not find a KV slot for the batch (try reducing the size of
-            the batch or increase the context)
-        - < 0:
-            error. the KV cache state is restored to the state before this 
-            call
-        """
-        null_ptr_check(batch, 'batch', 'Llama.decode')
-        return lib.llama_decode(self._ctx, batch.batch)
 
 #
 # End of functions / Begin test
@@ -990,7 +1124,7 @@ if __name__ == '__main__':
 
     import os
 
-    test_model_path = './model_hermes.gguf'
+    test_model_path = './model.gguf'
 
     if not os.path.exists(test_model_path):
         raise FileNotFoundError(f'the file {test_model_path} was not found')
@@ -1013,25 +1147,24 @@ if __name__ == '__main__':
         flash_attn=True
     )
 
-    chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
-    prompt = """Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who’s Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn’t tell you under other circumstances anyway."""
-    prompt = chktxt
     print("-" * 80)
-    test_print(f'prompt:\n\n{prompt!r}')
+    #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
+    chktxt = input('Enter some text here: ')
+    test_print(f'prompt:\n\n{chktxt!r}')
 
-    tokens = TestLlama.tokenize(prompt.encode(), n_tokens_max=1024, add_special=False, parse_special=False)
+    tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=False, parse_special=False)
     print()
     test_print(f'tokenized prompt:\n\n{tokens!r}')
 
-    detok = TestLlama.detokenize(tokens, special=False)
+    detok = TestLlama.detokenize(tokens, special=False).decode()
     print()
     test_print(f'detokenized prompt:\n\n{detok!r}')
 
     print(
         f"{'-' * 80}\n"
-        f"num prompt characters - {len(prompt)}\n"
+        f"num prompt characters - {len(chktxt)}\n"
         f"num prompt tokens ----- {len(tokens)}\n"
-        f"num detok characters -- {len(detok)}"
+        f"num detok characters -- {len(detok)}\n"
+        f"exact string match? --- {'yes' if chktxt == detok else 'no'}"
     )
-
     print("-" * 80)
