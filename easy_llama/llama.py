@@ -8,7 +8,7 @@ import os
 import libllama as lib
 import struct
 
-from typing    import NoReturn, Optional
+from typing    import NoReturn, Optional, Iterable
 from io        import BufferedReader
 from enum      import IntEnum
 from constants import Colors
@@ -22,6 +22,8 @@ RED    = Colors.RED
 
 NULL = None
 NULLPTR = ctypes.c_void_p(None)
+
+_MAX_SINGLE_TOKEN_TEXT_LENGTH = 256
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -339,7 +341,7 @@ class QuickGGUFReader:
         return metadata
 
 #
-# Simple python wrappers - no funny business allowed
+# Simple python wrappers
 #
 
 class _LlamaModel:
@@ -400,6 +402,9 @@ class _LlamaModel:
         # load model
         self.model = lib.llama_load_model_from_file(path_model, self.params)
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
+    
+    def __del__(self):
+        self.free()
 
     def free(self):
         if self.model is not None:
@@ -408,13 +413,132 @@ class _LlamaModel:
     def n_ctx_train(self) -> int:
         """The native context length of this model"""
         return lib.llama_n_ctx_train(self.model)
+    
+    # NOTE: easy-llama impl
+    def tokenize(
+        self,
+        text: str,
+        add_special: bool,
+        parse_special: bool
+    ) -> list[int]:
+        """
+        Convert the provided text into tokens
+
+        - add_special:
+            Allow to add BOS and EOS tokens if model is configured to do so.
+        - parse_special:
+            Allow tokenizing special and/or control tokens which otherwise are
+            not exposed and treated as plaintext. Does not insert a leading
+            space.
+        """
+        n_ctx_train = self.n_ctx_train()
+        tokens_buf = (ctypes.c_int32 * n_ctx_train)()
+        text_len = len(text) + (2 * add_special)
+        null_ptr_check(self.model, 'self.model', '_LlamaModel.tokenize')
+        n_prompt = -lib.llama_tokenize(
+            model=self.model,
+            text=text,
+            text_len=text_len,
+            tokens=tokens_buf,
+            n_tokens_max=0,
+            add_special=add_special,
+            parse_special=parse_special
+        )
+        print(f"{n_prompt=}")
+        #tokens_buf_size = n_prompt # max number of tokens token_buf can hold
+        #tokens_buf = (ctypes.c_int32 * tokens_buf_size)()
+        del tokens_buf
+        tokens_buf = (ctypes.c_int32 * n_ctx_train)()
+        n_tokens = lib.llama_tokenize(
+            model=self.model,
+            text=text,
+            text_len=text_len,
+            tokens=tokens_buf,
+            n_tokens_max=n_ctx_train,
+            add_special=add_special,
+            parse_special=parse_special
+        )
+        return list(tokens_buf[:n_tokens])
+
+    # NOTE: llama-cpp-python impl
+    # def tokenize(self, text: bytes, add_bos: bool, special: bool):
+    #     n_ctx = self.n_ctx_train()
+    #     tokens = (lib.llama_token * n_ctx)()
+    #     n_tokens = lib.llama_tokenize(
+    #         self.model, text, len(text), tokens, n_ctx, add_bos, special
+    #     )
+    #     if n_tokens < 0:
+    #         n_tokens = abs(n_tokens)
+    #         tokens = (lib.llama_token * n_tokens)()
+    #         n_tokens = lib.llama_tokenize(
+    #             self.model, text, len(text), tokens, n_tokens, add_bos, special
+    #         )
+    #         if n_tokens < 0:
+    #             raise RuntimeError(
+    #                 f'Failed to tokenize: text="{text}" n_tokens={n_tokens}'
+    #             )
+    #     return list(tokens[:n_tokens])
+
+    def token_to_piece(self, token: int, special: bool) -> bytes:
+        """
+        Convert a single token ID into utf-8 bytes
+
+        - special:
+            If True, special tokens are rendered in the output
+        """
+        str_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
+        null_ptr_check(self.model, 'self.model', '_LlamaModel.token_to_piece')
+        n_bytes = lib.llama_token_to_piece(
+            model=self.model,
+            token=token,
+            buf=str_buf,
+            length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
+            lstrip=0, # skip up to 'lstrip' leading spaces
+            special=special
+        )
+        if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
+            raise ValueError(
+                f"_LlamaModel.token_to_piece: the token with ID {token} "
+                f"requires a buffer of size {n_bytes}, but the maximum "
+                f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
+            )
+        # NOTE: do not just do str_buf.value.decode() because the token could
+        #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
+        #       string itself. let the caller handle this
+        return str_buf.raw[:n_bytes]
+
+    def detokenize(
+        self,
+        tokens: Iterable[int],
+        special: bool
+    ) -> str:
+        """
+        Convert the provided tokens into a string
+
+        - special:
+            If True, special tokens are rendered in the output
+        """
+        null_ptr_check(self.model, 'self.model', '_LlamaModel.detokenize')
+        text_bytes = b""
+        for token in tokens:
+            text_bytes += self.token_to_piece(token=token, special=special)
+        
+        try:
+            text = text_bytes.decode(encoding="utf-8", errors="strict")
+        except UnicodeDecodeError:
+            _print_warning(
+                f'UnicodeDecodeError raised during detokenize - ignoring'
+            )
+            text = text_bytes.decode(encoding="utf-8", errors="ignore")
+        
+        return text
 
 
 class _LlamaCtx:
 
     def __init__(
         self,
-        model: '_LlamaModel',
+        model: _LlamaModel,
         n_ctx = 512,
         n_batch = 2048,
         n_ubatch = 512,
@@ -521,12 +645,15 @@ class _LlamaCtx:
             self.model.model, self.params
         )
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
+    
+    def __del__(self):
+        self.free()
 
     def free(self):
         if self.ctx is not None:
             lib.llama_free(self.ctx)
     
-    def get_model(self) -> '_LlamaModel':
+    def get_model(self) -> _LlamaModel:
         """The `_LlamaModel` that this context is attached to"""
         # NOTE: _LlamaModel is accessible from _LlamaCtx, but not vice-versa
         null_ptr_check(self.model, "self.model", "_LlamaCtx.get_model")
@@ -543,7 +670,7 @@ class _LlamaCtx:
         return lib.llama_n_ctx(self.ctx)
     
     def rope_freq_base(self) -> float:
-        """The currently loaded rope_freq_base value"""
+        """The rope_freq_base value this context was loaded with"""
         null_ptr_check(self.params, 'self.params', '_LlamaCtx.rope_freq_base')
         return self.params.rope_freq_base
 
@@ -559,6 +686,9 @@ class _LlamaBatch:
         _init_backend_if_needed()
         self.batch = lib.llama_batch_init(n_tokens, embd, n_seq_max)
         null_ptr_check(self.batch, "self.batch", "_LlamaBatch.__init__")
+    
+    def __del__(self):
+        self.free()
 
     def free(self):
         if self.batch is not None:
@@ -573,9 +703,7 @@ class _LlamaBatch:
         """
         tokens_array = (ctypes.c_int * len(tokens))(*tokens)
         batch = lib.llama_batch_get_one(tokens_array, len(tokens))
-        null_ptr_check(
-            batch, "batch", "_LlamaBatch.get_one"
-        )
+        null_ptr_check(batch, "batch", "_LlamaBatch.get_one")
         return batch
 
 #
@@ -618,6 +746,7 @@ class Llama:
             )
         
         # peek at metadata from GGUF file header before loading model
+
         self.metadata = QuickGGUFReader.load_metadata(path_model)
 
         self._model = _LlamaModel(
@@ -633,7 +762,7 @@ class Llama:
 
         if n_ctx <= 0:
             _print_info(
-                f'n_ctx value {n_ctx} is <= 0; using n_ctx_train value '
+                f'n_ctx value {n_ctx}; using n_ctx_train value '
                 f'{n_ctx_train}'
             )
             _n_ctx = n_ctx_train
@@ -687,8 +816,8 @@ class Llama:
         if actual_n_ctx < 512:
             _print_warning(
                 f"n_ctx value {actual_n_ctx} is less than 512, which can "
-                f"sometimes cause problems with llama.cpp - consider increasing "
-                f"it to at least 512"
+                f"sometimes cause problems with llama.cpp - consider "
+                f"increasing it to at least 512"
             )
         if actual_n_ctx % 512 != 0:
             _print_warning(
@@ -764,10 +893,30 @@ if __name__ == '__main__':
         n_gpu_layers=-1,
         use_mmap=True,
         use_mlock=False,
-        n_ctx=-1,
+        n_ctx=8192,
         logits_all=False,
         offload_kqv=True,
         flash_attn=True
+    )
+    chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
+    prompt = """Gentlemen, owing to lack of time and adverse circumstances, most people leave this world without thinking too much about it. Those who try get a headache and move on to something else. I belong to the second group. As my career progressed, the amount of space dedicated to me in Who's Who grew and grew, but neither the last issue nor any future ones will explain why I abandoned journalism. This will be the subject of my story, which I wouldn't tell you under other circumstances anyway."""
+    prompt = chktxt
+    print("-" * 80)
+    test_print(f'prompt:\n\n{prompt!r}')
+
+    tokens = TestLlama._model.tokenize(prompt, add_bos=False, special=False)
+    print()
+    test_print(f'tokenized prompt:\n\n{tokens!r}')
+
+    detok = TestLlama._model.detokenize(tokens, special=True)
+    print()
+    test_print(f'detokenized prompt:\n\n{detok!r}')
+
+    print(
+        f"{'-' * 80}\n"
+        f"num prompt characters - {len(prompt)}\n"
+        f"num prompt tokens ----- {len(tokens)}\n"
+        f"num detok characters -- {len(detok)}"
     )
 
     print("-" * 80)
