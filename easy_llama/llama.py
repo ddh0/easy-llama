@@ -940,6 +940,28 @@ class Llama:
             text = text_bytes.decode(encoding="utf-8", errors="ignore")
         return text
     
+    def get_length(
+        self,
+        text_bytes: bytes,
+        add_special: bool,
+        parse_special: bool,
+    ) -> int:
+        """
+        Return the length of a given text as measured in tokens
+        """
+        null_ptr_check(
+            self._model.model, 'self._model.model', 'Llama.get_length'
+        )
+        return -lib.llama_tokenize(
+            model=self._model.model,
+            text=text_bytes,
+            text_len=len(text_bytes),
+            tokens=NULL,
+            n_tokens_max=0,
+            add_special=add_special,
+            parse_special=parse_special
+        )
+    
     def decode(self, batch: _LlamaBatch) -> int:
         """
         Decode a batch of tokens
