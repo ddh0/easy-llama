@@ -154,11 +154,16 @@ def _calculate_rope_freq_base(
     Returns the rope_freq_base value at which a model should be loaded
     """
 
+    # n_ctx does not exceed n_ctx_train - simply return native value
+
     if n_ctx_load <= n_ctx_train:
         if rope_freq_base_train is None:
             return 0.0
         else:
             return rope_freq_base_train
+    
+    # n_ctx exceeds n_ctx_train, but native value is unknown, so automatic
+    # adjustment cannot be applied - show error and return 0.0
     
     if rope_freq_base_train in [None, 0.0]:
         _print_error(
@@ -169,10 +174,24 @@ def _calculate_rope_freq_base(
         )
         return 0.0
     
+    # n_ctx exceeds n_ctx_train, and native value is known, so automatic
+    # adjustment can be applied - show warning and return adjusted value
+
     # standard formula -- proportional increase
-    return (n_ctx_load/n_ctx_train)*rope_freq_base_train
+    adjusted_rope_freq = (n_ctx_load/n_ctx_train)*rope_freq_base_train
     # experimental formula -- slightly above proportional increase
-    #return ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
+    #adjusted_rope_freq = \
+    #    ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
+    
+    _print_warning(
+        f"n_ctx value {n_ctx_load} exceeds n_ctx_train value "
+        f"{n_ctx_train}; using adjusted rope_freq_base value "
+        f"{adjusted_rope_freq}, native value is "
+        f"{rope_freq_base_train}; model will function with "
+        f"potentially degraded output quality"
+    )
+
+    return adjusted_rope_freq
 
 def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
 
@@ -345,7 +364,9 @@ class QuickGGUFReader:
         ) -> str | int | float | bool:
         """Read a single value from an open file"""
         if value_type == GGUFValueType.STRING:
-            string_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            string_length = QuickGGUFReader.unpack(
+                GGUFValueType.UINT64, file=file
+            )
             value = file.read(string_length)
             # officially, strings that cannot be decoded into utf-8 are invalid
             try:
@@ -394,20 +415,29 @@ class QuickGGUFReader:
                     f"version"
                 )
             
-            tensor_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            tensor_count = QuickGGUFReader.unpack(
+                GGUFValueType.UINT64, file=file
+            )
             if version == 3:
-                metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+                metadata_kv_count = QuickGGUFReader.unpack(
+                    GGUFValueType.UINT64, file=file
+                )
             elif version == 2:
-                metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
-
+                metadata_kv_count = QuickGGUFReader.unpack(
+                    GGUFValueType.UINT32, file=file
+                )
             for _ in range(metadata_kv_count):
                 if version == 3:
-                    key_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+                    key_length = QuickGGUFReader.unpack(
+                        GGUFValueType.UINT64, file=file
+                    )
                 elif version == 2:
                     key_length = 0
                     while key_length == 0:
                         # seek until next key is found
-                        key_length = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
+                        key_length = QuickGGUFReader.unpack(
+                            GGUFValueType.UINT32, file=file
+                        )
                     file.read(4) # 4 byte offset for GGUFv2
                 key = file.read(key_length)
                 value_type = GGUFValueType(
@@ -419,9 +449,13 @@ class QuickGGUFReader:
                     )
                     # array_length is the number of items in the array
                     if version == 3:
-                        array_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+                        array_length = QuickGGUFReader.unpack(
+                            GGUFValueType.UINT64, file=file
+                        )
                     elif version == 2:
-                        array_length = QuickGGUFReader.unpack(GGUFValueType.UINT32, file=file)
+                        array_length = QuickGGUFReader.unpack(
+                            GGUFValueType.UINT32, file=file
+                        )
                         file.read(4) # 4 byte offset for GGUFv2
                     array = [
                         QuickGGUFReader.get_single(
@@ -679,7 +713,8 @@ class Llama:
         rope_freq_base: float = 0.0, # use 0.0 for auto, otherwise unmodified
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
-        logits_all: bool = False, # required for e.g. candidates, but hurts performance
+        # logits_all is required for e.g. candidates, but hurts performance
+        logits_all: bool = False,
         offload_kqv: bool = False,
         flash_attn: bool = False
     ):
@@ -719,9 +754,9 @@ class Llama:
                 f'n_ctx value {n_ctx}; using n_ctx_train value '
                 f'{n_ctx_train}'
             )
-            _n_ctx = n_ctx_train
+            _n_ctx = int(n_ctx_train)
         else:
-            _n_ctx = n_ctx
+            _n_ctx = int(n_ctx)
 
         # use rope_freq_base unless it == 0.0, in that case use the native
         # rope_freq_base found in the GGUF metadata
@@ -759,7 +794,7 @@ class Llama:
             flash_attn=flash_attn
         )
 
-        actual_n_ctx = self._ctx.n_ctx()
+        actual_n_ctx = self.n_ctx()
         requested_n_ctx = _n_ctx
 
         if actual_n_ctx != requested_n_ctx:
@@ -781,47 +816,33 @@ class Llama:
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
             )
         
-        if actual_n_ctx > n_ctx_train:
-            if _rope_freq_base == rope_freq_base: # TODO: this check is not correct
-                # model not guaranteed to work
-                _print_warning(
-                    f"n_ctx value {actual_n_ctx} exceeds n_ctx_train value "
-                    f"{n_ctx_train}; using native rope_freq_base value "
-                    f"{rope_freq_base}; model may not function correctly"
-                )
-            else:
-                # model guaranteed to work, potentially degraded output quality
-                _print_warning(
-                    f"n_ctx value {actual_n_ctx} exceeds n_ctx_train value "
-                    f"{n_ctx_train}; using adjusted rope_freq_base value "
-                    f"{rope_freq_base}, native value is "
-                    f"{rope_freq_base_train}; model will function with "
-                    f"potentially degraded output quality"
-                )
-        
         self.tracker = LlamaPerformanceTracker()
     
     def free(self):
         """Free the context and model"""
         self._ctx.free()
         self._model.free()
-    
+
     def n_ctx(self) -> int:
         """Return the currently loaded context length of this model"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_ctx")
         return lib.llama_n_ctx(self._ctx.ctx)
-    
+
     def n_batch(self) -> int:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_batch")
+        return lib.llama_n_batch(self._ctx.ctx)
 
     def n_ubatch(self) -> int:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_batch")
+        return lib.llama_n_ubatch(self._ctx.ctx)
 
     def n_seq_max(self) -> int:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_seq_max")
+        return lib.llama_n_seq_max(self._ctx.ctx)
 
     def n_vocab(self) -> int:
-        pass
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_vocab")
+        return lib.llama_n_vocab(self._model.model)
 
     def n_ctx_train(self) -> int:
         """Return the native context length of this model"""
@@ -829,77 +850,129 @@ class Llama:
             self._model.model, 'self._model.model', 'Llama.n_ctx_train'
         )
         return lib.llama_n_ctx_train(self._model.model)
-    
+
     def n_embd(self) -> int:
-        pass
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_embd")
+        return lib.llama_n_embd(self._model.model)
 
     def n_layer(self) -> int:
-        pass
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_layer")
+        return lib.llama_n_layer(self._model.model)
 
     def n_head(self) -> int:
-        pass
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_head")
+        return lib.llama_n_head(self._model.model)
 
     def pooling_type(self) -> int:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.pooling_type")
+        return lib.llama_pooling_type(self._ctx.ctx)
 
     def vocab_type(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.vocab_type"
+        )
+        return lib.llama_vocab_type(self._model.model)
 
     def rope_type(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.rope_type"
+        )
+        return lib.llama_rope_type(self._model.model)
 
-    def rope_freq_scale_train(self) -> int:
-        pass
+    def rope_freq_scale_train(self) -> float:
+        null_ptr_check(
+            self._model.model,
+            "self._model.model",
+            "Llama.rope_freq_scale_train"
+        )
+        return lib.llama_rope_freq_scale_train(self._model.model)
 
     def model_size(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.model_size"
+        )
+        return lib.llama_model_size(self._model.model)
 
     def model_n_params(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.model_n_params"
+        )
+        return lib.llama_model_n_params(self._model.model)
 
     def model_has_encoder(self) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.model_has_encoder"
+        )
+        return lib.llama_model_has_encoder(self._model.model)
 
     def model_has_decoder(self) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.model_has_decoder"
+        )
+        return lib.llama_model_has_decoder(self._model.model)
 
     def model_is_recurrent(self) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.model_is_recurrent"
+        )
+        return lib.llama_model_is_recurrent(self._model.model)
 
     def kv_cache_clear(self) -> None:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_clear")
+        lib.llama_kv_cache_clear(self._ctx.ctx)
 
     def kv_cache_seq_rm(self, seq_id: int, p0: int, p1: int) -> bool:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_rm")
+        return lib.llama_kv_cache_seq_rm(self._ctx.ctx, seq_id, p0, p1)
 
-    def kv_cache_seq_cp(self, seq_id_src: int, seq_id: int, seq_id_dst: int, p0: int, p1: int) -> None:
-        pass
+    def kv_cache_seq_cp(
+        self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int
+    ) -> None:
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_cp")
+        lib.llama_kv_cache_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
 
     def kv_cache_seq_keep(self, seq_id: int) -> None:
-        pass
+        null_ptr_check(
+            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep"
+        )
+        lib.llama_kv_cache_seq_keep(self._ctx.ctx, seq_id)
 
-    def kv_cache_seq_add(self, seq_id: int, p0: int, p1: int, delta: int) -> None:
-        pass
+    def kv_cache_seq_add(
+        self, seq_id: int, p0: int, p1: int, delta: int
+    ) -> None:
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_add")
+        lib.llama_kv_cache_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
 
     def kv_cache_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
-        pass
+        null_ptr_check(
+            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div"
+        )
+        lib.llama_kv_cache_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
 
     def kv_cache_seq_pos_max(self, seq_id: int) -> int:
-        pass
+        null_ptr_check(
+            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max"
+        )
+        return lib.llama_kv_cache_seq_pos_max(self._ctx.ctx, seq_id)
 
     def kv_cache_defrag(self) -> None:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_defrag")
+        lib.llama_kv_cache_defrag(self._ctx.ctx)
 
     def kv_cache_update(self) -> None:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_update")
+        lib.llama_kv_cache_update(self._ctx.ctx)
 
     def kv_cache_can_shift(self) -> bool:
-        pass
+        null_ptr_check(
+            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_can_shift"
+        )
+        return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
     def decode(self, batch: _LlamaBatch) -> int:
         """
         Decode a batch of tokens
-        
+
         Returns:
         - 0:
             success
@@ -907,77 +980,135 @@ class Llama:
             could not find a KV slot for the batch (try reducing the size of
             the batch or increase the context)
         - < 0:
-            error. the KV cache state is restored to the state before this 
+            error. the KV cache state is restored to the state before this
             call
         """
         null_ptr_check(batch, 'batch', 'Llama.decode')
-        return lib.llama_decode(self._ctx, batch.batch)
+        return lib.llama_decode(self._ctx.ctx, batch.batch)
 
     def n_threads(self) -> int:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads")
+        return lib.llama_n_threads(self._ctx.ctx)
 
     def n_threads_batch(self) -> int:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads_batch")
+        return lib.llama_n_threads_batch(self._ctx.ctx)
 
     def get_logits(self) -> lib.ptr:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.get_logits")
+        return lib.llama_get_logits(self._ctx.ctx)
 
     def get_logits_ith(self, i: int) -> lib.ptr:
-        pass
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.get_logits_ith")
+        return lib.llama_get_logits_ith(self._ctx.ctx, i)
 
     def token_get_score(self, token: int) -> float:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_get_score"
+        )
+        return lib.llama_token_get_score(self._model.model, token)
 
     def token_is_eog(self, token: int) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_is_eog"
+        )
+        return lib.llama_token_is_eog(self._model.model, token)
 
     def token_is_control(self, token: int) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_is_control"
+        )
+        return lib.llama_token_is_control(self._model.model, token)
 
     def token_bos(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_bos"
+        )
+        return lib.llama_token_bos(self._model.model)
 
     def token_eos(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_eos"
+        )
+        return lib.llama_token_eos(self._model.model)
 
     def token_eot(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_eot"
+        )
+        return lib.llama_token_eot(self._model.model)
 
     def token_cls(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_cls"
+        )
+        return lib.llama_token_cls(self._model.model)
 
     def token_sep(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_sep"
+        )
+        return lib.llama_token_sep(self._model.model)
 
     def token_nl(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_nl"
+        )
+        return lib.llama_token_nl(self._model.model)
 
     def token_pad(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_pad"
+        )
+        return lib.llama_token_pad(self._model.model)
 
     def add_bos_token(self) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.add_bos_token"
+        )
+        return lib.llama_add_bos_token(self._model.model)
 
     def add_eos_token(self) -> bool:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.add_eos_token"
+        )
+        return lib.llama_add_eos_token(self._model.model)
 
     def token_fim_pre(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_fim_pre"
+        )
+        return lib.llama_token_fim_pre(self._model.model)
 
     def token_fim_suf(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_fim_suf"
+        )
+        return lib.llama_token_fim_suf(self._model.model)
 
     def token_fim_mid(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_fim_mid"
+        )
+        return lib.llama_token_fim_mid(self._model.model)
 
     def token_fim_pad(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_fim_pad"
+        )
+        return lib.llama_token_fim_pad(self._model.model)
 
     def token_fim_rep(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_fim_rep"
+        )
+        return lib.llama_token_fim_rep(self._model.model)
 
     def token_fim_sep(self) -> int:
-        pass
+        null_ptr_check(
+            self._model.model, "self._model.model", "Llama.token_fim_sep"
+        )
+        return lib.llama_token_fim_sep(self._model.model)
     
     def tokenize(
         self,
@@ -1068,8 +1199,8 @@ class Llama:
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.detokenize'
         )
+        tok_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
         for token in tokens:
-            tok_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
             n_bytes = lib.llama_token_to_piece(
                 model=self._model.model,
                 token=token,
@@ -1118,8 +1249,6 @@ if __name__ == '__main__':
     # Handy-dandy basic test of wrappers
     # Assumes model.gguf is available in the current working directory
 
-    import os
-
     test_model_path = './model.gguf'
 
     if not os.path.exists(test_model_path):
@@ -1137,7 +1266,7 @@ if __name__ == '__main__':
         n_gpu_layers=-1,
         use_mmap=True,
         use_mlock=False,
-        n_ctx=8192,
+        n_ctx=4096,
         logits_all=False,
         offload_kqv=True,
         flash_attn=True
