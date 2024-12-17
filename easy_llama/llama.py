@@ -556,6 +556,7 @@ class _LlamaModel:
     def free(self):
         if self.model is not None:
             lib.llama_free_model(self.model)
+            self.model = None
 
 
 class _LlamaCtx:
@@ -675,6 +676,7 @@ class _LlamaCtx:
     def free(self):
         if self.ctx is not None:
             lib.llama_free(self.ctx)
+            self.ctx = None
 
 
 class _LlamaBatch:
@@ -687,18 +689,19 @@ class _LlamaBatch:
     ):
         _init_backend_if_needed()
         if embd != 0:
-            raise NotImplementedError('embd != 0 is not yet supported')
+            raise NotImplementedError(
+                f'embd value {embd} != 0; this is not yet supported'
+            )
         if n_seq_max != 1:
-            raise NotImplementedError('n_seq_max != 1 is not yet supported')
+            raise NotImplementedError(
+                f'n_seq_max value {n_seq_max} != 1; this is not yet supported'
+            )
         self.batch = lib.llama_batch_init(
             n_tokens=n_tokens,
             embd=embd,
             n_seq_max=n_seq_max
         )
         null_ptr_check(self.batch, "self.batch", "_LlamaBatch.__init__")
-        print(
-            f"debug: created batch: {n_tokens=}, {embd=}, {n_seq_max=}"
-        )
     
     @staticmethod
     def get_one(tokens: Iterable[int]) -> lib.llama_batch:
@@ -712,6 +715,7 @@ class _LlamaBatch:
     def free(self):
         if self.batch is not None:
             lib.llama_batch_free(self.batch)
+            self.batch = None
     
     def n_tokens(self) -> int:
         return self.batch.n_tokens
@@ -729,13 +733,21 @@ class _LlamaBatch:
         )
         null_ptr_check(self.batch, 'self.batch', '_LlamaBatch.set')
         self.batch.n_tokens = n_tokens
+        print(f'batch set: n_tokens is {n_tokens}')
         for i in range(n_tokens):
+            print(f'batch set: {i=}')
             self.batch.token[i]     = batch[i]
+            print(f'batch set: token[{i}] = {batch[i]}')
             self.batch.pos[i]       = n_past + i
+            print(f'batch set: pos[{i}] = {n_past + i}')
             self.batch.seq_id[i][0] = 0
+            print(f'batch set: seq_id[{i}][0] = 0')
             self.batch.n_seq_id[i]  = 1
+            print(f'batch set: n_seq_id[{i}] = 1')
             self.batch.logits[i]    = logits_all
+            print(f'batch set: logits[{i}] = {logits_all}')
         self.batch.logits[n_tokens - 1] = True
+        print(f'batch set: logits[{n_tokens - 1}] = True')
 
 #
 # Llama
@@ -770,7 +782,12 @@ class Llama:
             )
         
         # peek at metadata from GGUF file header before loading model
+
         self.metadata = QuickGGUFReader.load_metadata(path_model)
+        
+        #
+        # Load model from file
+        #
 
         self._model = _LlamaModel(
             path_model=path_model,
@@ -814,6 +831,10 @@ class Llama:
             )
         else:
             _rope_freq_base = rope_freq_base
+
+        #
+        # New context with model
+        #
         
         self._ctx = _LlamaCtx(
             model=self._model,
@@ -826,6 +847,10 @@ class Llama:
             offload_kqv=offload_kqv,
             flash_attn=flash_attn
         )
+
+        #
+        # Display warnings about n_ctx if necessary
+        #
 
         actual_n_ctx = self.n_ctx()
         requested_n_ctx = _n_ctx
@@ -849,17 +874,65 @@ class Llama:
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
             )
         
+        #
+        # Set the tracker and batch for this model
+        #
+
+        # TODO: support multiple batches per Llama
+        
         self.tracker = LlamaPerformanceTracker()
-        self.pos = 0
-        """The current position of the model within the context window"""
         self._batch = _LlamaBatch(
             n_tokens=self.n_batch(),
             embd=0,
             n_seq_max=1
         )
+
+        #
+        # Store immutable Llama metadata as attributes for faster access
+        #
+
+        self._n_ctx                 = self.n_ctx()
+        self._n_batch               = self.n_batch()
+        self._n_ubatch              = self.n_ubatch()
+        self._n_seq_max             = self.n_seq_max()
+        self._n_vocab               = self.n_vocab()
+        self._n_ctx_train           = self.n_ctx_train()
+        self._n_embd                = self.n_embd()
+        self._n_layer               = self.n_layer()
+        self._n_head                = self.n_head() # attn heads, not KV
+        self._pooling_type          = self.pooling_type()
+        self._vocab_type            = self.vocab_type()
+        self._rope_type             = self.rope_type()
+        self._rope_freq_scale_train = self.rope_freq_scale_train()
+        self._model_size            = self.model_size()
+        self._model_n_params        = self.model_n_params()
+        self._model_has_encoder     = self.model_has_encoder()
+        self._model_has_decoder     = self.model_has_decoder()
+        self._model_is_recurrent    = self.model_is_recurrent()
+        self._token_bos             = self.token_bos()
+        self._token_eos             = self.token_eos()
+        self._token_eot             = self.token_eot()
+        self._token_cls             = self.token_cls()
+        self._token_sep             = self.token_sep()
+        self._token_nl              = self.token_nl()
+        self._token_pad             = self.token_pad()
+        self._add_bos_token         = self.add_bos_token()
+        self._add_eos_token         = self.add_eos_token()
+        self._token_fim_pre         = self.token_fim_pre()
+        self._token_fim_suf         = self.token_fim_suf()
+        self._token_fim_mid         = self.token_fim_mid()
+        self._token_fim_pad         = self.token_fim_pad()
+        self._token_fim_rep         = self.token_fim_rep()
+        self._token_fim_sep         = self.token_fim_sep()
+
+        self.pos = 0
+        """The current position of the model within the context window"""
+
+        # End of Llama.__init__
     
     def free(self):
-        """Free the context and model"""
+        """Deallocate the batch, context, and model"""
+        self._batch.free()
         self._ctx.free()
         self._model.free()
 
@@ -962,38 +1035,58 @@ class Llama:
         lib.llama_kv_cache_clear(self._ctx.ctx)
 
     def kv_cache_seq_rm(self, seq_id: int, p0: int, p1: int) -> bool:
+        if seq_id != 0:
+            raise NotImplementedError(
+                f'Llama.kv_cache_seq_rm: seq_id {seq_id} != 0; this is not yet '
+                f'supported'
+            )
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_rm")
-        return lib.llama_kv_cache_seq_rm(self._ctx.ctx, seq_id, p0, p1)
+        return lib.llama_kv_cache_seq_rm(self._ctx.ctx, 0, p0, p1)
 
     def kv_cache_seq_cp(
         self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int
     ) -> None:
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_cp")
-        lib.llama_kv_cache_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
+        raise NotImplementedError(
+            f'Llama.kv_cache_seq_cp is not yet implemented'
+        )
+        # null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_cp")
+        # lib.llama_kv_cache_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
 
     def kv_cache_seq_keep(self, seq_id: int) -> None:
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep"
+        raise NotImplementedError(
+            f'Llama.kv_cache_seq_keep is not yet implemented'
         )
-        lib.llama_kv_cache_seq_keep(self._ctx.ctx, seq_id)
+        # null_ptr_check(
+        #     self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep"
+        # )
+        # lib.llama_kv_cache_seq_keep(self._ctx.ctx, seq_id)
 
     def kv_cache_seq_add(
         self, seq_id: int, p0: int, p1: int, delta: int
     ) -> None:
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_add")
-        lib.llama_kv_cache_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
+        raise NotImplementedError(
+            f'Llama.kv_cache_seq_add is not yet implemented'
+        )
+        # null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_add")
+        # lib.llama_kv_cache_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
 
     def kv_cache_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div"
+        raise NotImplementedError(
+            f'Llama.kv_cache_seq_div is not yet implemented'
         )
-        lib.llama_kv_cache_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
+        # null_ptr_check(
+        #     self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div"
+        # )
+        # lib.llama_kv_cache_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
 
     def kv_cache_seq_pos_max(self, seq_id: int) -> int:
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max"
+        raise NotImplementedError(
+            f'Llama.kv_cache_seq_pos_max is not yet implemented'
         )
-        return lib.llama_kv_cache_seq_pos_max(self._ctx.ctx, seq_id)
+        # null_ptr_check(
+        #     self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max"
+        # )
+        # return lib.llama_kv_cache_seq_pos_max(self._ctx.ctx, seq_id)
 
     def kv_cache_defrag(self) -> None:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_defrag")
@@ -1009,31 +1102,34 @@ class Llama:
         )
         return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
-    def decode(self, batch: Optional[_LlamaBatch] = None):
+    def decode(self, batch: Optional[_LlamaBatch] = None) -> None:
         """
         Decode a batch of tokens
 
         - batch:
             The `_LlamaBatch` to decode. Use `self._batch` if not specified
         """
+        # NOTE: this function does not return the return code because if this
+        #       function completes, the return code must be 0
         if batch is None:
+            _print_verbose('Llama.decode: batch is None, using self._batch')
             batch = self._batch
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.decode')
         null_ptr_check(batch.batch, 'batch.batch', 'Llama.decode')
         ret = lib.llama_decode(self._ctx.ctx, batch.batch)
         if ret < 0:
-            _print_error(
+            raise RuntimeError(
                 f'Llama.decode: llama_decode failed with return code {ret}; '
                 f'the KV cache state is restored to the state before this call'
             )
         elif ret == 1:
-            _print_warning(
+            raise RuntimeError(
                 f'Llama.decode: llama_decode could not find a KV slot for the '
                 f'batch (try reducing the size of the batch or increase the '
                 f'context)'
             )
         elif ret > 1:
-            _print_warning(
+            raise RuntimeError(
                 f'Llama.decode: llama_decode returned {ret}'
             )
         else:
@@ -1296,23 +1392,35 @@ class Llama:
         )
 
     def eval(self, tokens: Iterable[int], logits_all: bool = False):
-        n_batch = self.n_batch()
-        n_vocab = self.n_vocab()
-        self.kv_cache_seq_rm(-1, self.pos, -1)
-        for i in range(0, len(tokens), n_batch):
-            n_past = self.pos
-            batch_tokens = tokens[i : min(len(tokens), i + n_batch)]
+        n_tokens_eval = len(tokens)
+        if n_tokens_eval > self._n_ctx:
+            _print_warning(
+                f'Llama.eval: number of input tokens {n_tokens_eval} exceeds '
+                f'context size {self._n_ctx}'
+            )
+        self.kv_cache_seq_rm(0, self.pos, -1)
+        for i in range(0, n_tokens_eval, self._n_batch):
+            print(f'this is batch number {i=}')
+            batch_tokens = tokens[i : min(n_tokens_eval, i + self._n_batch)]
+            print(f'this batch is {batch_tokens}')
             n_tokens = len(batch_tokens)
-            self._batch.set(batch=batch_tokens, n_past=n_past, logits_all=logits_all)
+            print(f'this batch n_tokens is {n_tokens}')
+            self._batch.set(batch=batch_tokens, n_past=self.pos, logits_all=logits_all)
             self.decode() # forward pass
-            self.pos += n_tokens # update
+            print(f'before update self.pos: {self.pos}')
+            self.pos += n_tokens # update Llama position
+            print(f'after update self.pos: {self.pos}')
+        # TODO: everything after this line should be moved to its own function
+        #       once this function is confirmed working
         rows = n_tokens if logits_all else 1
-        cols = n_vocab
+        cols = self._n_vocab
         logits = np.ctypeslib.as_array(obj=self.get_logits(), shape=(rows,cols))
         print(f"{type(logits)=}")
         print(f"{len(logits)=}")
         print(f"{np.shape(logits)=}")
         print(repr(logits))
+        # NOTE: logits[-1] should always refer to the logits of self.pos
+        #       regardless of logits_all
         print(f"{np.argmax(logits[-1])=}") # print token ID with highest logit (most likely) 
         print(f"{self.token_to_piece(np.argmax(logits[-1]),special=True)=}") # print the text of that token
 
@@ -1330,6 +1438,7 @@ if __name__ == '__main__':
     # Assumes model.gguf is available in the current working directory
 
     test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
+    # test_model_path = '/Users/dylan/Documents/AI/models/Llama-3.2-1B-q8_0-q8_0.gguf'
 
     if not os.path.exists(test_model_path):
         raise FileNotFoundError(f'the file {test_model_path!r} was not found')
@@ -1338,9 +1447,6 @@ if __name__ == '__main__':
 
     def test_print(text: str) -> None:
         _print_verbose(f'{this_module_name} test: {text}')
-    
-    with open('/Users/dylan/Documents/AI/llama.cpp/src/llama.cpp', 'r') as f:
-        llama_cpp_contents = f.read()
 
     print("-" * 80)
 
@@ -1358,7 +1464,7 @@ if __name__ == '__main__':
     #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
     chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nHello, tell me a short story about two potatoes in love.<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
     test_print(f'prompt:\n\n{chktxt!r}')
-    tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=254640, add_special=True, parse_special=True)
+    tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
     print()
     test_print(f'tokenized prompt:\n\n{tokens!r}')
     detok = TestLlama.detokenize(tokens, special=True).decode()
@@ -1375,4 +1481,9 @@ if __name__ == '__main__':
     print("-" * 80)
     test_print('using tokenized prompt as input for eval')
     TestLlama.eval(tokens=tokens, logits_all=True)
+    sampler = lib.llama_sampler_init_greedy()
+    id = lib.llama_sampler_sample(smpl=sampler, ctx=TestLlama._ctx.ctx, idx=-1)
+    print('sampled token: ' + repr(TestLlama.token_to_piece(token=id, special=True).decode()))
+    print("-" * 80)
+    TestLlama.free()
     print("-" * 80)
