@@ -14,6 +14,7 @@ from enum      import IntEnum
 from constants import Colors
 
 import libllama as lib
+import numpy    as np
 
 RESET  = Colors.RESET
 GREEN  = Colors.GREEN
@@ -164,7 +165,7 @@ def _calculate_rope_freq_base(
     
     # n_ctx exceeds n_ctx_train, but native value is unknown, so automatic
     # adjustment cannot be applied - show error and return 0.0
-    
+
     if rope_freq_base_train in [None, 0.0]:
         _print_error(
             f'n_ctx value {n_ctx_load} > n_ctx_train value {n_ctx_train}, and '
@@ -239,17 +240,17 @@ class LlamaPerformanceTracker:
 
     def get_elapsed_time_pp(self) -> int:
         """Return the number of nanoseconds elapsed during prompt processing"""
-        return int(self.pp_end_time - self.pp_start_time)
+        return self.pp_end_time - self.pp_start_time
     
     def get_elapsed_time_tg(self) -> int:
         """Return the number of nanoseconds elapsed during text generation"""
-        return int(self.tg_end_time - self.tg_start_time)
+        return self.tg_end_time - self.tg_start_time
     
     def increment_pp_tokens(self, n: int):
-        self.n_pp_tokens += n
+        self.n_pp_tokens += max(n, 0) # do not allow negative increment
     
     def increment_tg_tokens(self, n: int):
-        self.n_tg_tokens += n
+        self.n_tg_tokens += max(n, 0) # do not allow negative increment
     
     def reset(self):
         """Reset the tracker to its original state"""
@@ -262,35 +263,40 @@ class LlamaPerformanceTracker:
     
     def print_stats(self):
         """Print performance statistics using current tracker state"""
-        pp_elapsed_ns = self.get_elapsed_time_pp()
-        tg_elapsed_ns = self.get_elapsed_time_tg()
 
-        pp_elapsed_ms = pp_elapsed_ns / 1e6
-        pp_elapsed_s = pp_elapsed_ns / 1e9
-
+        if self.n_pp_tokens + self.n_tg_tokens == 0:
+            _print_info(
+                f'LlamaPerformanceTracker: print_stats was called but no '
+                f'tokens were processed or generated'
+            )
+            return
+        
         if self.n_pp_tokens > 0:
+            pp_elapsed_ns = self.get_elapsed_time_pp()
+            pp_elapsed_ms = pp_elapsed_ns / 1e6
+            pp_elapsed_s = pp_elapsed_ns / 1e9
             pp_tps = self.n_pp_tokens / pp_elapsed_s
             _print_info(
                 f'prompt processing for {self.n_pp_tokens} tokens took '
                 f'{pp_elapsed_ms:.3f}ms ({pp_tps:.2f} tok/s)'
             )
 
-        tg_elapsed_ms = tg_elapsed_ns / 1e6
-        tg_elapsed_s = tg_elapsed_ns / 1e9
-
         if self.n_tg_tokens > 0:
+            tg_elapsed_ns = self.get_elapsed_time_tg()
+            tg_elapsed_ms = tg_elapsed_ns / 1e6
+            tg_elapsed_s = tg_elapsed_ns / 1e9
             tg_tps = self.n_tg_tokens / tg_elapsed_s
             _print_info(
                 f'text generation of {self.n_tg_tokens} tokens took '
                 f'{tg_elapsed_ms:.3f}ms ({tg_tps:.2f} tok/s)'
             )
 
-        total_elapsed_ns = pp_elapsed_ns + tg_elapsed_ns
-        total_elapsed_ms = total_elapsed_ns / 1e6
-        total_elapsed_s = total_elapsed_ns / 1e9
+        if (self.n_pp_tokens > 0) and (self.n_tg_tokens > 0):
+            total_elapsed_ns = pp_elapsed_ns + tg_elapsed_ns
+            total_elapsed_ms = total_elapsed_ns / 1e6
+            total_elapsed_s = total_elapsed_ns / 1e9
 
-        total_tokens = self.n_pp_tokens + self.n_tg_tokens
-        if total_tokens > 0:
+            total_tokens = self.n_pp_tokens + self.n_tg_tokens
             total_average_tps = total_tokens / total_elapsed_s
 
             _print_info(
@@ -532,6 +538,14 @@ class _LlamaModel:
         self.params.use_mlock = use_mlock
         self.params.check_tensors = check_tensors
 
+        # refuse to load files with incorrect extension
+        if not path_model.lower().endswith('.gguf'):
+            raise ValueError(
+                f"_LlamaModel.__init__: the given path_model {path_model!r} "
+                f"does not end in '.gguf'. easy-llama refuses to load from "
+                f"files that do not have the correct file extension."
+            )
+        
         # load model
         self.model = lib.llama_load_model_from_file(path_model, self.params)
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
@@ -567,7 +581,7 @@ class _LlamaCtx:
         yarn_orig_ctx = 0,
         defrag_thold = 0.0,
         cb_eval = None,
-        cb_tg_user_data = None,
+        cb_eval_user_data = None,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
         logits_all = False,
@@ -585,8 +599,8 @@ class _LlamaCtx:
         self.params.n_batch = n_batch
         self.params.n_ubatch = n_ubatch
         if n_seq_max != 1:
-            _print_warning(
-                f'n_seq_max value {n_seq_max} != 1; this is not recommended'
+            raise NotImplementedError(
+                f'n_seq_max value {n_seq_max} != 1; this is not yet supported'
             )
         self.params.n_seq_max = n_seq_max
         self.params.n_threads = n_threads
@@ -617,7 +631,7 @@ class _LlamaCtx:
         self.params.cb_eval = (
             cb_eval
         ) if cb_eval is not None else lib.dummy_eval_callback()
-        self.params.cb_tg_user_data = cb_tg_user_data
+        self.params.cb_eval_user_data = cb_eval_user_data
         self.params.type_k = type_k if type_k is not None else _DEFAULT_KV_TYPE
         self.params.type_v = type_v if type_v is not None else _DEFAULT_KV_TYPE
         _k, _v = self.params.type_k, self.params.type_v
@@ -668,12 +682,29 @@ class _LlamaBatch:
     def __init__(
         self,
         n_tokens: int,
-        embd: int,
-        n_seq_max: int
+        embd: int = 0,
+        n_seq_max: int = 1
     ):
         _init_backend_if_needed()
-        self.batch = lib.llama_batch_init(n_tokens, embd, n_seq_max)
+        if embd != 0:
+            raise NotImplementedError('embd != 0 is not yet supported')
+        if n_seq_max != 1:
+            raise NotImplementedError('n_seq_max != 1 is not yet supported')
+        self.batch = lib.llama_batch_init(
+            n_tokens=n_tokens,
+            embd=embd,
+            n_seq_max=n_seq_max
+        )
         null_ptr_check(self.batch, "self.batch", "_LlamaBatch.__init__")
+        print(
+            f"debug: created batch: {n_tokens=}, {embd=}, {n_seq_max=}"
+        )
+    
+    @staticmethod
+    def get_one(tokens: Iterable[int]) -> lib.llama_batch:
+        n_tokens = len(tokens)
+        tokens_array = (ctypes.c_int32 * n_tokens)(*tokens)
+        return lib.llama_batch_get_one(tokens=tokens_array, n_tokens=n_tokens)
     
     def __del__(self):
         self.free()
@@ -681,18 +712,30 @@ class _LlamaBatch:
     def free(self):
         if self.batch is not None:
             lib.llama_batch_free(self.batch)
+    
+    def n_tokens(self) -> int:
+        return self.batch.n_tokens
 
-    def get_one(self, tokens: list[int]):
-        # TODO: find out why this is commented with "avoid using" in llama.h
-        """
-        AVOID USING
-
-        Return batch for single sequence of tokens
-        """
-        tokens_array = (ctypes.c_int * len(tokens))(*tokens)
-        batch = lib.llama_batch_get_one(tokens_array, len(tokens))
-        null_ptr_check(batch, "batch", "_LlamaBatch.get_one")
-        return batch
+    def reset(self):
+        self.batch.n_tokens = 0
+    
+    def set(self, batch: Iterable[int], n_past: int, logits_all: bool):
+        self.free()
+        n_tokens = len(batch)
+        self.batch = lib.llama_batch_init(
+            n_tokens=n_tokens,
+            embd=0,
+            n_seq_max=1
+        )
+        null_ptr_check(self.batch, 'self.batch', '_LlamaBatch.set')
+        self.batch.n_tokens = n_tokens
+        for i in range(n_tokens):
+            self.batch.token[i]     = batch[i]
+            self.batch.pos[i]       = n_past + i
+            self.batch.seq_id[i][0] = 0
+            self.batch.n_seq_id[i]  = 1
+            self.batch.logits[i]    = logits_all
+        self.batch.logits[n_tokens - 1] = True
 
 #
 # Llama
@@ -706,15 +749,13 @@ class Llama:
     def __init__(
         self,
         path_model: str,
-        n_gpu_layers: int = 0,
+        n_gpu_layers: int = 0, # use < 0 to offload all layers
         use_mmap: bool = True,
         use_mlock: bool = False,
-        n_ctx: int = 512,
+        n_ctx: int = 512, # use <= 0 for n_ctx_train, otherwise unmodified
         rope_freq_base: float = 0.0, # use 0.0 for auto, otherwise unmodified
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
-        # logits_all is required for e.g. candidates, but hurts performance
-        logits_all: bool = False,
         offload_kqv: bool = False,
         flash_attn: bool = False
     ):
@@ -727,15 +768,8 @@ class Llama:
                 f"Llama: the given path_model {path_model!r} is a directory, "
                 f"not a GGUF file"
             )
-        if not path_model.lower().endswith('.gguf'):
-            raise ValueError(
-                f"Llama: the given path_model {path_model!r} does not end in "
-                f"'.gguf'. easy-llama refuses to load from files that do not "
-                f"have the correct file extension."
-            )
         
         # peek at metadata from GGUF file header before loading model
-
         self.metadata = QuickGGUFReader.load_metadata(path_model)
 
         self._model = _LlamaModel(
@@ -745,7 +779,7 @@ class Llama:
             use_mlock=use_mlock
         )
 
-        n_ctx_train = self.n_ctx_train()
+        n_ctx_train = lib.llama_n_ctx_train(self._model.model)
 
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
@@ -789,7 +823,6 @@ class Llama:
             rope_freq_base=_rope_freq_base,
             type_k=type_k,
             type_v=type_v,
-            logits_all=logits_all,
             offload_kqv=offload_kqv,
             flash_attn=flash_attn
         )
@@ -817,6 +850,13 @@ class Llama:
             )
         
         self.tracker = LlamaPerformanceTracker()
+        self.pos = 0
+        """The current position of the model within the context window"""
+        self._batch = _LlamaBatch(
+            n_tokens=self.n_batch(),
+            embd=0,
+            n_seq_max=1
+        )
     
     def free(self):
         """Free the context and model"""
@@ -969,22 +1009,37 @@ class Llama:
         )
         return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
-    def decode(self, batch: _LlamaBatch) -> int:
+    def decode(self, batch: Optional[_LlamaBatch] = None):
         """
         Decode a batch of tokens
 
-        Returns:
-        - 0:
-            success
-        - 1:
-            could not find a KV slot for the batch (try reducing the size of
-            the batch or increase the context)
-        - < 0:
-            error. the KV cache state is restored to the state before this
-            call
+        - batch:
+            The `_LlamaBatch` to decode. Use `self._batch` if not specified
         """
-        null_ptr_check(batch, 'batch', 'Llama.decode')
-        return lib.llama_decode(self._ctx.ctx, batch.batch)
+        if batch is None:
+            batch = self._batch
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.decode')
+        null_ptr_check(batch.batch, 'batch.batch', 'Llama.decode')
+        ret = lib.llama_decode(self._ctx.ctx, batch.batch)
+        if ret < 0:
+            _print_error(
+                f'Llama.decode: llama_decode failed with return code {ret}; '
+                f'the KV cache state is restored to the state before this call'
+            )
+        elif ret == 1:
+            _print_warning(
+                f'Llama.decode: llama_decode could not find a KV slot for the '
+                f'batch (try reducing the size of the batch or increase the '
+                f'context)'
+            )
+        elif ret > 1:
+            _print_warning(
+                f'Llama.decode: llama_decode returned {ret}'
+            )
+        else:
+            _print_info(
+                f'Llama.decode: llama_decode success'
+            )
 
     def n_threads(self) -> int:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads")
@@ -1125,7 +1180,7 @@ class Llama:
         - n_tokens_max:
             Tokenization will fail if the text is more than this many tokens.
             Larger numbers allow more text to be tokenized but will allocate
-            more memory.
+            more memory (4 bytes per token).
         - add_special:
             Allow to add BOS and EOS tokens if model is configured to do so.
         - parse_special:
@@ -1199,12 +1254,12 @@ class Llama:
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.detokenize'
         )
-        tok_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
+        str_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
         for token in tokens:
             n_bytes = lib.llama_token_to_piece(
                 model=self._model.model,
                 token=token,
-                buf=tok_buf,
+                buf=str_buf,
                 length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
                 lstrip=0, # skip up to 'lstrip' leading spaces
                 special=special
@@ -1215,7 +1270,7 @@ class Llama:
                     f"requires a buffer of size {n_bytes}, but the maximum "
                     f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
                 )
-            detok_bytes += tok_buf.raw[:n_bytes]
+            detok_bytes += str_buf.raw[:n_bytes]
         return detok_bytes
     
     def get_length(
@@ -1240,6 +1295,31 @@ class Llama:
             parse_special=parse_special
         )
 
+    def eval(self, tokens: Iterable[int], logits_all: bool = False):
+        n_batch = self.n_batch()
+        n_vocab = self.n_vocab()
+        self.kv_cache_seq_rm(-1, self.pos, -1)
+        for i in range(0, len(tokens), n_batch):
+            n_past = self.pos
+            batch_tokens = tokens[i : min(len(tokens), i + n_batch)]
+            n_tokens = len(batch_tokens)
+            self._batch.set(batch=batch_tokens, n_past=n_past, logits_all=logits_all)
+            self.decode() # forward pass
+            self.pos += n_tokens # update
+        rows = n_tokens if logits_all else 1
+        cols = n_vocab
+        logits = np.ctypeslib.as_array(obj=self.get_logits(), shape=(rows,cols))
+        print(f"{type(logits)=}")
+        print(f"{len(logits)=}")
+        print(f"{np.shape(logits)=}")
+        print(repr(logits))
+        print(f"{np.argmax(logits[-1])=}") # print token ID with highest logit (most likely) 
+        print(f"{self.token_to_piece(np.argmax(logits[-1]),special=True)=}") # print the text of that token
+
+    def reset(self) -> None:
+        self.kv_cache_clear()
+        self.pos = 0
+
 #
 # End of functions / Begin test
 #
@@ -1249,15 +1329,18 @@ if __name__ == '__main__':
     # Handy-dandy basic test of wrappers
     # Assumes model.gguf is available in the current working directory
 
-    test_model_path = './model.gguf'
+    test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
 
     if not os.path.exists(test_model_path):
-        raise FileNotFoundError(f'the file {test_model_path} was not found')
+        raise FileNotFoundError(f'the file {test_model_path!r} was not found')
     
     this_module_name = os.path.splitext(os.path.basename(__file__))[0]
 
     def test_print(text: str) -> None:
         _print_verbose(f'{this_module_name} test: {text}')
+    
+    with open('/Users/dylan/Documents/AI/llama.cpp/src/llama.cpp', 'r') as f:
+        llama_cpp_contents = f.read()
 
     print("-" * 80)
 
@@ -1266,21 +1349,19 @@ if __name__ == '__main__':
         n_gpu_layers=-1,
         use_mmap=True,
         use_mlock=False,
-        n_ctx=4096,
-        logits_all=False,
+        n_ctx=8192,
         offload_kqv=True,
         flash_attn=True
     )
 
     print("-" * 80)
-    chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
+    #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
+    chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nHello, tell me a short story about two potatoes in love.<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
     test_print(f'prompt:\n\n{chktxt!r}')
-
-    tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=False, parse_special=False)
+    tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=254640, add_special=True, parse_special=True)
     print()
     test_print(f'tokenized prompt:\n\n{tokens!r}')
-
-    detok = TestLlama.detokenize(tokens, special=False).decode()
+    detok = TestLlama.detokenize(tokens, special=True).decode()
     print()
     test_print(f'detokenized prompt:\n\n{detok!r}')
 
@@ -1291,4 +1372,7 @@ if __name__ == '__main__':
         f"num detok characters -- {len(detok)}\n"
         f"exact string match? --- {'yes' if chktxt == detok else 'no'}"
     )
+    print("-" * 80)
+    test_print('using tokenized prompt as input for eval')
+    TestLlama.eval(tokens=tokens, logits_all=True)
     print("-" * 80)

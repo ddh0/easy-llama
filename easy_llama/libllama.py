@@ -70,8 +70,8 @@ def _libllama_decode_and_print(text: bytes) -> None:
 # Import shared library
 #
 
-libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama.dylib')
-# libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
+#libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama.dylib')
+libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
 
 #
 # Type hints
@@ -1062,20 +1062,20 @@ def llama_state_seq_load_file(ctx: llama_context, filepath: str, dest_seq_id: in
 # Batch
 #
 
-def llama_batch_get_one(tokens: ctypes.POINTER(ctypes.c_int), n_tokens: int) -> llama_batch_p: # type: ignore
+def llama_batch_get_one(tokens: ctypes.POINTER(ctypes.c_int), n_tokens: int) -> llama_batch: # type: ignore
     """
     AVOID USING
 
     Return batch for single sequence of tokens
     """
     libllama.llama_batch_get_one.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int32]
-    libllama.llama_batch_get_one.restype = llama_batch_p
+    libllama.llama_batch_get_one.restype = llama_batch
     return libllama.llama_batch_get_one(tokens, n_tokens)
 
-def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> llama_batch_p: # type: ignore
+def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> llama_batch:
     """Allocate a batch of tokens"""
     libllama.llama_batch_init.argtypes = [ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
-    libllama.llama_batch_init.restype = llama_batch_p
+    libllama.llama_batch_init.restype = llama_batch
     return libllama.llama_batch_init(n_tokens, embd, n_seq_max)
 
 def llama_batch_free(batch: llama_batch) -> None:
@@ -1095,7 +1095,19 @@ def llama_encode(ctx: llama_context, batch: llama_batch) -> int:
     return libllama.llama_encode(ctx, batch)
 
 def llama_decode(ctx: llama_context, batch: llama_batch) -> int:
-    """Process a batch of tokens with the decoder part of the encoder-decoder model"""
+    """
+    Process a batch of tokens with the decoder part of the encoder-decoder model
+
+    Returns:
+    - 0:
+        success
+    - 1:
+        could not find a KV slot for the batch (try reducing the size of
+        the batch or increase the context)
+    - < 0:
+        error. the KV cache state is restored to the state before this
+        call
+    """
     libllama.llama_decode.argtypes = [llama_context_p, llama_batch_p]
     libllama.llama_decode.restype = ctypes.c_int
     return libllama.llama_decode(ctx, batch)
@@ -1757,8 +1769,10 @@ if __name__ == '__main__':
 
     import os
 
-    if not os.path.exists('./model.gguf'):
-        raise FileNotFoundError('the file ./model.gguf was not found')
+    test_model_path = "/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf"
+
+    if not os.path.exists(test_model_path):
+        raise FileNotFoundError(f'the file {test_model_path!r} was not found')
 
     this_module_name = os.path.splitext(os.path.basename(__file__))[0]
 
@@ -1779,7 +1793,7 @@ if __name__ == '__main__':
     model_params = llama_model_default_params()
 
     test_print(f"calling llama_load_model_from_file ...")
-    model = llama_load_model_from_file('./model.gguf', model_params)
+    model = llama_load_model_from_file(test_model_path, model_params)
 
     test_print(f"calling llama_context_default_params ...")
     ctx_params = llama_context_default_params()
