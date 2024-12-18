@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-from ._version import __version__
+from _version import __version__
 
 """Submodule containing convenience functions and QuickGGUFReader"""
 
@@ -10,9 +10,8 @@ import os
 import sys
 import numpy as np
 
-from typing     import Iterable, TextIO, Optional
-from .constants import Colors, GGUFValueType
-from .libllama  import GGUF_MAGIC
+from typing    import Iterable, TextIO, Optional
+from constants import Colors
 
 
 # color codes used in Thread.interact() and for warnings

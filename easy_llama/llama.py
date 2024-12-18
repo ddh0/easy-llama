@@ -8,6 +8,7 @@ import time
 import struct
 import ctypes
 
+from utils import print_verbose, print_info, print_warning, print_error
 from typing    import NoReturn, Optional, Iterable
 from io        import BufferedReader
 from enum      import IntEnum
@@ -70,30 +71,6 @@ def null_ptr_check(
             f"{loc_hint}: {ptr_name} is NULLPTR"
         )
 
-def _print_verbose(text: str) -> None:
-    print(
-        f"easy_llama:",
-        text, file=sys.stderr, flush=True
-    )
-
-def _print_info(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {GREEN}INFO{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
-
-def _print_warning(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {YELLOW}WARNING{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
-
-def _print_error(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {RED}ERROR{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
-
 def _init_backend_if_needed() -> None:
 
     # if already initialized, no need to do anything
@@ -102,18 +79,18 @@ def _init_backend_if_needed() -> None:
     
     # most cases
     if sys.byteorder == 'little':
-        _print_verbose(
+        print_verbose(
             "host is little-endian"
         )
     # rare
     elif sys.byteorder == 'big':
-        _print_warning(
+        print_warning(
             "host is big-endian, please ensure your GGUF file is also "
             "big-endian"
         )
     # extremely rare
     else:
-        _print_warning(
+        print_warning(
             f"unexpected value for sys.byteorder: {sys.byteorder!r}; "
             f"expected 'little' for little-endian host or 'big' for "
             f"big-endian host"
@@ -167,7 +144,7 @@ def _calculate_rope_freq_base(
     # adjustment cannot be applied - show error and return 0.0
 
     if rope_freq_base_train in [None, 0.0]:
-        _print_error(
+        print_error(
             f'n_ctx value {n_ctx_load} > n_ctx_train value {n_ctx_train}, and '
             f'automatic rope_freq_base adjustment is not supported for this '
             f'model; model loading might fail, or the model might not work '
@@ -184,7 +161,7 @@ def _calculate_rope_freq_base(
     #adjusted_rope_freq = \
     #    ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
     
-    _print_warning(
+    print_warning(
         f"n_ctx value {n_ctx_load} exceeds n_ctx_train value "
         f"{n_ctx_train}; using adjusted rope_freq_base value "
         f"{adjusted_rope_freq}, native value is "
@@ -265,7 +242,7 @@ class LlamaPerformanceTracker:
         """Print performance statistics using current tracker state"""
 
         if self.n_pp_tokens + self.n_tg_tokens == 0:
-            _print_info(
+            print_info(
                 f'LlamaPerformanceTracker: print_stats was called but no '
                 f'tokens were processed or generated'
             )
@@ -276,7 +253,7 @@ class LlamaPerformanceTracker:
             pp_elapsed_ms = pp_elapsed_ns / 1e6
             pp_elapsed_s = pp_elapsed_ns / 1e9
             pp_tps = self.n_pp_tokens / pp_elapsed_s
-            _print_info(
+            print_info(
                 f'prompt processing for {self.n_pp_tokens} tokens took '
                 f'{pp_elapsed_ms:.3f}ms ({pp_tps:.2f} tok/s)'
             )
@@ -286,7 +263,7 @@ class LlamaPerformanceTracker:
             tg_elapsed_ms = tg_elapsed_ns / 1e6
             tg_elapsed_s = tg_elapsed_ns / 1e9
             tg_tps = self.n_tg_tokens / tg_elapsed_s
-            _print_info(
+            print_info(
                 f'text generation of {self.n_tg_tokens} tokens took '
                 f'{tg_elapsed_ms:.3f}ms ({tg_tps:.2f} tok/s)'
             )
@@ -299,7 +276,7 @@ class LlamaPerformanceTracker:
             total_tokens = self.n_pp_tokens + self.n_tg_tokens
             total_average_tps = total_tokens / total_elapsed_s
 
-            _print_info(
+            print_info(
                 f'total of {total_tokens} tokens took {total_elapsed_ms:.3f}ms '
                 f'({total_average_tps:.2f} tok/s average)'
             )
@@ -378,7 +355,7 @@ class QuickGGUFReader:
             try:
                 value = value.decode("utf-8")
             except UnicodeDecodeError:
-                _print_warning( # TODO: ?
+                print_warning( # TODO: ?
                     f'UnicodeDecodeError was raised while reading a string '
                     f'from the GGUF metadata. the GGUF format specifies that '
                     f'all strings in file metadata should be valid UTF-8. the '
@@ -637,22 +614,22 @@ class _LlamaCtx:
         self.params.type_v = type_v if type_v is not None else _DEFAULT_KV_TYPE
         _k, _v = self.params.type_k, self.params.type_v
         if _k != _v:
-            _print_warning(
+            print_warning(
                 f'type_k value {_k} != type_v value {_v}; this is rarely '
                 f'supported, program may fail'
             )
         if _k not in _SUPPORTED_KV_TYPES:
-            _print_warning(
+            print_warning(
                 f'type_k value {_k} is unsupported; program may fail'
             )
         if _v not in _SUPPORTED_KV_TYPES:
-            _print_warning(
+            print_warning(
                 f'type_v value {_v} is unsupported; program may fail'
             )
         if flash_attn and _v not in [
             lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16
         ]:
-            _print_warning(
+            print_warning(
                 f'V cache quantization requires flash_attn, program may fail'
             )
         self.params.logits_all = logits_all
@@ -703,11 +680,18 @@ class _LlamaBatch:
         )
         null_ptr_check(self.batch, "self.batch", "_LlamaBatch.__init__")
     
-    @staticmethod
-    def get_one(tokens: Iterable[int]) -> lib.llama_batch:
-        n_tokens = len(tokens)
-        tokens_array = (ctypes.c_int32 * n_tokens)(*tokens)
-        return lib.llama_batch_get_one(tokens=tokens_array, n_tokens=n_tokens)
+    # NOTE: not supposed to use this. see libllama for details
+    # def get_one(self, tokens: Iterable[int]) -> None:
+    #     """
+    #     Allocate a batch for the given tokens
+    #     """
+    #     self.free() # free the old self.batch, if necessary
+    #     n_tokens = len(tokens)
+    #     tokens_array = (lib.llama_token * n_tokens)(*tokens)
+    #     self.batch = lib.llama_batch_get_one(
+    #         tokens=tokens_array, n_tokens=n_tokens
+    #     )
+    #     null_ptr_check(self.batch, 'self.batch', '_LlamaBatch.get_one')
     
     def __del__(self):
         self.free()
@@ -801,7 +785,7 @@ class Llama:
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
         if n_ctx <= 0:
-            _print_info(
+            print_info(
                 f'n_ctx value {n_ctx}; using n_ctx_train value '
                 f'{n_ctx_train}'
             )
@@ -856,18 +840,18 @@ class Llama:
         requested_n_ctx = _n_ctx
 
         if actual_n_ctx != requested_n_ctx:
-            _print_warning(
+            print_warning(
                 f"requested n_ctx value differs from actual n_ctx value; "
                 f"requested {requested_n_ctx}, actual {actual_n_ctx}"
             )
         if actual_n_ctx < 512:
-            _print_warning(
+            print_warning(
                 f"n_ctx value {actual_n_ctx} is less than 512, which can "
                 f"sometimes cause problems with llama.cpp - consider "
                 f"increasing it to at least 512"
             )
         if actual_n_ctx % 512 != 0:
-            _print_warning(
+            print_warning(
                 f"n_ctx value {actual_n_ctx} is not divisible by 512, which "
                 f"can sometimes cause problems with llama.cpp - consider "
                 f"changing it to "
@@ -1112,7 +1096,7 @@ class Llama:
         # NOTE: this function does not return the return code because if this
         #       function completes, the return code must be 0
         if batch is None:
-            _print_verbose('Llama.decode: batch is None, using self._batch')
+            print_verbose('Llama.decode: batch is None, using self._batch')
             batch = self._batch
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.decode')
         null_ptr_check(batch.batch, 'batch.batch', 'Llama.decode')
@@ -1133,7 +1117,7 @@ class Llama:
                 f'Llama.decode: llama_decode returned {ret}'
             )
         else:
-            _print_info(
+            print_info(
                 f'Llama.decode: llama_decode success'
             )
 
@@ -1394,7 +1378,7 @@ class Llama:
     def eval(self, tokens: Iterable[int], logits_all: bool = False):
         n_tokens_eval = len(tokens)
         if n_tokens_eval > self._n_ctx:
-            _print_warning(
+            print_warning(
                 f'Llama.eval: number of input tokens {n_tokens_eval} exceeds '
                 f'context size {self._n_ctx}'
             )
@@ -1406,7 +1390,7 @@ class Llama:
             n_tokens = len(batch_tokens)
             print(f'this batch n_tokens is {n_tokens}')
             self._batch.set(batch=batch_tokens, n_past=self.pos, logits_all=logits_all)
-            self.decode() # forward pass
+            self.decode(self._batch) # forward pass
             print(f'before update self.pos: {self.pos}')
             self.pos += n_tokens # update Llama position
             print(f'after update self.pos: {self.pos}')
@@ -1446,7 +1430,7 @@ if __name__ == '__main__':
     this_module_name = os.path.splitext(os.path.basename(__file__))[0]
 
     def test_print(text: str) -> None:
-        _print_verbose(f'{this_module_name} test: {text}')
+        print_verbose(f'{this_module_name} test: {text}')
 
     print("-" * 80)
 

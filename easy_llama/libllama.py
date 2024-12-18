@@ -20,6 +20,7 @@ import faulthandler
 
 from enum import IntEnum
 from typing import Optional, Generic, TypeVar
+from utils import print_verbose, print_info, print_warning, print_error
 
 faulthandler.enable() # prints more helpful info if python crashes
 
@@ -51,20 +52,13 @@ def DEPRECATED(new_func_name: Optional[str] = None):
     
     return decorator
 
-def _print_verbose(text: str) -> None:
-    print(
-        f"easy_llama:",
-        text, file=sys.stderr, flush=True
-    )
-
-def _libllama_decode_and_print(text: bytes) -> None:
+def _decode_and_print(text: bytes) -> None:
     """
     Given some utf-8 encoded text, decode it and print to stderr with prefix
     """
     decoded_text = text.decode('utf-8')
     for line in decoded_text.split("\n"):
-        _print_verbose(f'libllama: {line}')
-    sys.stderr.flush()
+        print_verbose(f'libllama: {line}')
 
 #
 # Import shared library
@@ -351,11 +345,11 @@ class llama_batch(ctypes.Structure):
     _fields_ = [
         ("n_tokens", ctypes.c_int32),
 
-        ("token", ctypes.POINTER(ctypes.c_int32)),  # the token ids of the input (used when embd is NULL)
+        ("token", ctypes.POINTER(llama_token)),  # the token ids of the input (used when embd is NULL)
         ("embd", ctypes.POINTER(ctypes.c_float)),  # token embeddings (i.e. float vector of size n_embd) (used when token is NULL)
-        ("pos", ctypes.POINTER(ctypes.c_int32)),  # the positions of the respective token in the sequence
+        ("pos", ctypes.POINTER(llama_pos)),  # the positions of the respective token in the sequence
         ("n_seq_id", ctypes.POINTER(ctypes.c_int32)),  # the sequence to which the respective token belongs
-        ("seq_id", ctypes.POINTER(ctypes.POINTER(ctypes.c_int32))),  # the sequence to which the respective token belongs
+        ("seq_id", ctypes.POINTER(ctypes.POINTER(llama_seq_id))),  # the sequence to which the respective token belongs
         ("logits", ctypes.POINTER(ctypes.c_int8)),  # if zero, the logits (and/or the embeddings) for the respective token will not be output
     ]
 
@@ -1068,13 +1062,21 @@ def llama_state_seq_load_file(ctx: llama_context, filepath: str, dest_seq_id: in
 # Batch
 #
 
-def llama_batch_get_one(tokens: ptr[ctypes.c_int32], n_tokens: int) -> llama_batch:
+def llama_batch_get_one(tokens: ptr[llama_token], n_tokens: int) -> llama_batch:
     """
     AVOID USING
 
+    This function will be deprecated and removed at some point. Refer to:
+    https://github.com/ggerganov/llama.cpp/issues/6475#issuecomment-2040350410
+
     Return batch for single sequence of tokens
     """
-    libllama.llama_batch_get_one.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_int32]
+    print_warning(
+        f'you are using libllama.llama_batch_get_one which will be deprecated '
+        f'and removed at some point. you should use libllama.llama_batch_init '
+        f'instead'
+    )
+    libllama.llama_batch_get_one.argtypes = [ctypes.POINTER(llama_token), ctypes.c_int32]
     libllama.llama_batch_get_one.restype = llama_batch
     return libllama.llama_batch_get_one(tokens, n_tokens)
 
@@ -1086,7 +1088,7 @@ def llama_batch_init(n_tokens: int, embd: int, n_seq_max: int) -> llama_batch:
 
 def llama_batch_free(batch: llama_batch) -> None:
     """Frees a batch of tokens"""
-    libllama.llama_batch_free.argtypes = [llama_batch_p]
+    libllama.llama_batch_free.argtypes = [llama_batch]
     libllama.llama_batch_free.restype = None
     libllama.llama_batch_free(batch)
 
@@ -1114,8 +1116,8 @@ def llama_decode(ctx: llama_context, batch: llama_batch) -> int:
         error. the KV cache state is restored to the state before this
         call
     """
-    libllama.llama_decode.argtypes = [llama_context_p, llama_batch_p]
-    libllama.llama_decode.restype = ctypes.c_int
+    libllama.llama_decode.argtypes = [llama_context_p, llama_batch]
+    libllama.llama_decode.restype = ctypes.c_int32
     return libllama.llama_decode(ctx, batch)
 
 def llama_set_n_threads(ctx: llama_context, n_threads: int, n_threads_batch: int) -> None:
@@ -1676,7 +1678,7 @@ def llama_print_system_info() -> str:
     libllama.llama_print_system_info.argtypes = []
     libllama.llama_print_system_info.restype = ctypes.c_char_p
     text = libllama.llama_print_system_info()
-    _libllama_decode_and_print(text)
+    _decode_and_print(text)
 
 #
 # Log callback
@@ -1771,7 +1773,6 @@ def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
 if __name__ == '__main__':
 
     # Handy-dandy basic test of libllama
-    # Assumes model.gguf is available in the current working directory
 
     import os
 
@@ -1783,7 +1784,7 @@ if __name__ == '__main__':
     this_module_name = os.path.splitext(os.path.basename(__file__))[0]
 
     def test_print(text: str) -> None:
-        _print_verbose(f'{this_module_name} test: {text}')
+        print_verbose(f'{this_module_name} test: {text}')
 
     test_print(f"begin basic libllama test")
     
