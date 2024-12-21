@@ -19,7 +19,7 @@ import ctypes
 import faulthandler
 
 from enum import IntEnum
-from typing import Optional, Generic, TypeVar
+from typing import Optional, Generic, TypeVar, NoReturn, Iterable
 from utils import print_verbose, print_info, print_warning, print_error
 
 faulthandler.enable() # prints more helpful info if python crashes
@@ -52,14 +52,6 @@ def DEPRECATED(new_func_name: Optional[str] = None):
     
     return decorator
 
-def _decode_and_print(text: bytes) -> None:
-    """
-    Given some utf-8 encoded text, decode it and print to stderr with prefix
-    """
-    decoded_text = text.decode('utf-8')
-    for line in decoded_text.split("\n"):
-        print_verbose(f'libllama: {line}')
-
 #
 # Import shared library
 #
@@ -68,11 +60,21 @@ def _decode_and_print(text: bytes) -> None:
 libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
 
 #
-# Type hints
+# Type hints and other constants
 #
 
-C_NULL = None
-C_NULLPTR = ctypes.c_void_p(C_NULL)
+NULL = None
+NULLPTR = ctypes.c_void_p(NULL)
+
+# maximum value for int32, it is used as the value for n_gpu_layers
+# when all layers should be offloaded
+MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
+
+# maximum supported length of a single token's text, in bytes
+_MAX_SINGLE_TOKEN_TEXT_LENGTH = 256
+
+# keep state for backend
+_BACKEND_INIT = False
 
 T = TypeVar('T')
 
@@ -83,52 +85,32 @@ class ptr(Generic[T]):
     Optionally subscriptable with any type
     """
 
-class llama_model(ctypes.Structure):
-    """Dummy `ctypes.Structure`"""
+class LlamaNullException(Exception):
+    """Raised when a libllama function returns NULL or NULLPTR"""
 
-llama_model_p = ctypes.POINTER(llama_model)
-"""Pointer to a llama_model struct"""
+def null_ptr_check(
+    ptr: ptr, ptr_name: str, loc_hint: str
+) -> None | NoReturn:
+    """
+    Ensure that the given object `ptr` is not NULL or NULLPTR
 
-class llama_context(ctypes.Structure):
-    """Dummy `ctypes.Structure`"""
+    Raise LlamaNullException on failure
 
-llama_context_p = ctypes.POINTER(llama_context)
-"""Pointer to a llama_context struct"""
-
-size_t = ctypes.c_ulong
-
-llama_pos    = ctypes.c_int32
-llama_token  = ctypes.c_int32
-llama_seq_id = ctypes.c_int32
-
-#
-# Constants
-#
-
-LLAMA_DEFAULT_SEED = 0xFFFFFFFF
-
-LLAMA_TOKEN_NULL = -1
-
-LLAMA_FILE_MAGIC_GGLA = 0x67676c61 # 'ggla'
-LLAMA_FILE_MAGIC_GGSN = 0x6767736e # 'ggsn'
-LLAMA_FILE_MAGIC_GGSQ = 0x67677371 # 'ggsq'
-
-LLAMA_SESSION_MAGIC   = LLAMA_FILE_MAGIC_GGSN
-LLAMA_SESSION_VERSION = 9
-
-LLAMA_STATE_SEQ_MAGIC   = LLAMA_FILE_MAGIC_GGSQ
-LLAMA_STATE_SEQ_VERSION = 2
-
-# this constant is added by ddh0
-# it is the maximum value for int32, it is used as the value for n_gpu_layers
-# when all layers should be offloaded
-MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
-
-#
-# Keep state for backend
-#
-
-_BACKEND_INIT = False
+    - ptr:
+        The object to check
+    - ptr_name:
+        The name of the object (for error messages)
+    - loc_hint:
+        Code location hint used in easy-llama
+    """
+    if ptr is NULL:
+        raise LlamaNullException(
+            f"{loc_hint}: {ptr_name} is NULL"
+        )
+    if ptr is NULLPTR: # TODO: is this check correct?
+        raise LlamaNullException(
+            f"{loc_hint}: {ptr_name} is NULLPTR"
+        )
 
 #
 # Stuff from llama.cpp/ggml/include/ggml.h
@@ -187,6 +169,46 @@ class GGMLType(IntEnum):
     # GGML_TYPE_IQ4_NL_4_8 = 37
     # GGML_TYPE_IQ4_NL_8_8 = 38
     GGML_TYPE_COUNT   = 39
+
+#
+# Begin LLAMA_API
+#
+
+class llama_model(ctypes.Structure):
+    """Dummy `ctypes.Structure`"""
+
+llama_model_p = ctypes.POINTER(llama_model)
+"""Pointer to a llama_model struct"""
+
+class llama_context(ctypes.Structure):
+    """Dummy `ctypes.Structure`"""
+
+llama_context_p = ctypes.POINTER(llama_context)
+"""Pointer to a llama_context struct"""
+
+size_t = ctypes.c_ulong
+
+llama_pos    = ctypes.c_int32
+llama_token  = ctypes.c_int32
+llama_seq_id = ctypes.c_int32
+
+#
+# Constants
+#
+
+LLAMA_DEFAULT_SEED = 0xFFFFFFFF
+
+LLAMA_TOKEN_NULL = -1
+
+LLAMA_FILE_MAGIC_GGLA = 0x67676c61 # 'ggla'
+LLAMA_FILE_MAGIC_GGSN = 0x6767736e # 'ggsn'
+LLAMA_FILE_MAGIC_GGSQ = 0x67677371 # 'ggsq'
+
+LLAMA_SESSION_MAGIC   = LLAMA_FILE_MAGIC_GGSN
+LLAMA_SESSION_VERSION = 9
+
+LLAMA_STATE_SEQ_MAGIC   = LLAMA_FILE_MAGIC_GGSQ
+LLAMA_STATE_SEQ_VERSION = 2
 
 #
 # Enums
@@ -1407,14 +1429,14 @@ def llama_detokenize(model: llama_model, tokens: ptr[ctypes.c_int32], n_tokens: 
     return libllama.llama_detokenize(model, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
 
 #
-# Chat templating (not implemented)
+# Chat templating (not yet implemented)
 #
 
 def llama_chat_apply_template(*args):
-    raise NotImplementedError
+    raise NotImplementedError('chat templating is not yet implemented')
 
 def llama_chat_builtin_templates(*args):
-    raise NotImplementedError
+    raise NotImplementedError('chat templating is not yet implemented')
 
 #
 # Sampling
@@ -1678,7 +1700,8 @@ def llama_print_system_info() -> str:
     libllama.llama_print_system_info.argtypes = []
     libllama.llama_print_system_info.restype = ctypes.c_char_p
     text = libllama.llama_print_system_info()
-    _decode_and_print(text)
+    text = text.decode()
+    print(text, file=sys.stderr, flush=True)
 
 #
 # Log callback
@@ -1767,7 +1790,7 @@ def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
     libllama.llama_perf_sampler_reset(smpl)
 
 #
-# End of LLAMA_API / Begin test
+# End of LLAMA_API / Begin module test
 #
 
 if __name__ == '__main__':
@@ -1776,44 +1799,38 @@ if __name__ == '__main__':
 
     import os
 
-    test_model_path = "/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf"
+    test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
+    #test_model_path = "/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf"
 
     if not os.path.exists(test_model_path):
-        raise FileNotFoundError(f'the file {test_model_path!r} was not found')
-
-    this_module_name = os.path.splitext(os.path.basename(__file__))[0]
-
-    def test_print(text: str) -> None:
-        print_verbose(f'{this_module_name} test: {text}')
-
-    test_print(f"begin basic libllama test")
+        raise FileNotFoundError(f'the model {test_model_path!r} was not found')
     
     print("-" * 80)
 
-    test_print(f"calling llama_backend_init ...")
     llama_backend_init()
 
-    test_print(f"calling llama_print_system_info ...")
-    llama_print_system_info()
-
-    test_print(f"calling llama_model_default_params ...")
     model_params = llama_model_default_params()
+    model_params.n_gpu_layers = MAX_OFFLOAD_LAYERS
+    model_params.use_mmap = True
 
-    test_print(f"calling llama_load_model_from_file ...")
     model = llama_load_model_from_file(test_model_path, model_params)
 
-    test_print(f"calling llama_context_default_params ...")
     ctx_params = llama_context_default_params()
+    ctx_params.n_ctx = 8192
+    ctx_params.n_batch = 2048
+    ctx_params.n_threads = 4
+    ctx_params.n_threads_batch = 8
+    ctx_params.offload_kqv = True
+    ctx_params.flash_attn = True
 
-    test_print(f"calling llama_new_context_with_model ...")
     ctx = llama_new_context_with_model(model, ctx_params)
 
-    test_print(f"calling llama_free(ctx) ...")
-    llama_free(ctx)
+    llama_set_n_threads(ctx, ctx_params.n_threads, ctx_params.n_threads_batch)
 
-    test_print(f"calling llama_free_model ...")
-    llama_free_model(model)
+    tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 198, 128006, 882, 128007, 271, 9906, 11, 3371, 757, 264, 2875, 3446, 922, 1403, 35267, 304, 3021, 13, 128009, 198, 128006, 78191, 128007, 271]
+    #chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhello<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
+    #tokens = _builtin_tokenize(model, chktxt.encode(), 1024, True, True)
 
-    print("-" * 80)
-
-    test_print("basic libllama test complete")
+    output = _builtin_eval_loop(ctx, tokens, 128, 2048, [], _builtin_greedy_sampler)
+    detok_output = _builtin_detokenize(model, output, True).decode()
+    print(detok_output)

@@ -17,17 +17,14 @@ from constants import Colors
 import libllama as lib
 import numpy    as np
 
+from libllama import null_ptr_check, NULL, NULLPTR
+
 RESET  = Colors.RESET
 GREEN  = Colors.GREEN
 BLUE   = Colors.BLUE
 GREY   = Colors.GREY
 YELLOW = Colors.YELLOW
 RED    = Colors.RED
-
-NULL = None
-NULLPTR = ctypes.c_void_p(None)
-
-_MAX_SINGLE_TOKEN_TEXT_LENGTH = 256
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -42,40 +39,16 @@ _SUPPORTED_KV_TYPES = [
 
 _DEFAULT_KV_TYPE = lib.GGMLType.GGML_TYPE_F16
 
-_cpu_count = os.cpu_count()
-
-class LlamaNullException(Exception):
-    """Raised when a libllama function returns NULL or NULLPTR"""
-
-def null_ptr_check(
-    ptr: lib.ptr, ptr_name: str, loc_hint: str
-) -> None | NoReturn:
-    """
-    Ensure that the given object `ptr` is not NULL or NULLPTR
-
-    Raise LlamaNullException on failure
-
-    - ptr:
-        The object to check
-    - ptr_name:
-        The name of the object (for error messages)
-    - loc_hint:
-        Code location hint used in easy-llama
-    """
-    if ptr is NULL:
-        raise LlamaNullException(
-            f"{loc_hint}: {ptr_name} is NULL"
-        )
-    if ptr is NULLPTR:
-        raise LlamaNullException(
-            f"{loc_hint}: {ptr_name} is NULLPTR"
-        )
+_cpu_count = None
 
 def _init_backend_if_needed() -> None:
+    global _cpu_count
 
     # if already initialized, no need to do anything
     if lib._BACKEND_INIT is True:
         return
+    
+    _cpu_count = os.cpu_count()
     
     # most cases
     if sys.byteorder == 'little':
@@ -304,7 +277,7 @@ class QuickGGUFReader:
     SUPPORTED_GGUF_VERSIONS = [2, 3]
     
     # arguments for struct.unpack() based on gguf value type
-    value_packing: dict = {
+    value_packing = {
         GGUFValueType.UINT8   : "=B",
         GGUFValueType.INT8    : "=b",
         GGUFValueType.UINT16  : "=H",
@@ -319,7 +292,7 @@ class QuickGGUFReader:
     }
 
     # length in bytes for each gguf value type
-    value_lengths: dict = {
+    value_lengths = {
         GGUFValueType.UINT8   : 1,
         GGUFValueType.INT8    : 1,
         GGUFValueType.UINT16  : 2,
@@ -351,11 +324,10 @@ class QuickGGUFReader:
                 GGUFValueType.UINT64, file=file
             )
             value = file.read(string_length)
-            # officially, strings that cannot be decoded into utf-8 are invalid
             try:
                 value = value.decode("utf-8")
             except UnicodeDecodeError:
-                print_warning( # TODO: ?
+                print_warning(
                     f'UnicodeDecodeError was raised while reading a string '
                     f'from the GGUF metadata. the GGUF format specifies that '
                     f'all strings in file metadata should be valid UTF-8. the '
@@ -912,6 +884,9 @@ class Llama:
         self.pos = 0
         """The current position of the model within the context window"""
 
+        self.context_tokens = []
+        """A list of all tokens currently in context"""
+
         # End of Llama.__init__
     
     def free(self):
@@ -1086,21 +1061,18 @@ class Llama:
         )
         return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
-    def decode(self, batch: Optional[_LlamaBatch] = None) -> None:
+    def decode(self, batch: lib.llama_batch) -> None:
         """
         Decode a batch of tokens
 
         - batch:
-            The `_LlamaBatch` to decode. Use `self._batch` if not specified
+            The `llama_batch` to decode
         """
         # NOTE: this function does not return the return code because if this
         #       function completes, the return code must be 0
-        if batch is None:
-            print_verbose('Llama.decode: batch is None, using self._batch')
-            batch = self._batch
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.decode')
-        null_ptr_check(batch.batch, 'batch.batch', 'Llama.decode')
-        ret = lib.llama_decode(self._ctx.ctx, batch.batch)
+        null_ptr_check(batch, 'batch', 'Llama.decode')
+        ret = lib.llama_decode(self._ctx.ctx, batch)
         if ret < 0:
             raise RuntimeError(
                 f'Llama.decode: llama_decode failed with return code {ret}; '
@@ -1117,9 +1089,10 @@ class Llama:
                 f'Llama.decode: llama_decode returned {ret}'
             )
         else:
-            print_info(
-                f'Llama.decode: llama_decode success'
-            )
+            # print_info(
+            #     f'Llama.decode: llama_decode success'
+            # )
+            pass
 
     def n_threads(self) -> int:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads")
@@ -1286,7 +1259,9 @@ class Llama:
                 f'_LlamaModel.tokenize: n_tokens value {-n_tokens} exceeds '
                 f'n_tokens_max value {n_tokens_max}'
             )
-        return list(tokens_buf[:n_tokens])
+        ret = list(tokens_buf[:n_tokens])
+        del tokens_buf
+        return ret
 
     def token_to_piece(self, token: int, special: bool) -> bytes:
         """
@@ -1295,14 +1270,13 @@ class Llama:
         - special:
             If True, special tokens are rendered in the output
         """
-        str_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.token_to_piece'
         )
         n_bytes = lib.llama_token_to_piece(
             model=self._model.model,
             token=token,
-            buf=str_buf,
+            buf=self._detok_buffer,
             length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
             lstrip=0, # skip up to 'lstrip' leading spaces
             special=special
@@ -1316,7 +1290,7 @@ class Llama:
         # NOTE: do not just do str_buf.value.decode() because the token could
         #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
         #       string itself. let the caller handle this
-        return str_buf.raw[:n_bytes]
+        return self._detok_buffer.raw[:n_bytes]
 
     def detokenize(
         self,
@@ -1334,12 +1308,11 @@ class Llama:
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.detokenize'
         )
-        str_buf = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
         for token in tokens:
             n_bytes = lib.llama_token_to_piece(
                 model=self._model.model,
                 token=token,
-                buf=str_buf,
+                buf=self._detok_buffer,
                 length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
                 lstrip=0, # skip up to 'lstrip' leading spaces
                 special=special
@@ -1350,7 +1323,7 @@ class Llama:
                     f"requires a buffer of size {n_bytes}, but the maximum "
                     f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
                 )
-            detok_bytes += str_buf.raw[:n_bytes]
+            detok_bytes += self._detok_buffer.raw[:n_bytes]
         return detok_bytes
     
     def get_length(
@@ -1375,42 +1348,31 @@ class Llama:
             parse_special=parse_special
         )
 
-    def eval(self, tokens: Iterable[int], logits_all: bool = False):
-        n_tokens_eval = len(tokens)
-        if n_tokens_eval > self._n_ctx:
-            print_warning(
-                f'Llama.eval: number of input tokens {n_tokens_eval} exceeds '
-                f'context size {self._n_ctx}'
-            )
-        self.kv_cache_seq_rm(0, self.pos, -1)
-        for i in range(0, n_tokens_eval, self._n_batch):
-            print(f'this is batch number {i=}')
-            batch_tokens = tokens[i : min(n_tokens_eval, i + self._n_batch)]
-            print(f'this batch is {batch_tokens}')
-            n_tokens = len(batch_tokens)
-            print(f'this batch n_tokens is {n_tokens}')
-            self._batch.set(batch=batch_tokens, n_past=self.pos, logits_all=logits_all)
-            self.decode(self._batch) # forward pass
-            print(f'before update self.pos: {self.pos}')
-            self.pos += n_tokens # update Llama position
-            print(f'after update self.pos: {self.pos}')
-        # TODO: everything after this line should be moved to its own function
-        #       once this function is confirmed working
-        rows = n_tokens if logits_all else 1
-        cols = self._n_vocab
-        logits = np.ctypeslib.as_array(obj=self.get_logits(), shape=(rows,cols))
-        print(f"{type(logits)=}")
-        print(f"{len(logits)=}")
-        print(f"{np.shape(logits)=}")
-        print(repr(logits))
-        # NOTE: logits[-1] should always refer to the logits of self.pos
-        #       regardless of logits_all
-        print(f"{np.argmax(logits[-1])=}") # print token ID with highest logit (most likely) 
-        print(f"{self.token_to_piece(np.argmax(logits[-1]),special=True)=}") # print the text of that token
+    def eval() -> list[int]:
+        pass # TODO
+    
+    def first_valid_pos(self, tokens: Iterable[int]) -> int:
+        """
+        Given a list of tokens, and using `Llama.context_tokens`, find the first
+        valid `Llama.pos`
+
+        In other words, return longest common prefix length between the two
+        iterables of tokens
+
+        Returns -1 if none of the tokens match
+        """
+        i = -1
+        for c, t in zip(self.context_tokens, tokens):
+            if c == t:
+                i += 1
+            else:
+                break
+        return i
 
     def reset(self) -> None:
         self.kv_cache_clear()
         self.pos = 0
+        self.context_tokens = []
 
 #
 # End of functions / Begin test
@@ -1422,7 +1384,7 @@ if __name__ == '__main__':
     # Assumes model.gguf is available in the current working directory
 
     test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
-    # test_model_path = '/Users/dylan/Documents/AI/models/Llama-3.2-1B-q8_0-q8_0.gguf'
+    #test_model_path = '/Users/dylan/Documents/AI/models/Llama-3.2-1B-q8_0-q8_0.gguf'
 
     if not os.path.exists(test_model_path):
         raise FileNotFoundError(f'the file {test_model_path!r} was not found')
@@ -1454,9 +1416,9 @@ if __name__ == '__main__':
     detok = TestLlama.detokenize(tokens, special=True).decode()
     print()
     test_print(f'detokenized prompt:\n\n{detok!r}')
+    print("-" * 80)
 
     print(
-        f"{'-' * 80}\n"
         f"num prompt characters - {len(chktxt)}\n"
         f"num prompt tokens ----- {len(tokens)}\n"
         f"num detok characters -- {len(detok)}\n"
@@ -1464,10 +1426,9 @@ if __name__ == '__main__':
     )
     print("-" * 80)
     test_print('using tokenized prompt as input for eval')
-    TestLlama.eval(tokens=tokens, logits_all=True)
-    sampler = lib.llama_sampler_init_greedy()
-    id = lib.llama_sampler_sample(smpl=sampler, ctx=TestLlama._ctx.ctx, idx=-1)
-    print('sampled token: ' + repr(TestLlama.token_to_piece(token=id, special=True).decode()))
+    output_tokens = TestLlama.eval(tokens, n_predict=-1, logits_all=False, stops=[])
+    print("-" * 80)
+    print(TestLlama.detokenize(output_tokens, special=True).decode())
     print("-" * 80)
     TestLlama.free()
     print("-" * 80)
