@@ -2041,7 +2041,7 @@ class _internals:
             if id in stop_tokens:
                 return output_tokens
 
-if __name__ == '__main__':
+def main():
 
     # Handy-dandy basic test of libllama
 
@@ -2076,12 +2076,15 @@ if __name__ == '__main__':
     llama_set_n_threads(ctx, ctx_params.n_threads, ctx_params.n_threads_batch)
 
     tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 198, 128006, 882, 128007, 271, 9906, 11, 3371, 757, 264, 2875, 3446, 922, 1403, 35267, 304, 3021, 13, 128009, 198, 128006, 78191, 128007, 271]
-    chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhello<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
-    tokens = _internals.tokenize(model, chktxt.encode(), 1024, True, True)
+    #chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhello<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
+    #tokens = _internals.tokenize(model, chktxt.encode(), 1024, True, True)
     output = _internals.eval_single(ctx, tokens, 2048, _internals.greedy_sampler)
     detok_output = _internals.token_to_piece(model, output, True).decode()
     print(detok_output)
-    # tokens.append(output)
-    # output = _internals.eval_single(ctx, tokens, 2048, _internals.greedy_sampler)
-    # detok_output = _internals.token_to_piece(model, output, True).decode()
-    # print(detok_output)
+    tokens.append(output)
+    output = _internals.eval_single(ctx, tokens, 2048, _internals.greedy_sampler)
+    detok_output = _internals.token_to_piece(model, output, True).decode()
+    print(detok_output)
+
+if __name__ == '__main__':
+    main()

@@ -453,11 +453,11 @@ class QuickGGUFReader:
 
 class _LlamaModel:
 
-    def __init__(
+    def __init__( # TODO: type hints (all optional except path model)
         self,
         path_model: str,
         devices = None,
-        n_gpu_layers = 0, # if < 0, then will use MAX_OFFLOAD_LAYERS
+        n_gpu_layers = None,
         split_mode: Optional[int] = None,
         main_gpu: Optional[int] = None,
         tensor_split = None,
@@ -465,46 +465,49 @@ class _LlamaModel:
         progress_callback = None,
         progress_callback_user_data = None,
         kv_overrides = None,
-        vocab_only = False,
-        use_mmap = True,
-        use_mlock = False,
-        check_tensors = True # does some validation on tensor data
+        vocab_only = None,
+        use_mmap = None,
+        use_mlock = None,
+        check_tensors = None
     ):
         _init_backend_if_needed()
         self.path_model = path_model
         self.params = lib.llama_model_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaModel.__init__")
-        self.params.devices = (
-            ctypes.c_void_p * (len(devices) + 1)
-        )(*devices, None) if devices is not None else NULL
-        self.params.n_gpu_layers = (
-            n_gpu_layers
-        ) if n_gpu_layers >= 0 else lib.MAX_OFFLOAD_LAYERS
-        self.params.split_mode = (
-            split_mode
-        ) if split_mode is not None else (
-            lib.LlamaSplitMode.LLAMA_SPLIT_MODE_NONE
-        )
-        self.params.main_gpu = main_gpu if main_gpu is not None else 0
-        self.params.tensor_split = (
-            ctypes.c_float * len(tensor_split)
-        )(*tensor_split) if tensor_split is not None else NULL
-        self.params.rpc_servers = (
-            rpc_servers.encode('utf-8')
-        ) if rpc_servers is not None else NULL
-        self.params.progress_callback = (
-            progress_callback
-        ) if progress_callback is not None else lib.dummy_progress_callback()
-        self.params.progress_callback_user_data = (
-            progress_callback_user_data
-        ) if progress_callback_user_data is not None else NULL
-        self.params.kv_overrides = (
-            lib.llama_model_kv_override * len(kv_overrides)
-        )(*kv_overrides) if kv_overrides is not None else NULL
-        self.params.vocab_only = vocab_only
-        self.params.use_mmap = use_mmap
-        self.params.use_mlock = use_mlock
-        self.params.check_tensors = check_tensors
+        if devices is not None:
+            self.params.devices = (
+                ctypes.c_void_p * (len(devices) + 1)
+            )(*devices, None)
+        if n_gpu_layers is not None:
+            self.params.n_gpu_layers = (
+                n_gpu_layers
+            ) if n_gpu_layers >= 0 else lib.MAX_OFFLOAD_LAYERS
+        if split_mode is not None:
+            self.params.split_mode = split_mode
+        if main_gpu is not None:
+            self.params.main_gpu = main_gpu
+        if tensor_split is not None:
+            self.params.tensor_split = (
+                ctypes.c_float * len(tensor_split)
+            )(*tensor_split)
+        if rpc_servers is not None:
+            self.params.rpc_servers = rpc_servers.encode('utf-8')
+        if progress_callback is not None:
+            self.params.progress_callback = progress_callback
+        if progress_callback_user_data is not None:
+            self.params.progress_callback_user_data = progress_callback_user_data
+        if kv_overrides is not None:
+            self.params.kv_overrides = (
+                lib.llama_model_kv_override * len(kv_overrides)
+            )(*kv_overrides)
+        if vocab_only is not None:
+            self.params.vocab_only = vocab_only
+        if use_mmap is not None:
+            self.params.use_mmap = use_mmap
+        if use_mlock is not None:
+            self.params.use_mlock = use_mlock
+        if check_tensors is not None:
+            self.params.check_tensors = check_tensors
 
         # refuse to load files with incorrect extension
         if not path_model.lower().endswith('.gguf'):
@@ -532,106 +535,119 @@ class _LlamaCtx:
     def __init__(
         self,
         model: _LlamaModel,
-        n_ctx = 512,
-        n_batch = 2048,
-        n_ubatch = 512,
-        n_seq_max = 1,
-        n_threads = 0,
-        n_threads_batch = 0,
+        n_ctx = None,
+        n_batch = None,
+        n_ubatch = None,
+        n_seq_max = None,
+        n_threads = None,
+        n_threads_batch = None,
         rope_scaling_type: Optional[int] = None,
         pooling_type: Optional[int] = None,
         attention_type: Optional[int] = None,
-        rope_freq_base = 0.0,
-        rope_freq_scale = 0.0,
-        yarn_ext_factor = 0.0,
-        yarn_attn_factor = 0.0,
-        yarn_beta_fast = 0.0,
-        yarn_beta_slow = 0.0,
-        yarn_orig_ctx = 0,
-        defrag_thold = 0.0,
+        rope_freq_base = None,
+        rope_freq_scale = None,
+        yarn_ext_factor = None,
+        yarn_attn_factor = None,
+        yarn_beta_fast = None,
+        yarn_beta_slow = None,
+        yarn_orig_ctx = None,
+        defrag_thold = None,
         cb_eval = None,
         cb_eval_user_data = None,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
-        logits_all = False,
-        embeddings = False,
-        offload_kqv = False,
-        flash_attn = False,
-        no_perf = False,
+        logits_all = None,
+        embeddings = None,
+        offload_kqv = None,
+        flash_attn = None,
+        no_perf = None,
         abort_callback = None,
         abort_callback_data = None
     ):
         _init_backend_if_needed()
         self.params = lib.llama_context_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaCtx.__init__")
-        self.params.n_ctx = n_ctx
-        self.params.n_batch = n_batch
-        self.params.n_ubatch = n_ubatch
-        if n_seq_max != 1:
-            raise NotImplementedError(
-                f'n_seq_max value {n_seq_max} != 1; this is not yet supported'
-            )
-        self.params.n_seq_max = n_seq_max
-        self.params.n_threads = n_threads
-        self.params.n_threads_batch = n_threads_batch
-        self.params.rope_scaling_type = (
-            rope_scaling_type
-        ) if rope_scaling_type is not None else (
-            lib.LlamaRopeScalingType.LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED
-        )
-        self.params.pooling_type = (
-            pooling_type
-        ) if pooling_type is not None else (
-            lib.LlamaPoolingType.LLAMA_POOLING_TYPE_UNSPECIFIED
-        )
-        self.params.attention_type = (
-            attention_type
-        ) if attention_type is not None else (
-            lib.LlamaAttentionType.LLAMA_ATTENTION_TYPE_UNSPECIFIED
-        )
-        self.params.rope_freq_base = rope_freq_base
-        self.params.rope_freq_scale = rope_freq_scale
-        self.params.yarn_ext_factor = yarn_ext_factor
-        self.params.yarn_attn_factor = yarn_attn_factor
-        self.params.yarn_beta_fast = yarn_beta_fast
-        self.params.yarn_beta_slow = yarn_beta_slow
-        self.params.yarn_orig_ctx = yarn_orig_ctx
-        self.params.defrag_thold = defrag_thold
-        self.params.cb_eval = (
-            cb_eval
-        ) if cb_eval is not None else lib.dummy_eval_callback()
-        self.params.cb_eval_user_data = cb_eval_user_data
-        self.params.type_k = type_k if type_k is not None else _DEFAULT_KV_TYPE
-        self.params.type_v = type_v if type_v is not None else _DEFAULT_KV_TYPE
-        _k, _v = self.params.type_k, self.params.type_v
-        if _k != _v:
-            print_warning(
-                f'type_k value {_k} != type_v value {_v}; this is rarely '
-                f'supported, program may fail'
-            )
-        if _k not in _SUPPORTED_KV_TYPES:
-            print_warning(
-                f'type_k value {_k} is unsupported; program may fail'
-            )
-        if _v not in _SUPPORTED_KV_TYPES:
-            print_warning(
-                f'type_v value {_v} is unsupported; program may fail'
-            )
-        if flash_attn and _v not in [
-            lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16
-        ]:
-            print_warning(
-                f'V cache quantization requires flash_attn, program may fail'
-            )
-        self.params.logits_all = logits_all
-        self.params.embeddings = embeddings
-        self.params.offload_kqv = offload_kqv
-        self.params.flash_attn = flash_attn
-        self.params.no_perf = no_perf
-        self.params.abort_callback = (
-                abort_callback
-            ) if abort_callback is not None else lib.dummy_abort_callback()
-        self.params.abort_callback_data = abort_callback_data
+        if n_ctx is not None:
+            self.params.n_ctx = n_ctx
+        if n_batch is not None:
+            self.params.n_batch = n_batch
+        if n_ubatch is not None:
+            self.params.n_ubatch = n_ubatch
+        if n_seq_max is not None:
+            if n_seq_max != 1:
+                raise NotImplementedError(
+                    f'n_seq_max value {n_seq_max} != 1; this is not yet supported'
+                )
+            self.params.n_seq_max = n_seq_max
+        if n_threads is not None:
+            self.params.n_threads = n_threads
+        if n_threads_batch is not None:
+            self.params.n_threads_batch = n_threads_batch
+        if rope_scaling_type is not None:
+            self.params.rope_scaling_type = rope_scaling_type
+        if pooling_type is not None:
+            self.params.pooling_type = pooling_type
+        if attention_type is not None:
+            self.params.attention_type =  attention_type
+        if rope_freq_base is not None:
+            self.params.rope_freq_base = rope_freq_base
+        if rope_freq_scale is not None:
+            self.params.rope_freq_scale = rope_freq_scale
+        if yarn_ext_factor is not None:
+            self.params.yarn_ext_factor = yarn_ext_factor
+        if yarn_attn_factor is not None:
+            self.params.yarn_attn_factor = yarn_attn_factor
+        if yarn_beta_fast is not None:
+            self.params.yarn_beta_fast = yarn_beta_fast
+        if yarn_beta_slow is not None:
+            self.params.yarn_beta_slow = yarn_beta_slow
+        if yarn_orig_ctx is not None:
+            self.params.yarn_orig_ctx = yarn_orig_ctx
+        if defrag_thold is not None:
+            self.params.defrag_thold = defrag_thold
+        if cb_eval is not None:
+            self.params.cb_eval = cb_eval
+        if cb_eval_user_data is not None:
+            self.params.cb_eval_user_data = cb_eval_user_data
+        if type_k is not None:
+            self.params.type_k = type_k
+        if type_v is not None:
+            self.params.type_v = type_v
+        # _k, _v = self.params.type_k, self.params.type_v
+        # if _k != _v:
+        #     print_warning(
+        #         f'type_k value {_k} != type_v value {_v}; this is rarely '
+        #         f'supported, program may fail'
+        #     )
+        # if _k not in _SUPPORTED_KV_TYPES:
+        #     print_warning(
+        #         f'type_k value {_k} is unsupported; program may fail'
+        #     )
+        # if _v not in _SUPPORTED_KV_TYPES:
+        #     print_warning(
+        #         f'type_v value {_v} is unsupported; program may fail'
+        #     )
+        # if flash_attn and _v not in [
+        #     lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16
+        # ]:
+        #     print_warning(
+        #         f'V cache quantization requires flash_attn, program may fail'
+        #     )
+        if logits_all is not None:
+            self.params.logits_all = logits_all
+        if embeddings is not None:
+            self.params.embeddings = embeddings
+        if offload_kqv is not None:
+            self.params.offload_kqv = offload_kqv
+        if flash_attn is not None:
+            self.params.flash_attn = flash_attn
+        if no_perf is not None:
+            self.params.no_perf = no_perf
+        if abort_callback is not None:
+            self.params.abort_callback = abort_callback
+        if abort_callback_data is not None:
+            self.params.abort_callback_data = abort_callback_data
+        
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
         self.ctx = lib.llama_new_context_with_model(
             model.model, self.params
@@ -1216,6 +1232,24 @@ class Llama:
             parse_special=parse_special
         )
 
+    def first_valid_pos(self, tokens: Iterable[int]) -> int:
+        """
+        Given a list of tokens, and using `Llama.context_tokens`, find the first
+        valid `Llama.pos`
+
+        In other words, return length of the longest common prefix between the
+        two iterables of tokens
+
+        Returns 0 if none of the tokens match, 1 if one token matches, etc.
+        """
+        i = 0
+        for c, t in zip(self.context_tokens, tokens):
+            if c == t:
+                i += 1
+            else:
+                break
+        return i
+
     def eval_single(
         self,
         input_tokens: Iterable[int],
@@ -1231,8 +1265,10 @@ class Llama:
             use greedy sampling
         """
 
-        print(f'before all: {self.pos=}')
-        print(f'before all: {self.context_tokens=}')
+        n_tokens = len(input_tokens)
+
+        if n_tokens == 0:
+            raise ValueError('eval_single: input_tokens cannot be empty')
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self.first_valid_pos(input_tokens)
@@ -1243,53 +1279,143 @@ class Llama:
 
         sampler = sampler if sampler is not None else GreedySampler
 
-        print(f'before loop: {self.pos=}')
-        print(f'before loop: {self.context_tokens=}')
+        # split the input into batches of tokens
+        batch_splits = range(0, n_tokens, self._n_batch)
+        n_batches = len(batch_splits)
+        batches = []
+        for i in batch_splits:
+            batch_tokens = input_tokens[i : self._n_batch]
+            batches.append(batch_tokens)
 
-        while True:
+        batch_number = 0
+
+        # process each batch one-by-one
+        for batch in batches:
+
+            n_batch_tokens = len(batch)
+            batch_number += 1
             
-            batch_tokens = input_tokens[self.pos:self.pos + self._n_batch]
-            n_batch_tokens = len(batch_tokens)
-
-            if n_batch_tokens == 0:
-                print(f'no tokens in batch; sample and return')
-                return sampler.sample(self._ctx)
-            
-            print(f'{batch_tokens=}')
-            print(f'{n_batch_tokens=}')
-
-            if n_batch_tokens == 1:
-                print(f'decoding tg ...')
-                _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
             if n_batch_tokens > 1:
-                print(f'decoding {n_batch_tokens} pp ...')
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
                 )
-            
-            self.pos += n_batch_tokens
-            self.context_tokens += batch_tokens
-
-            print(f'updated pos to {self.pos}')
-            print(f'updated self.context_tokens to {self.context_tokens}')
-
-    def first_valid_pos(self, tokens: Iterable[int]) -> int:
-        """
-        Given a list of tokens, and using `Llama.context_tokens`, find the first
-        valid `Llama.pos`
-
-        In other words, return longest common prefix length between the two
-        iterables of tokens
-
-        Returns 0 if none of the tokens match, 1 if one token matches, etc.
-        """
-        i = 0
-        for c, t in zip(self.context_tokens, tokens):
-            if c == t:
-                i += 1
+            elif n_batch_tokens == 1:
+                _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
             else:
-                break
-        return i
+                raise RuntimeError(
+                    f'eval_single: unexpected n_batch_tokens value '
+                    f'{n_batch_tokens}'
+                )
+            
+            # update the Llama position and context
+            self.pos += n_batch_tokens
+            self.context_tokens.extend(batch_tokens)
+            
+            # if this is the last batch, sample token and return
+            if batch_number == n_batches:
+                return sampler.sample(self._ctx)
+
+    def eval_loop(
+        self,
+        input_tokens: Iterable[int],
+        n_predict: int,
+        stop_tokens: Optional[Iterable[int]] = None,
+        sampler: Optional[_LlamaSampler] = None
+    ) -> int:
+        """
+        Predict multiple tokens
+
+        - input_tokens:
+            The tokens to evaluate
+        - n_predict:
+            The number of tokens to predict. If <= 0, unlimited.
+        - stop_tokens:
+            A list of token IDs that will end the generation early. Note that
+            the stop token will be included in the output. If this parameter is
+            not specified, NO stop tokens will be used.
+        - sampler:
+            The `_LlamaSampler` object to use for sampling. If not specified,
+            use greedy sampling
+        """
+
+        n_tokens = len(input_tokens)
+
+        if n_tokens == 0:
+            raise ValueError('eval_single: input_tokens cannot be empty')
+        
+        # find how many tokens in the input are already in the KV cache
+        self.pos = self.first_valid_pos(input_tokens)
+
+        # remove all tokens that are past that point
+        self.context_tokens = self.context_tokens[:self.pos]
+        self.kv_cache_seq_rm(0, self.pos, -1)
+
+        sampler = sampler if sampler is not None else GreedySampler
+
+        # split the input into batches of tokens
+        batch_splits = range(0, n_tokens, self._n_batch)
+        n_batches = len(batch_splits)
+        batches = []
+        for i in batch_splits:
+            batch_tokens = input_tokens[i : self._n_batch]
+            batches.append(batch_tokens)
+
+        batch_number = 0
+        output_tokens = []
+        n_predicted = 0
+
+        # process each input batch one-by-one
+        for batch in batches:
+
+            n_batch_tokens = len(batch)
+            batch_number += 1
+            
+            if n_batch_tokens > 1:
+                _internals.decode_pp(
+                    self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
+                )
+            elif n_batch_tokens == 1:
+                _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
+            else:
+                raise RuntimeError(
+                    f'eval_single: unexpected n_batch_tokens value '
+                    f'{n_batch_tokens}'
+                )
+            
+            # update the Llama position and context
+            self.pos += n_batch_tokens
+            self.context_tokens.extend(batch_tokens)
+            
+            # if this is the last input batch
+            if batch_number == n_batches:
+                id = sampler.sample(self._ctx)
+                output_tokens.append(id)
+                n_predicted += 1
+            
+                if id in stop_tokens:
+                    return output_tokens
+
+                text = _internals.token_to_piece(self._model.model, id, True)
+                print(text.decode(), end='', flush=True)
+        
+        # continue generating until n_predict or n_ctx is reached
+        while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
+            _internals.decode_tg(self._ctx.ctx, self.pos, output_tokens[-1])
+            self.pos += 1
+
+            id = sampler.sample(self._ctx)
+            self.context_tokens.append(id)
+            output_tokens.append(id)
+
+            text = _internals.token_to_piece(self._model.model, id, True)
+            print(text.decode(), end='', flush=True)
+
+            n_predicted += 1
+
+            if id in stop_tokens:
+                return output_tokens
+        
+        return output_tokens
 
     def reset(self) -> None:
         self.kv_cache_clear()
@@ -1300,13 +1426,31 @@ class Llama:
 # End of functions / Begin test
 #
 
-if __name__ == '__main__':
+def main():
+
+    # NOTE: CONFIRMED WORKING
+    # _llama = _LlamaModel(lib.test_model_path, n_gpu_layers=-1, use_mmap=True)
+    # model = _llama.model
+    # _ctx = _LlamaCtx(
+    #     model=_llama,
+    #     n_ctx=8192,
+    #     n_batch=2048,
+    #     n_threads=4,
+    #     n_threads_batch=8,
+    #     offload_kqv=True,
+    #     flash_attn=True
+    # )
+    # ctx = _ctx.ctx
+    # lib.llama_set_n_threads(ctx, lib.ctx_params.n_threads, lib.ctx_params.n_threads_batch)
+    # print(f'detokenized input: {lib._internals.detokenize(model, lib.tokens, True).decode()!r}')
+    # output = lib._internals.eval_single(ctx, lib.tokens, 2048, lib._internals.greedy_sampler)
+    # print(lib._internals.token_to_piece(model, output, True).decode())
 
     # Handy-dandy basic test of wrappers
     # Assumes model.gguf is available in the current working directory
 
-    test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
-    #test_model_path = '/Users/dylan/Documents/AI/models/Llama-3.2-1B-q8_0-q8_0.gguf'
+    test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
+    #test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
 
     if not os.path.exists(test_model_path):
         raise FileNotFoundError(f'the file {test_model_path!r} was not found')
@@ -1347,9 +1491,13 @@ if __name__ == '__main__':
     )
     print("-" * 80)
     test_print('using tokenized prompt as input for eval')
-    output_token = TestLlama.eval_single(tokens)
+    #output_token = TestLlama.eval_single(tokens)
+    output_tokens = TestLlama.eval_loop(tokens, 1024, [])
     print("-" * 80)
-    print(TestLlama.detokenize([output_token], special=True).decode())
+    #print(TestLlama.detokenize(output_tokens, special=True).decode())
     print("-" * 80)
     TestLlama.free()
     print("-" * 80)
+
+if __name__ == '__main__':
+    main()
