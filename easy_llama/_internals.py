@@ -6,7 +6,6 @@ import ctypes
 
 from typing import Iterable
 from libllama import (
-    _MAX_SINGLE_TOKEN_TEXT_LENGTH,
     llama_sampler_init_greedy,
     llama_kv_cache_seq_rm,
     llama_sampler_sample,
@@ -21,6 +20,9 @@ from libllama import (
     NULL,
     ptr
 )
+
+MAX_TOKEN_LENGTH = 256
+"""The maximum supported length of a single token's text, in bytes"""
 
 def decode_pp(
     ctx: ptr[llama_context],
@@ -45,7 +47,9 @@ def decode_pp(
     ret = llama_decode(ctx, batch)
     llama_batch_free(batch)
     if ret != 0:
-        raise RuntimeError(f'lama_decode failed with status code {ret}')
+        raise RuntimeError(
+            f'decode_pp: llama_decode failed with status code {ret}'
+        )
 
 def decode_tg(
     ctx: ptr[llama_context],
@@ -67,7 +71,9 @@ def decode_tg(
     ret = llama_decode(ctx, batch)
     llama_batch_free(batch)
     if ret != 0:
-        raise RuntimeError(f'lama_decode failed with status code {ret}')
+        raise RuntimeError(
+            f'decode_tg: llama_decode failed with status code {ret}'
+        )
 
 greedy_sampler = llama_sampler_init_greedy()
 
@@ -118,7 +124,7 @@ def tokenize(
     )
     if n_tokens < 0:
         raise ValueError(
-            f'_builtin_tokenize: n_tokens value {-n_tokens} exceeds '
+            f'tokenize: n_tokens value {-n_tokens} exceeds '
             f'n_tokens_max value {n_tokens_max}'
         )
     ret = list(tokens_buf[:n_tokens])
@@ -126,8 +132,8 @@ def tokenize(
     return ret
 
 # this buffer is re-used every time llama_token_to_piece() is called
-# it is very small, so OK to keep in memory
-detok_buffer = ctypes.create_string_buffer(_MAX_SINGLE_TOKEN_TEXT_LENGTH)
+# it is only 256 bytes, so OK to keep in memory
+detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
 
 def token_to_piece(
     model: ptr[llama_model], token: int, special: bool
@@ -141,15 +147,15 @@ def token_to_piece(
         model=model,
         token=token,
         buf=detok_buffer,
-        length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
+        length=MAX_TOKEN_LENGTH,
         lstrip=0, # skip up to 'lstrip' leading spaces
         special=special
     )
-    if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
+    if n_bytes > MAX_TOKEN_LENGTH:
         raise ValueError(
-            f"_builtin_token_to_piece: the token with ID {token} requires a "
+            f"token_to_piece: the token with ID {token} requires a "
             f"buffer of size {n_bytes}, but the maximum buffer size is "
-            f"{_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
+            f"{MAX_TOKEN_LENGTH}"
         )
     # NOTE: do not just do buf.value.decode() because the token could
     #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
@@ -176,15 +182,15 @@ def detokenize(
             model=model,
             token=token,
             buf=detok_buffer,
-            length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
+            length=MAX_TOKEN_LENGTH,
             lstrip=0, # skip up to 'lstrip' leading spaces
             special=special
         )
-        if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
+        if n_bytes > MAX_TOKEN_LENGTH:
             raise ValueError(
-                f"_builtin_detokenize: the token with ID {token} "
+                f"detokenize: the token with ID {token} "
                 f"requires a buffer of size {n_bytes}, but the maximum "
-                f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
+                f"buffer size is {MAX_TOKEN_LENGTH}"
             )
         detok_bytes += detok_buffer.raw[:n_bytes]
     return detok_bytes
@@ -232,7 +238,9 @@ def eval_single(
         n_batch_tokens = len(batch_tokens)
 
         if n_batch_tokens == 0:
-            raise RuntimeError('n_batch_tokens should never be 0')
+            raise RuntimeError(
+                f'eval_single: n_batch_tokens == 0; this should not happen'
+            )
         if n_batch_tokens == 1:
             decode_tg(ctx, pos, batch_tokens[0])
             return llama_sampler_sample(sampler, ctx, -1)
@@ -271,7 +279,9 @@ def eval_loop(
         n_batch_tokens = len(batch_tokens)
 
         if n_batch_tokens == 0:
-            raise RuntimeError('n_batch_tokens should never be 0')
+            raise RuntimeError(
+                f'eval_loop: n_batch_tokens == 0; this should not happen'
+            )
         if n_batch_tokens == 1:
             decode_tg(ctx, pos, batch_tokens[0])
             pos += 1

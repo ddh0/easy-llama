@@ -19,7 +19,7 @@ import ctypes
 import faulthandler
 
 from enum import IntEnum
-from typing import Optional, Generic, TypeVar, NoReturn, Iterable
+from typing import Optional, Generic, TypeVar
 from utils import print_verbose, print_info, print_warning, print_error
 
 faulthandler.enable() # prints more helpful info if python crashes
@@ -70,9 +70,6 @@ NULLPTR = ctypes.c_void_p(NULL)
 # when all layers should be offloaded
 MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
 
-# maximum supported length of a single token's text, in bytes
-_MAX_SINGLE_TOKEN_TEXT_LENGTH = 256
-
 # keep state for backend
 _BACKEND_INIT = False
 
@@ -84,33 +81,6 @@ class ptr(Generic[T]):
     
     Optionally subscriptable with any type
     """
-
-class LlamaNullException(Exception):
-    """Raised when a libllama function returns NULL or NULLPTR"""
-
-def null_ptr_check(
-    ptr: ptr, ptr_name: str, loc_hint: str
-) -> None | NoReturn:
-    """
-    Ensure that the given object `ptr` is not NULL or NULLPTR
-
-    Raise LlamaNullException on failure
-
-    - ptr:
-        The object to check
-    - ptr_name:
-        The name of the object (for error messages)
-    - loc_hint:
-        Code location hint used in easy-llama
-    """
-    if ptr is NULL:
-        raise LlamaNullException(
-            f"{loc_hint}: {ptr_name} is NULL"
-        )
-    if ptr is NULLPTR: # TODO: is this check correct?
-        raise LlamaNullException(
-            f"{loc_hint}: {ptr_name} is NULLPTR"
-        )
 
 #
 # Stuff from llama.cpp/ggml/include/ggml.h
@@ -1827,10 +1797,10 @@ if __name__ == '__main__':
 
     llama_set_n_threads(ctx, ctx_params.n_threads, ctx_params.n_threads_batch)
 
-    tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 198, 128006, 882, 128007, 271, 9906, 11, 3371, 757, 264, 2875, 3446, 922, 1403, 35267, 304, 3021, 13, 128009, 198, 128006, 78191, 128007, 271]
-    #chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhello<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
-    #tokens = _builtin_tokenize(model, chktxt.encode(), 1024, True, True)
+    # tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 198, 128006, 882, 128007, 271, 9906, 11, 3371, 757, 264, 2875, 3446, 922, 1403, 35267, 304, 3021, 13, 128009, 198, 128006, 78191, 128007, 271]
+    # chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhello<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
+    # tokens = _builtin_tokenize(model, chktxt.encode(), 1024, True, True)
 
-    output = _builtin_eval_loop(ctx, tokens, 128, 2048, [], _builtin_greedy_sampler)
-    detok_output = _builtin_detokenize(model, output, True).decode()
-    print(detok_output)
+    # output = _builtin_eval_loop(ctx, tokens, 128, 2048, [], _builtin_greedy_sampler)
+    # detok_output = _builtin_detokenize(model, output, True).decode()
+    # print(detok_output)

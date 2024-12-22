@@ -10,11 +10,21 @@ import os
 import sys
 import numpy as np
 
-from typing    import Iterable, TextIO, Optional
-from constants import Colors
+from typing import Iterable, TextIO, Optional
 
+class Colors:
+    """
+    ANSI codes to set text foreground color in terminal output
+    """
+    RESET  = '\x1b[39m'
+    GREEN  = '\x1b[39m\x1b[32m'
+    BLUE   = '\x1b[39m\x1b[36m'
+    GREY   = '\x1b[39m\x1b[90m'
+    YELLOW = '\x1b[39m\x1b[33m'
+    RED    = '\x1b[39m\x1b[91m'
 
-# color codes used in Thread.interact() and for warnings
+# color codes used in print_info, print_warning, print_error, and
+# Thread.interact()
 RESET  = RESET_ALL     = Colors.RESET
 GREEN  = USER_STYLE    = Colors.GREEN
 BLUE   = BOT_STYLE     = Colors.BLUE

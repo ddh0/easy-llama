@@ -7,24 +7,17 @@ import sys
 import time
 import struct
 import ctypes
+import _internals
 
 from utils import print_verbose, print_info, print_warning, print_error
 from typing    import NoReturn, Optional, Iterable
 from io        import BufferedReader
 from enum      import IntEnum
-from constants import Colors
 
 import libllama as lib
 import numpy    as np
 
-from libllama import null_ptr_check, NULL, NULLPTR
-
-RESET  = Colors.RESET
-GREEN  = Colors.GREEN
-BLUE   = Colors.BLUE
-GREY   = Colors.GREY
-YELLOW = Colors.YELLOW
-RED    = Colors.RED
+from libllama import NULL, NULLPTR
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -40,6 +33,33 @@ _SUPPORTED_KV_TYPES = [
 _DEFAULT_KV_TYPE = lib.GGMLType.GGML_TYPE_F16
 
 _cpu_count = None
+
+class LlamaNullException(Exception):
+    """Raised when a libllama function returns NULL or NULLPTR"""
+
+def null_ptr_check(
+    ptr: lib.ptr, ptr_name: str, loc_hint: str
+) -> None | NoReturn:
+    """
+    Ensure that the given object `ptr` is not NULL or NULLPTR
+
+    Raise LlamaNullException on failure
+
+    - ptr:
+        The object to check
+    - ptr_name:
+        The name of the object (for error messages)
+    - loc_hint:
+        Code location hint used in easy-llama
+    """
+    if ptr is NULL:
+        raise LlamaNullException(
+            f"{loc_hint}: {ptr_name} is NULL"
+        )
+    if ptr is NULLPTR: # TODO: is this check correct?
+        raise LlamaNullException(
+            f"{loc_hint}: {ptr_name} is NULLPTR"
+        )
 
 def _init_backend_if_needed() -> None:
     global _cpu_count
@@ -628,82 +648,13 @@ class _LlamaCtx:
             self.ctx = None
 
 
-class _LlamaBatch:
+class _LlamaSampler:
+    
+    def __init__(self):
+        pass
 
-    def __init__(
-        self,
-        n_tokens: int,
-        embd: int = 0,
-        n_seq_max: int = 1
-    ):
-        _init_backend_if_needed()
-        if embd != 0:
-            raise NotImplementedError(
-                f'embd value {embd} != 0; this is not yet supported'
-            )
-        if n_seq_max != 1:
-            raise NotImplementedError(
-                f'n_seq_max value {n_seq_max} != 1; this is not yet supported'
-            )
-        self.batch = lib.llama_batch_init(
-            n_tokens=n_tokens,
-            embd=embd,
-            n_seq_max=n_seq_max
-        )
-        null_ptr_check(self.batch, "self.batch", "_LlamaBatch.__init__")
-    
-    # NOTE: not supposed to use this. see libllama for details
-    # def get_one(self, tokens: Iterable[int]) -> None:
-    #     """
-    #     Allocate a batch for the given tokens
-    #     """
-    #     self.free() # free the old self.batch, if necessary
-    #     n_tokens = len(tokens)
-    #     tokens_array = (lib.llama_token * n_tokens)(*tokens)
-    #     self.batch = lib.llama_batch_get_one(
-    #         tokens=tokens_array, n_tokens=n_tokens
-    #     )
-    #     null_ptr_check(self.batch, 'self.batch', '_LlamaBatch.get_one')
-    
-    def __del__(self):
-        self.free()
-
-    def free(self):
-        if self.batch is not None:
-            lib.llama_batch_free(self.batch)
-            self.batch = None
-    
-    def n_tokens(self) -> int:
-        return self.batch.n_tokens
-
-    def reset(self):
-        self.batch.n_tokens = 0
-    
-    def set(self, batch: Iterable[int], n_past: int, logits_all: bool):
-        self.free()
-        n_tokens = len(batch)
-        self.batch = lib.llama_batch_init(
-            n_tokens=n_tokens,
-            embd=0,
-            n_seq_max=1
-        )
-        null_ptr_check(self.batch, 'self.batch', '_LlamaBatch.set')
-        self.batch.n_tokens = n_tokens
-        print(f'batch set: n_tokens is {n_tokens}')
-        for i in range(n_tokens):
-            print(f'batch set: {i=}')
-            self.batch.token[i]     = batch[i]
-            print(f'batch set: token[{i}] = {batch[i]}')
-            self.batch.pos[i]       = n_past + i
-            print(f'batch set: pos[{i}] = {n_past + i}')
-            self.batch.seq_id[i][0] = 0
-            print(f'batch set: seq_id[{i}][0] = 0')
-            self.batch.n_seq_id[i]  = 1
-            print(f'batch set: n_seq_id[{i}] = 1')
-            self.batch.logits[i]    = logits_all
-            print(f'batch set: logits[{i}] = {logits_all}')
-        self.batch.logits[n_tokens - 1] = True
-        print(f'batch set: logits[{n_tokens - 1}] = True')
+    def sample(ctx: _LlamaCtx):
+        return _internals.sample_greedy(ctx.ctx)
 
 #
 # Llama
@@ -830,18 +781,7 @@ class Llama:
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
             )
         
-        #
-        # Set the tracker and batch for this model
-        #
-
-        # TODO: support multiple batches per Llama
-        
         self.tracker = LlamaPerformanceTracker()
-        self._batch = _LlamaBatch(
-            n_tokens=self.n_batch(),
-            embd=0,
-            n_seq_max=1
-        )
 
         #
         # Store immutable Llama metadata as attributes for faster access
@@ -885,13 +825,12 @@ class Llama:
         """The current position of the model within the context window"""
 
         self.context_tokens = []
-        """A list of all tokens currently in context"""
+        """A list of all tokens currently in the context window"""
 
         # End of Llama.__init__
     
     def free(self):
-        """Deallocate the batch, context, and model"""
-        self._batch.free()
+        """Deallocate the context and model"""
         self._ctx.free()
         self._model.free()
 
@@ -1061,39 +1000,6 @@ class Llama:
         )
         return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
-    def decode(self, batch: lib.llama_batch) -> None:
-        """
-        Decode a batch of tokens
-
-        - batch:
-            The `llama_batch` to decode
-        """
-        # NOTE: this function does not return the return code because if this
-        #       function completes, the return code must be 0
-        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.decode')
-        null_ptr_check(batch, 'batch', 'Llama.decode')
-        ret = lib.llama_decode(self._ctx.ctx, batch)
-        if ret < 0:
-            raise RuntimeError(
-                f'Llama.decode: llama_decode failed with return code {ret}; '
-                f'the KV cache state is restored to the state before this call'
-            )
-        elif ret == 1:
-            raise RuntimeError(
-                f'Llama.decode: llama_decode could not find a KV slot for the '
-                f'batch (try reducing the size of the batch or increase the '
-                f'context)'
-            )
-        elif ret > 1:
-            raise RuntimeError(
-                f'Llama.decode: llama_decode returned {ret}'
-            )
-        else:
-            # print_info(
-            #     f'Llama.decode: llama_decode success'
-            # )
-            pass
-
     def n_threads(self) -> int:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads")
         return lib.llama_n_threads(self._ctx.ctx)
@@ -1241,27 +1147,16 @@ class Llama:
             not exposed and treated as plaintext. Does not insert a leading
             space.
         """
-        tokens_buf = (ctypes.c_int32 * n_tokens_max)()
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.tokenize'
         )
-        n_tokens = lib.llama_tokenize(
+        return _internals.tokenize(
             model=self._model.model,
-            text=text_bytes,
-            text_len=len(text_bytes),
-            tokens=tokens_buf,
+            text_bytes=text_bytes,
             n_tokens_max=n_tokens_max,
             add_special=add_special,
             parse_special=parse_special
         )
-        if n_tokens < 0:
-            raise ValueError(
-                f'_LlamaModel.tokenize: n_tokens value {-n_tokens} exceeds '
-                f'n_tokens_max value {n_tokens_max}'
-            )
-        ret = list(tokens_buf[:n_tokens])
-        del tokens_buf
-        return ret
 
     def token_to_piece(self, token: int, special: bool) -> bytes:
         """
@@ -1273,24 +1168,11 @@ class Llama:
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.token_to_piece'
         )
-        n_bytes = lib.llama_token_to_piece(
+        return _internals.token_to_piece(
             model=self._model.model,
             token=token,
-            buf=self._detok_buffer,
-            length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
-            lstrip=0, # skip up to 'lstrip' leading spaces
             special=special
         )
-        if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
-            raise ValueError(
-                f"_LlamaModel.token_to_piece: the token with ID {token} "
-                f"requires a buffer of size {n_bytes}, but the maximum "
-                f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
-            )
-        # NOTE: do not just do str_buf.value.decode() because the token could
-        #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
-        #       string itself. let the caller handle this
-        return self._detok_buffer.raw[:n_bytes]
 
     def detokenize(
         self,
@@ -1303,28 +1185,14 @@ class Llama:
         - special:
             If True, special tokens are rendered in the output
         """
-        # this function is just like token_to_piece but in a loop
-        detok_bytes = b""
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.detokenize'
         )
-        for token in tokens:
-            n_bytes = lib.llama_token_to_piece(
-                model=self._model.model,
-                token=token,
-                buf=self._detok_buffer,
-                length=_MAX_SINGLE_TOKEN_TEXT_LENGTH,
-                lstrip=0, # skip up to 'lstrip' leading spaces
-                special=special
-            )
-            if n_bytes > _MAX_SINGLE_TOKEN_TEXT_LENGTH:
-                raise ValueError(
-                    f"_LlamaModel.detokenize: the token with ID {token} "
-                    f"requires a buffer of size {n_bytes}, but the maximum "
-                    f"buffer size is {_MAX_SINGLE_TOKEN_TEXT_LENGTH}"
-                )
-            detok_bytes += self._detok_buffer.raw[:n_bytes]
-        return detok_bytes
+        return _internals.detokenize(
+            model=self._model.model,
+            tokens=tokens,
+            special=special
+        )
     
     def get_length(
         self,
@@ -1338,18 +1206,41 @@ class Llama:
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.get_length'
         )
-        return -lib.llama_tokenize(
+        return _internals.get_length(
             model=self._model.model,
-            text=text_bytes,
-            text_len=len(text_bytes),
-            tokens=NULL,
-            n_tokens_max=0,
+            text_bytes=text_bytes,
             add_special=add_special,
             parse_special=parse_special
         )
 
-    def eval() -> list[int]:
-        pass # TODO
+    def eval_single(
+        self,
+        input_tokens: Iterable[int],
+        sampler: Optional[_LlamaSampler] = None
+    ) -> int:
+        
+        self.pos = self.first_valid_pos(input_tokens)
+        self.kv_cache_seq_rm(0, self.pos, -1)
+
+        while True:
+
+            batch_tokens = input_tokens[self.pos:self.pos + self._n_batch]
+            n_batch_tokens = len(batch_tokens)
+
+            if n_batch_tokens == 0:
+                raise RuntimeError(
+                    f'Llama.eval_single: n_batch_tokens == 0; this should not '
+                    f'happen'
+                )
+            if n_batch_tokens == 1:
+                _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
+                self.pos += 1
+                return _internals.sample_greedy(self._ctx.ctx)
+            if n_batch_tokens > 1:
+                _internals.decode_pp(
+                    self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
+                )
+                self.pos += n_batch_tokens
     
     def first_valid_pos(self, tokens: Iterable[int]) -> int:
         """
