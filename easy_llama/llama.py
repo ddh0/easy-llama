@@ -653,8 +653,10 @@ class _LlamaSampler:
     def __init__(self):
         pass
 
-    def sample(ctx: _LlamaCtx):
+    def sample(self, ctx: _LlamaCtx):
         return _internals.sample_greedy(ctx.ctx)
+
+GreedySampler = _LlamaSampler()
 
 #
 # Llama
@@ -822,7 +824,9 @@ class Llama:
         self._token_fim_sep         = self.token_fim_sep()
 
         self.pos = 0
-        """The current position of the model within the context window"""
+        """
+        The number of tokens in the context window that have been processed
+        """
 
         self.context_tokens = []
         """A list of all tokens currently in the context window"""
@@ -1218,30 +1222,58 @@ class Llama:
         input_tokens: Iterable[int],
         sampler: Optional[_LlamaSampler] = None
     ) -> int:
+        """
+        Predict a single token
+
+        - input_tokens:
+            The tokens to evaluate
+        - sampler:
+            The `_LlamaSampler` object to use for sampling. If not specified,
+            use greedy sampling
+        """
+
+        print(f'before all: {self.pos=}')
+        print(f'before all: {self.context_tokens=}')
         
+        # find how many tokens in the input are already in the KV cache
         self.pos = self.first_valid_pos(input_tokens)
+
+        # remove all tokens that are past that point
+        self.context_tokens = self.context_tokens[:self.pos]
         self.kv_cache_seq_rm(0, self.pos, -1)
 
-        while True:
+        sampler = sampler if sampler is not None else GreedySampler
 
+        print(f'before loop: {self.pos=}')
+        print(f'before loop: {self.context_tokens=}')
+        
+        while True:
+            
             batch_tokens = input_tokens[self.pos:self.pos + self._n_batch]
             n_batch_tokens = len(batch_tokens)
 
             if n_batch_tokens == 0:
-                raise RuntimeError(
-                    f'Llama.eval_single: n_batch_tokens == 0; this should not '
-                    f'happen'
-                )
+                print(f'no tokens in batch; sample and return')
+                return sampler.sample(self._ctx)
+            
+            print(f'{batch_tokens=}')
+            print(f'{n_batch_tokens=}')
+
             if n_batch_tokens == 1:
+                print(f'decoding tg ...')
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
-                self.pos += 1
-                return _internals.sample_greedy(self._ctx.ctx)
             if n_batch_tokens > 1:
+                print(f'decoding {n_batch_tokens} pp ...')
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
                 )
-                self.pos += n_batch_tokens
-    
+            
+            self.pos += n_batch_tokens
+            self.context_tokens += batch_tokens
+
+            print(f'updated pos to {self.pos}')
+            print(f'updated self.context_tokens to {self.context_tokens}')
+
     def first_valid_pos(self, tokens: Iterable[int]) -> int:
         """
         Given a list of tokens, and using `Llama.context_tokens`, find the first
@@ -1250,9 +1282,9 @@ class Llama:
         In other words, return longest common prefix length between the two
         iterables of tokens
 
-        Returns -1 if none of the tokens match
+        Returns 0 if none of the tokens match, 1 if one token matches, etc.
         """
-        i = -1
+        i = 0
         for c, t in zip(self.context_tokens, tokens):
             if c == t:
                 i += 1
@@ -1308,7 +1340,6 @@ if __name__ == '__main__':
     print()
     test_print(f'detokenized prompt:\n\n{detok!r}')
     print("-" * 80)
-
     print(
         f"num prompt characters - {len(chktxt)}\n"
         f"num prompt tokens ----- {len(tokens)}\n"
@@ -1317,9 +1348,9 @@ if __name__ == '__main__':
     )
     print("-" * 80)
     test_print('using tokenized prompt as input for eval')
-    output_tokens = TestLlama.eval(tokens, n_predict=-1, logits_all=False, stops=[])
+    output_token = TestLlama.eval_single(tokens)
     print("-" * 80)
-    print(TestLlama.detokenize(output_tokens, special=True).decode())
+    print(TestLlama.detokenize([output_token], special=True).decode())
     print("-" * 80)
     TestLlama.free()
     print("-" * 80)
