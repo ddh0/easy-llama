@@ -7,7 +7,6 @@ import sys
 import time
 import struct
 import ctypes
-import _internals
 
 from utils import print_verbose, print_info, print_warning, print_error
 from typing    import NoReturn, Optional, Iterable
@@ -17,7 +16,7 @@ from enum      import IntEnum
 import libllama as lib
 import numpy    as np
 
-from libllama import NULL, NULLPTR
+from libllama import _internals, NULL, NULLPTR
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -1246,7 +1245,7 @@ class Llama:
 
         print(f'before loop: {self.pos=}')
         print(f'before loop: {self.context_tokens=}')
-        
+
         while True:
             
             batch_tokens = input_tokens[self.pos:self.pos + self._n_batch]
