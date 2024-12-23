@@ -657,13 +657,30 @@ class _LlamaCtx:
 
 class _LlamaSampler:
     
-    def __init__(self):
+    def __init__(
+        self,
+        top_k: Optional[int] = None,
+        top_p: Optional[float] = None,
+        min_p: Optional[float] = None,
+        # NOTE: typical_p not supported yet
+        temp: Optional[float] = None,
+        # NOTE: temp_ext not supported yet
+        # NOTE: xtc not supported yet
+        # NOTE: mirostat 1, mirostat 2, grammar not supported yet
+        penalty_last_n: Optional[int] = None,
+        penalty_repeat: Optional[float] = None,
+        penalty_freq: Optional[float] = None,
+        penalty_present: Optional[float] = None
+        # TODO: dry
+        # TODO: logit bias
+    ):
         pass
 
     def sample(self, ctx: _LlamaCtx):
-        return _internals.sample_greedy(ctx.ctx)
+        return lib.llama_sampler_sample(self.sampler, ctx.ctx, -1)
 
-GreedySampler = _LlamaSampler()
+GreedySampler = _LlamaSampler(lib.llama_sampler_init_greedy())
+TempSampler = _LlamaSampler(lib.llama_sampler_init_temp(1.0))
 
 #
 # Llama
@@ -1392,24 +1409,26 @@ class Llama:
                 self.stopwatch.reset()
                 return sampler.sample(self._ctx)
 
-    def eval_loop(
+    def eval(
         self,
         input_tokens: Iterable[int],
         n_predict: int,
         stop_tokens: Optional[Iterable[int]] = None,
         sampler: Optional[_LlamaSampler] = None
-    ) -> int:
+    ) -> list[int]:
         """
         Predict multiple tokens
 
         - input_tokens:
             The tokens to evaluate
         - n_predict:
-            The number of tokens to predict. If <= 0, unlimited.
+            The number of tokens to predict. If `n_predict <= 0`, then the
+            number of tokens predicted is only limited by the context length.
         - stop_tokens:
             A list of token IDs that will end the generation early. Note that
             the stop token will be included in the output. If this parameter is
-            not specified, NO stop tokens will be used.
+            None, NO stop tokens will be used. Use `Llama.eog_tokens` to use
+            all built-in end-of-generation tokens in the vocab as stop tokens.
         - sampler:
             The `_LlamaSampler` object to use for sampling. If not specified,
             use greedy sampling
@@ -1418,7 +1437,7 @@ class Llama:
         n_tokens = len(input_tokens)
 
         if n_tokens == 0:
-            raise ValueError('eval_single: input_tokens cannot be empty')
+            raise ValueError('eval: input_tokens cannot be empty')
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self.first_valid_pos(input_tokens)
@@ -1428,15 +1447,18 @@ class Llama:
         self.kv_cache_seq_rm(0, self.pos, -1)
 
         sampler = sampler if sampler is not None else GreedySampler
+        stop_tokens = stop_tokens if stop_tokens is not None else []
 
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
-        n_batches = len(batch_splits)
         batches = []
         for i in batch_splits:
             batch_tokens = input_tokens[i : self._n_batch]
-            batches.append(batch_tokens)
+            if len(batch_tokens) > 0:
+                batches.append(batch_tokens)
+        n_batches = len(batches)
 
+        # set up the loop
         batch_number = 0
         output_tokens = []
         n_predicted = 0
@@ -1461,8 +1483,7 @@ class Llama:
                 self.stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
-                    f'eval_single: unexpected n_batch_tokens value '
-                    f'{n_batch_tokens}'
+                    f'eval: unexpected n_batch_tokens value {n_batch_tokens}'
                 )
             
             # update the Llama position and context
@@ -1538,8 +1559,8 @@ def main():
     # output = lib._internals.eval_single(ctx, lib.tokens, 2048, lib._internals.greedy_sampler)
     # print(lib._internals.token_to_piece(model, output, True).decode())
 
-    test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
-    #test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
+    #test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
+    test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
 
     if not os.path.exists(test_model_path):
         raise FileNotFoundError(f'the file {test_model_path!r} was not found')
@@ -1580,7 +1601,7 @@ def main():
     test_print('using tokenized prompt as input for eval')
     print("-" * 80)
     #output_token = TestLlama.eval_single(tokens)
-    TestLlama.eval_loop(tokens, -1, TestLlama.eog_tokens)
+    TestLlama.eval(tokens, -1, None, sampler=TempSampler)
     #print(TestLlama.detokenize(output_tokens, special=True).decode())
     # print("-" * 80)
     # TestLlama.free()

@@ -9,7 +9,6 @@ from _version import __version__
 import os
 import sys
 import numpy as np
-import colorama
 
 from typing import Iterable, TextIO, Optional
 
