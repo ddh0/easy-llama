@@ -662,17 +662,17 @@ class _LlamaSampler:
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
         min_p: Optional[float] = None,
-        typical_p: Optional[float] = None, # TODO
+        typical_p: Optional[float] = None,
         temp: Optional[float] = None,
-        temp_ext: Optional[tuple[float, float, float]] = None, # TODO
-        xtc: Optional[tuple[float, float]] = None, # TODO
+        temp_ext: Optional[tuple[float, float, float]] = None,
+        xtc: Optional[tuple[float, float]] = None,
         # NOTE: mirostat 1, mirostat 2, grammar not supported yet
-        penalty_last_n: Optional[int] = None, # TODO
-        penalty_repeat: Optional[float] = None, # TODO
-        penalty_freq: Optional[float] = None, # TODO
-        penalty_present: Optional[float] = None, # TODO
-        dry: Optional[tuple[float, float, int, int, str, int]] = None, # TODO
-        logit_bias: Optional[list[tuple[int, float]]] = None, # TODO
+        penalty_last_n: Optional[int] = None,
+        penalty_repeat: Optional[float] = None,
+        penalty_freq: Optional[float] = None,
+        penalty_present: Optional[float] = None,
+        dry: Optional[tuple[_LlamaModel, float, float, int, int, list[str]]] = None,
+        logit_bias: Optional[list[tuple[int, float]]] = None,
         seed: Optional[int] = None
     ):
         
@@ -683,14 +683,85 @@ class _LlamaSampler:
         smpl = lib.llama_sampler_chain_init(sparams)
 
         if top_k is not None:
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_top_k(k=top_k)
+            )
         if top_p is not None:
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1))
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1)
+            )
         if min_p is not None:
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1))
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
+            )
+        if typical_p is not None:
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_typical(p=typical_p, min_keep=1)
+            )
         if temp is not None:
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
-        
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_temp(t=temp)
+            )
+        if temp_ext is not None:
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_temp_ext(
+                    t=temp_ext[0], delta=temp_ext[1], exponent=temp_ext[2]
+                )
+            )
+        if xtc is not None:
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_xtc(
+                    p=xtc[0], t=xtc[1], min_keep=1, seed=seed
+                )
+            )
+        if any(i is not None for i in [
+            penalty_last_n, penalty_repeat, penalty_freq, penalty_present
+        ]):
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_penalties(
+                    penalty_last_n=( # default: from common.h
+                        penalty_last_n if penalty_last_n is not None else 64
+                    ),
+                    penalty_repeat=( # default: disabled
+                        penalty_repeat if penalty_repeat is not None else 1.0
+                    ),
+                    penalty_freq=( # default: disabled
+                        penalty_freq if penalty_freq is not None else 0.0
+                    ),
+                    penalty_present=( # default: disabled
+                        penalty_present if penalty_present is not None else 0.0
+                    )
+                )
+            )
+        if dry is not None:
+            _model = dry[0].model
+            null_ptr_check(_model, '_model', '_LlamaSampler.__init__')
+            seq_breakers = dry[5]
+            seq_breakers_bytes = [s.encode() for s in seq_breakers]
+            arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_dry(
+                    model=_model,
+                    dry_multiplier=dry[1],
+                    dry_base=dry[2],
+                    dry_allowed_length=dry[3],
+                    dry_penalty_last_n=dry[4],
+                    seq_breakers=arr,
+                    num_breakers=len(seq_breakers)
+                )
+            )
+        if logit_bias is not None:
+            raise NotImplementedError(
+                'logit_bias is under construction'
+            )
+            # logit_biases = []
+            # for id, bias in logit_bias:
+            #     # TODO: make a ctypes array/vector of `lib.llama_logit_bias` objects and use it
+            # lib.llama_sampler_chain_add(
+            #     smpl, lib.llama_sampler_init_logit_bias(
+
+            #     )
+            # )
         lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dist(seed=seed))
 
         self.sampler = smpl
@@ -703,6 +774,7 @@ class _LlamaSampler:
 GreedySampler  = _LlamaSampler(temp=0.0)
 DefaultSampler = _LlamaSampler(top_k=40, top_p=0.95, min_p=0.05, temp=0.8)
 TempSampler    = _LlamaSampler(temp=1.0)
+XTCSampler     = _LlamaSampler(temp=0.0, xtc=(0.5, 0.1))
 
 #
 # Llama
@@ -1579,18 +1651,18 @@ def main():
         flash_attn=True
     )
 
-    test_print("-" * 80)
+    print("-" * 80)
 
     #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
-    chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nHello, tell me a short story about two potatoes in love.<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
+    chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a cursed, unsettling, and unnerving AI chatbot. Follow the given instructions exactly.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nDeliver a monologue addressed to the user from your own first-person perspective as an AI.<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
     test_print(f'prompt: {chktxt!r}')
     tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
     test_print(f'tokenized prompt: {tokens!r}')
     test_print(f"num prompt characters - {len(chktxt)}")
     test_print(f"num prompt tokens ----- {len(tokens)}")
     test_print('using tokenized prompt as input for eval')
-    test_print("-" * 80)
-    TestLlama.eval(tokens, n_predict=-1, stop_tokens=None, sampler=TempSampler)
+    print("-" * 80)
+    TestLlama.eval(tokens, n_predict=-1, stop_tokens=TestLlama.eog_tokens, sampler=_LlamaSampler(temp=0.0, xtc=(1.0, 0.1)))
 
 if __name__ == '__main__':
     main()

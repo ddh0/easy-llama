@@ -1599,11 +1599,11 @@ def llama_sampler_init_grammar(model: llama_model, grammar_str: str, grammar_roo
     libllama.llama_sampler_init_grammar.restype = llama_sampler_p
     return libllama.llama_sampler_init_grammar(model, grammar_str.encode('utf-8'), grammar_root.encode('utf-8'))
 
-def llama_sampler_init_penalties(n_vocab: int, special_eos_id: int, linefeed_id: int, penalty_last_n: int, penalty_repeat: float, penalty_freq: float, penalty_present: float, penalize_nl: bool, ignore_eos: bool) -> llama_sampler:
+def llama_sampler_init_penalties(penalty_last_n: int, penalty_repeat: float, penalty_freq: float, penalty_present: float) -> llama_sampler:
     """Initialize a penalties sampler"""
-    libllama.llama_sampler_init_penalties.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_bool, ctypes.c_bool]
+    libllama.llama_sampler_init_penalties.argtypes = [ctypes.c_int32, ctypes.c_float, ctypes.c_float, ctypes.c_float]
     libllama.llama_sampler_init_penalties.restype = llama_sampler_p
-    return libllama.llama_sampler_init_penalties(n_vocab, special_eos_id, linefeed_id, penalty_last_n, penalty_repeat, penalty_freq, penalty_present, penalize_nl, ignore_eos)
+    return libllama.llama_sampler_init_penalties(penalty_last_n, penalty_repeat, penalty_freq, penalty_present)
 
 def llama_sampler_init_dry(model: llama_model, dry_multiplier: float, dry_base: float, dry_allowed_length: int, dry_penalty_last_n: int, seq_breakers: ptr[ctypes.c_char_p], num_breakers: int) -> llama_sampler:
     """Initialize a DRY sampler"""
