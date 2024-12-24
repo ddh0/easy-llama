@@ -182,38 +182,38 @@ class LlamaStopwatch:
     def __init__(self):
         self.pp_start_time = None
         self.tg_start_time = None
-        self.pp_cumulative_time = 0
-        self.tg_cumulative_time = 0
+        self.pp_elapsed_time = 0
+        self.tg_elapsed_time = 0
         self.n_pp_tokens = 0
         self.n_tg_tokens = 0
 
-    def start_pp_stopwatch(self):
+    def start_pp(self):
         """Start prompt processing stopwatch"""
         self.pp_start_time = time.time_ns()
 
-    def stop_pp_stopwatch(self):
+    def stop_pp(self):
         """Stop prompt processing stopwatch"""
         if self.pp_start_time is not None:
-            self.pp_cumulative_time += time.time_ns() - self.pp_start_time
+            self.pp_elapsed_time += time.time_ns() - self.pp_start_time
             self.pp_start_time = None
 
-    def start_tg_stopwatch(self):
+    def start_tg(self):
         """Start text generation stopwatch"""
         self.tg_start_time = time.time_ns()
 
-    def stop_tg_stopwatch(self):
+    def stop_tg(self):
         """Stop text generation stopwatch"""
         if self.tg_start_time is not None:
-            self.tg_cumulative_time += time.time_ns() - self.tg_start_time
+            self.tg_elapsed_time += time.time_ns() - self.tg_start_time
             self.tg_start_time = None
 
     def get_elapsed_time_pp(self) -> int:
         """Total nanoseconds elapsed during prompt processing"""
-        return self.pp_cumulative_time
+        return self.pp_elapsed_time
 
     def get_elapsed_time_tg(self) -> int:
         """Total nanoseconds elapsed during text generation"""
-        return self.tg_cumulative_time
+        return self.tg_elapsed_time
 
     def increment_pp_tokens(self, n: int):
         self.n_pp_tokens += max(n, 0) # do not allow negative increment
@@ -225,8 +225,8 @@ class LlamaStopwatch:
         """Reset the stopwatch to its original state"""
         self.pp_start_time = None
         self.tg_start_time = None
-        self.pp_cumulative_time = 0
-        self.tg_cumulative_time = 0
+        self.pp_elapsed_time = 0
+        self.tg_elapsed_time = 0
         self.n_pp_tokens = 0
         self.n_tg_tokens = 0
 
@@ -237,8 +237,8 @@ class LlamaStopwatch:
 
         if self.n_pp_tokens + self.n_tg_tokens == 0:
             print_stopwatch(
-                f'LlamaPerformanceTracker: print_stats was called but no '
-                f'tokens were processed or generated'
+                f'print_stats was called but no tokens were processed or '
+                f'generated'
             )
             return
 
@@ -662,25 +662,47 @@ class _LlamaSampler:
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
         min_p: Optional[float] = None,
-        # NOTE: typical_p not supported yet
+        typical_p: Optional[float] = None, # TODO
         temp: Optional[float] = None,
-        # NOTE: temp_ext not supported yet
-        # NOTE: xtc not supported yet
+        temp_ext: Optional[tuple[float, float, float]] = None, # TODO
+        xtc: Optional[tuple[float, float]] = None, # TODO
         # NOTE: mirostat 1, mirostat 2, grammar not supported yet
-        penalty_last_n: Optional[int] = None,
-        penalty_repeat: Optional[float] = None,
-        penalty_freq: Optional[float] = None,
-        penalty_present: Optional[float] = None
-        # TODO: dry
-        # TODO: logit bias
+        penalty_last_n: Optional[int] = None, # TODO
+        penalty_repeat: Optional[float] = None, # TODO
+        penalty_freq: Optional[float] = None, # TODO
+        penalty_present: Optional[float] = None, # TODO
+        dry: Optional[tuple[float, float, int, int, str, int]] = None, # TODO
+        logit_bias: Optional[list[tuple[int, float]]] = None, # TODO
+        seed: Optional[int] = None
     ):
-        pass
+        
+        seed = seed if seed is not None else _get_random_seed()
+
+        sparams = lib.llama_sampler_chain_default_params()
+
+        smpl = lib.llama_sampler_chain_init(sparams)
+
+        if top_k is not None:
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
+        if top_p is not None:
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1))
+        if min_p is not None:
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1))
+        if temp is not None:
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
+        
+        lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dist(seed=seed))
+
+        self.sampler = smpl
 
     def sample(self, ctx: _LlamaCtx):
-        return lib.llama_sampler_sample(self.sampler, ctx.ctx, -1)
+        id = lib.llama_sampler_sample(self.sampler, ctx.ctx, -1)
+        lib.llama_sampler_accept(self.sampler, id)
+        return id
 
-GreedySampler = _LlamaSampler(lib.llama_sampler_init_greedy())
-TempSampler = _LlamaSampler(lib.llama_sampler_init_temp(1.0))
+GreedySampler  = _LlamaSampler(temp=0.0)
+DefaultSampler = _LlamaSampler(top_k=40, top_p=0.95, min_p=0.05, temp=0.8)
+TempSampler    = _LlamaSampler(temp=1.0)
 
 #
 # Llama
@@ -1367,31 +1389,30 @@ class Llama:
 
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
-        n_batches = len(batch_splits)
         batches = []
         for i in batch_splits:
             batch_tokens = input_tokens[i : self._n_batch]
-            batches.append(batch_tokens)
-
-        batch_number = 0
+            if len(batch_tokens) > 0:
+                batches.append(batch_tokens)
+        
+        n_batches = len(batches)
 
         # process each batch one-by-one
-        for batch in batches:
+        for batch_number, batch in enumerate(batches, 1):
 
             n_batch_tokens = len(batch)
-            batch_number += 1
             
             if n_batch_tokens > 1:
-                self.stopwatch.start_pp_stopwatch()
+                self.stopwatch.start_pp()
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
                 )
-                self.stopwatch.stop_pp_stopwatch()
+                self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                self.stopwatch.start_tg_stopwatch()
+                self.stopwatch.start_tg()
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
-                self.stopwatch.stop_tg_stopwatch()
+                self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
@@ -1456,30 +1477,29 @@ class Llama:
             batch_tokens = input_tokens[i : self._n_batch]
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
+        
         n_batches = len(batches)
 
         # set up the loop
-        batch_number = 0
         output_tokens = []
         n_predicted = 0
 
         # process each input batch one-by-one
-        for batch in batches:
+        for batch_number, batch in enumerate(batches, 1):
 
             n_batch_tokens = len(batch)
-            batch_number += 1
             
             if n_batch_tokens > 1:
-                self.stopwatch.start_pp_stopwatch()
+                self.stopwatch.start_pp()
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
                 )
-                self.stopwatch.stop_pp_stopwatch()
+                self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                self.stopwatch.start_tg_stopwatch()
+                self.stopwatch.start_tg()
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
-                self.stopwatch.stop_tg_stopwatch()
+                self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
@@ -1506,9 +1526,9 @@ class Llama:
         
         # continue generating until n_predict or n_ctx is reached
         while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
-            self.stopwatch.start_tg_stopwatch()
+            self.stopwatch.start_tg()
             _internals.decode_tg(self._ctx.ctx, self.pos, output_tokens[-1])
-            self.stopwatch.stop_tg_stopwatch()
+            self.stopwatch.stop_tg()
             self.stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
@@ -1541,36 +1561,13 @@ class Llama:
 
 def main():
 
-    # NOTE: CONFIRMED WORKING
-    # _llama = _LlamaModel(lib.test_model_path, n_gpu_layers=-1, use_mmap=True)
-    # model = _llama.model
-    # _ctx = _LlamaCtx(
-    #     model=_llama,
-    #     n_ctx=8192,
-    #     n_batch=2048,
-    #     n_threads=4,
-    #     n_threads_batch=8,
-    #     offload_kqv=True,
-    #     flash_attn=True
-    # )
-    # ctx = _ctx.ctx
-    # lib.llama_set_n_threads(ctx, lib.ctx_params.n_threads, lib.ctx_params.n_threads_batch)
-    # print(f'detokenized input: {lib._internals.detokenize(model, lib.tokens, True).decode()!r}')
-    # output = lib._internals.eval_single(ctx, lib.tokens, 2048, lib._internals.greedy_sampler)
-    # print(lib._internals.token_to_piece(model, output, True).decode())
-
     #test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
     test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
-
-    if not os.path.exists(test_model_path):
-        raise FileNotFoundError(f'the file {test_model_path!r} was not found')
     
     this_module_name = os.path.splitext(os.path.basename(__file__))[0]
 
     def test_print(text: str) -> None:
         print_verbose(f'{this_module_name} test: {text}')
-
-    print("-" * 80)
 
     TestLlama = Llama(
         path_model=test_model_path,
@@ -1582,29 +1579,18 @@ def main():
         flash_attn=True
     )
 
+    test_print("-" * 80)
+
     #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
     chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nHello, tell me a short story about two potatoes in love.<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
-    test_print(f'prompt:\n\n{chktxt!r}')
+    test_print(f'prompt: {chktxt!r}')
     tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
-    print()
-    test_print(f'tokenized prompt:\n\n{tokens!r}')
-    detok = TestLlama.detokenize(tokens, special=True).decode()
-    print()
-    test_print(f'detokenized prompt:\n\n{detok!r}')
-    print("-" * 80)
-    print(
-        f"num prompt characters - {len(chktxt)}\n"
-        f"num prompt tokens ----- {len(tokens)}\n"
-        f"num detok characters -- {len(detok)}\n"
-        f"exact string match? --- {'yes' if chktxt == detok else 'no'}"
-    )
+    test_print(f'tokenized prompt: {tokens!r}')
+    test_print(f"num prompt characters - {len(chktxt)}")
+    test_print(f"num prompt tokens ----- {len(tokens)}")
     test_print('using tokenized prompt as input for eval')
-    print("-" * 80)
-    #output_token = TestLlama.eval_single(tokens)
-    TestLlama.eval(tokens, -1, None, sampler=TempSampler)
-    #print(TestLlama.detokenize(output_tokens, special=True).decode())
-    # print("-" * 80)
-    # TestLlama.free()
+    test_print("-" * 80)
+    TestLlama.eval(tokens, n_predict=-1, stop_tokens=None, sampler=TempSampler)
 
 if __name__ == '__main__':
     main()
