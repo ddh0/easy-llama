@@ -1611,7 +1611,7 @@ def llama_sampler_init_dry(model: llama_model, dry_multiplier: float, dry_base: 
     libllama.llama_sampler_init_dry.restype = llama_sampler_p
     return libllama.llama_sampler_init_dry(model, dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, seq_breakers, num_breakers)
 
-def llama_sampler_init_logit_bias(n_vocab: int, n_logit_bias: int, logit_bias: llama_logit_bias) -> llama_sampler:
+def llama_sampler_init_logit_bias(n_vocab: int, n_logit_bias: int, logit_bias: ptr[llama_logit_bias]) -> llama_sampler:
     """Initialize a logit bias sampler"""
     libllama.llama_sampler_init_logit_bias.argtypes = [ctypes.c_int, ctypes.c_int, llama_logit_bias_p]
     libllama.llama_sampler_init_logit_bias.restype = llama_sampler_p
@@ -1727,7 +1727,8 @@ def llama_perf_context_print(ctx: llama_context) -> None:
     """
     libllama.llama_perf_context_print.argtypes = [llama_context_p]
     libllama.llama_perf_context_print.restype = None
-    libllama.llama_perf_context_print(ctx)
+    results_str: str = libllama.llama_perf_context_print(ctx).decode()
+    print(results_str, file=sys.stderr, flush=True)
 
 def llama_perf_context_reset(ctx: llama_context) -> None:
     """
@@ -1751,7 +1752,8 @@ def llama_perf_sampler_print(smpl: llama_sampler) -> None:
     """Print performance data for a sampler"""
     libllama.llama_perf_sampler_print.argtypes = [llama_sampler_p]
     libllama.llama_perf_sampler_print.restype = None
-    libllama.llama_perf_sampler_print(smpl)
+    results_str = libllama.llama_perf_sampler_print(smpl)
+    print(results_str, file=sys.stderr, flush=True)
 
 def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
     """Reset performance data for a sampler"""
@@ -1935,9 +1937,9 @@ class _internals:
             )
             if n_bytes > _internals.MAX_TOKEN_LENGTH:
                 raise ValueError(
-                    f"detokenize: the token with ID {token} "
-                    f"requires a buffer of size {n_bytes}, but the maximum "
-                    f"buffer size is {_internals.MAX_TOKEN_LENGTH}"
+                    f"detokenize: the token with ID {token} requires a buffer "
+                    f"of size {n_bytes}, but the maximum buffer size is "
+                    f"{_internals.MAX_TOKEN_LENGTH}"
                 )
             detok_bytes += _internals.detok_buffer.raw[:n_bytes]
         return detok_bytes
@@ -1962,84 +1964,14 @@ class _internals:
             add_special=add_special,
             parse_special=parse_special
         )
+    
+    def perf_ctx_print_and_reset(ctx: ptr[llama_context]) -> None:
+        llama_perf_context_print(ctx)
+        llama_perf_context_reset(ctx)
 
-    def eval_single(
-        ctx: ptr[llama_context],
-        input_tokens: Iterable[int],
-        n_batch: int,
-        sampler: llama_sampler
-    ) -> int:
-        """
-        ### INTERNAL
-
-        Predict a single token
-        """
-
-        pos = 0
-
-        llama_kv_cache_seq_rm(ctx, 0, pos, -1)
-
-        while True:
-
-            batch_tokens = input_tokens[pos:pos + n_batch]
-            n_batch_tokens = len(batch_tokens)
-
-            if n_batch_tokens == 0:
-                return llama_sampler_sample(sampler, ctx, -1)
-            if n_batch_tokens == 1:
-                _internals.decode_tg(ctx, pos, batch_tokens[0])
-            if n_batch_tokens > 1:
-                _internals.decode_pp(ctx, pos, batch_tokens, n_batch_tokens)
-                pos += n_batch_tokens
-
-    def eval_loop(
-        ctx: ptr[llama_context],
-        input_tokens: Iterable[int],
-        n_predict: int, # if >= 0, unlimited
-        n_batch: int,
-        stop_tokens: Iterable[int],
-        sampler: llama_sampler
-    ) -> list[int]:
-        """
-        ### INTERNAL
-
-        Predict multiple tokens
-        """
-        
-        output_tokens = []
-        all_tokens = input_tokens
-
-        n_predicted = 0
-        pos = 0
-
-        llama_kv_cache_seq_rm(ctx, 0, pos, -1)
-
-        while True:
-
-            if n_predict >= 0 and n_predicted >= n_predict:
-                return output_tokens
-
-            batch_tokens = all_tokens[pos:pos + n_batch]
-            n_batch_tokens = len(batch_tokens)
-
-            if n_batch_tokens == 0:
-                raise RuntimeError(
-                    f'eval_loop: n_batch_tokens == 0; this should not happen'
-                )
-            if n_batch_tokens == 1:
-                _internals.decode_tg(ctx, pos, batch_tokens[0])
-                pos += 1
-            if n_batch_tokens > 1:
-                _internals.decode_pp(ctx, pos, batch_tokens, n_batch_tokens)
-                pos += n_batch_tokens
-            
-            id = llama_sampler_sample(sampler, ctx, -1)
-            output_tokens.append(id)
-            all_tokens.append(id)
-            n_predicted += 1
-
-            if id in stop_tokens:
-                return output_tokens
+    def perf_smpl_print_and_reset(smpl: ptr[llama_sampler]) -> None:
+        llama_perf_sampler_print(smpl)
+        llama_perf_sampler_reset(smpl)
 
 def main():
 
