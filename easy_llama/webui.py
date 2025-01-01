@@ -10,9 +10,8 @@ import json
 import base64
 
 from .thread import Thread
-from .constants import Colors
 from .model import InferenceLock
-from .utils import print_verbose, assert_type
+from .utils import print_verbose, assert_type, Colors
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID

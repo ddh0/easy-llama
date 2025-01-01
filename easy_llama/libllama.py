@@ -140,6 +140,22 @@ class GGMLType(IntEnum):
     # GGML_TYPE_IQ4_NL_8_8 = 38
     GGML_TYPE_COUNT   = 39
 
+# these values are from llama.cpp/gguf-py/gguf/constants.py
+class GGUFValueType(IntEnum):
+    UINT8   = 0
+    INT8    = 1
+    UINT16  = 2
+    INT16   = 3
+    UINT32  = 4
+    INT32   = 5
+    FLOAT32 = 6
+    BOOL    = 7
+    STRING  = 8
+    ARRAY   = 9
+    UINT64  = 10
+    INT64   = 11
+    FLOAT64 = 12
+
 #
 # Begin LLAMA_API
 #
@@ -1773,6 +1789,9 @@ class _internals:
     MAX_TOKEN_LENGTH = 256
     """The maximum supported length of a single token's text, in bytes"""
 
+    class LogitBiasArray:
+        """Type hint for `ctypes.Array[llama_logit_bias]` of arbitrary length"""
+
     def decode_pp(
         ctx: ptr[llama_context],
         pos: int,
@@ -1972,15 +1991,25 @@ class _internals:
     def perf_smpl_print_and_reset(smpl: ptr[llama_sampler]) -> None:
         llama_perf_sampler_print(smpl)
         llama_perf_sampler_reset(smpl)
-
+    
+    def get_logit_bias_array(logit_biases: list[tuple[int, float]]) -> LogitBiasArray:
+        if len(logit_biases) == 0:
+            raise ValueError(f'logit_biases parameter cannot be empty')
+        LogitBiasArrayType = llama_logit_bias * len(logit_biases)
+        arr = LogitBiasArrayType()
+        for i, _tuple in enumerate(logit_biases):
+            arr[i].token = _tuple[0]
+            arr[i].bias = _tuple[1]
+        return arr
+    
 def main():
 
     # Handy-dandy basic test of libllama
 
     import os
 
-    test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
-    #test_model_path = "/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf"
+    #test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
+    test_model_path = "/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf"
 
     if not os.path.exists(test_model_path):
         raise FileNotFoundError(f'the model {test_model_path!r} was not found')
@@ -2007,16 +2036,46 @@ def main():
 
     llama_set_n_threads(ctx, ctx_params.n_threads, ctx_params.n_threads_batch)
 
-    tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 198, 128006, 882, 128007, 271, 9906, 11, 3371, 757, 264, 2875, 3446, 922, 1403, 35267, 304, 3021, 13, 128009, 198, 128006, 78191, 128007, 271]
-    #chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n\nhello<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n"
-    #tokens = _internals.tokenize(model, chktxt.encode(), 1024, True, True)
-    output = _internals.eval_single(ctx, tokens, 2048, _internals.greedy_sampler)
-    detok_output = _internals.token_to_piece(model, output, True).decode()
-    print(detok_output)
-    tokens.append(output)
-    output = _internals.eval_single(ctx, tokens, 2048, _internals.greedy_sampler)
-    detok_output = _internals.token_to_piece(model, output, True).decode()
-    print(detok_output)
+    logit_biases = [
+        (67722, -100.00),
+        (55152, -100.00)
+    ]
+    logit_bias_arr = _internals.get_logit_bias_array(logit_biases)
+
+    smpl = llama_sampler_chain_init(llama_sampler_chain_default_params())
+
+    llama_sampler_chain_add(
+        smpl, llama_sampler_init_logit_bias(
+            n_vocab=llama_n_vocab(model),
+            n_logit_bias=len(logit_biases),
+            logit_bias=logit_bias_arr
+        )
+    )
+    llama_sampler_chain_add(
+        smpl, llama_sampler_init_greedy()
+    )
+
+    def sample_logit_bias(ctx: ptr[llama_context]) -> int:
+        id = llama_sampler_sample(smpl, ctx, -1)
+        llama_sampler_accept(smpl, id)
+        return id
+
+    tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 128006, 882, 128007, 271, 3923, 374, 55152, 11495, 369, 30, 128009, 128006, 78191, 128007, 271]
+    ctx_tokens = tokens
+    pos = 0
+    _internals.decode_pp(ctx, pos, tokens, len(tokens))
+    pos += len(tokens)
+    id = sample_logit_bias(ctx)
+    ctx_tokens.append(id)
+    tok_txt = _internals.token_to_piece(model, id, True).decode()
+    print(tok_txt, end='', flush=True)
+    while pos < llama_n_ctx(ctx):
+        _internals.decode_tg(ctx, pos, id)
+        pos += 1
+        id = sample_logit_bias(ctx)
+        ctx_tokens.append(id)
+        tok_txt = _internals.token_to_piece(model, id, True).decode()
+        print(tok_txt, end='', flush=True)
 
 if __name__ == '__main__':
     main()

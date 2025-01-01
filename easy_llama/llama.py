@@ -8,15 +8,13 @@ import time
 import struct
 import ctypes
 
-from utils  import print_verbose, print_info, print_warning, print_error, print_stopwatch, _SupportsWriteAndFlush
-from typing import NoReturn, Optional, Iterable
-from io     import BufferedReader
-from enum   import IntEnum
-
 import libllama as lib
-import numpy    as np
 
-from libllama import _internals
+from utils  import print_verbose, print_info, print_warning, print_error, print_stopwatch
+from typing import NoReturn, Optional, Iterable, Generator
+from libllama import _internals, GGUFValueType
+from io     import BufferedReader
+
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -103,13 +101,13 @@ def _get_optimal_n_threads_batch() -> int:
     global _cpu_count
     return _cpu_count
 
-def _get_random_seed() -> int:
-    # uint32_t
-    return int.from_bytes(
-        bytes=os.urandom(4),
-        byteorder=sys.byteorder,
-        signed=False
-    )
+# def _get_random_seed() -> int:
+#     # uint32_t
+#     return int.from_bytes(
+#         bytes=os.urandom(4),
+#         byteorder=sys.byteorder,
+#         signed=False
+#     )
 
 def _calculate_rope_freq_base(
         n_ctx_train: int,
@@ -278,22 +276,6 @@ class LlamaStopwatch:
                 f'{tg_elapsed_ms:>13.3f}ms '
                 f'({tg_tps:>10.2f} tok/s)'
             )
-
-# these values are from llama.cpp/gguf-py/gguf/constants.py
-class GGUFValueType(IntEnum):
-    UINT8   = 0
-    INT8    = 1
-    UINT16  = 2
-    INT16   = 3
-    UINT32  = 4
-    INT32   = 5
-    FLOAT32 = 6
-    BOOL    = 7
-    STRING  = 8
-    ARRAY   = 9
-    UINT64  = 10
-    INT64   = 11
-    FLOAT64 = 12
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
@@ -739,9 +721,9 @@ class Llama:
                 if key.endswith('.rope.freq_base'):
                     rope_freq_base_train = float(self.metadata[key])
             
-            # NOTE: if n_ctx is > n_ctx_train, then rope_freq_base must also
-            #       be increased by at least a proportional amount to guarantee
-            #       a usable kv cache throughout the entire context
+            # NOTE: if n_ctx > n_ctx_train, then rope_freq_base must also be
+            #       increased by at least a proportional amount to guarantee a
+            #       usable kv cache throughout the entire context
             #
             #       the function _calculate_rope_freq_base handles this
 
@@ -852,6 +834,23 @@ class Llama:
         self.warmup()
 
         # End of Llama.__init__
+    
+    def __repr__(self) -> str:
+        return (
+            f"Llama("
+            f"path_model={self._model.path_model!r}, "
+            f"n_gpu_layers={self._model.params.n_gpu_layers}, "
+            f"use_mmap={self._model.params.use_mmap}, "
+            f"use_mlock={self._model.params.use_mlock}, "
+            f"n_ctx={self._n_ctx}, "
+            f"n_batch={self._n_batch}, "
+            f"rope_freq_base={self._ctx.params.rope_freq_base}, "
+            f"type_k={self._ctx.params.type_k}, "
+            f"type_v={self._ctx.params.type_v}, "
+            f"offload_kqv={self._ctx.params.offload_kqv}, "
+            f"flash_attn={self._ctx.params.flash_attn}"
+            f")"
+        )
     
     def free(self):
         """Deallocate the context and model"""
@@ -1330,38 +1329,63 @@ class Llama:
 
         # remove all tokens that are past that point
         self.kv_cache_seq_rm(0, self.pos, -1)
-        self.context_tokens = self.context_tokens[:self.pos]
+        actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
+        self.context_tokens = input_tokens[:self.pos] # tokens already processed
+
+        n_cache_miss_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = len(input_tokens) - n_cache_miss_tokens
+
+        print_info(
+            f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_cache_miss_tokens} tokens to eval ...'
+        )
 
         sampler_params = sampler_params if sampler_params is not None else SamplerParams(self)
 
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
+        print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            batch_tokens = input_tokens[i : i + self._n_batch]
+            print(f'this batch split index: {i}')
+            batch_tokens = actual_input_tokens[i : i + self._n_batch]
+            print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-        
+                print(
+                    f'batch_split: appended batch with {len(batch_tokens)} '
+                    f'tokens'
+                )
+
         n_batches = len(batches)
+        print(f'batch_split: {n_batches=}')
 
         # set up the stopwatch
         self.stopwatch.reset()
 
         # process each batch one-by-one
-        for batch_number, batch in enumerate(batches, 1):
+        for batch in batches:
 
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
+                print(
+                    f'ppdecode: {batch_tokens=}\n'
+                    f'ppdecode: {n_batch_tokens=}'
+                )
                 self.stopwatch.start_pp()
                 _internals.decode_pp(
-                    self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens
+                    self._ctx.ctx, self.pos, batch, n_batch_tokens
                 )
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
+                print(
+                    f'tgdecode: {batch_tokens=}\n'
+                    f'tgdecode: {n_batch_tokens=}'
+                )
                 self.stopwatch.start_tg()
-                _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
+                _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
@@ -1372,12 +1396,11 @@ class Llama:
             
             # update the Llama position and context
             self.pos += n_batch_tokens
-            self.context_tokens.extend(batch_tokens)
-            
-            # if this is the last batch, sample token and return
-            if batch_number == n_batches:
-                self.stopwatch.print_stats()
-                return self.sample(sampler_params)
+            self.context_tokens.extend(batch)
+        
+        # sample and return
+        self.stopwatch.print_stats()
+        return self.sample(sampler_params)
 
     def generate(
         self,
@@ -1387,7 +1410,7 @@ class Llama:
         sampler_params: Optional['SamplerParams'] = None
     ) -> list[int]:
         """
-        Generate one or more tokens
+        Generate one or more tokens and return them all at once
 
         - input_tokens:
             The tokens to evaluate
@@ -1414,27 +1437,37 @@ class Llama:
 
         # remove all tokens that are past that point
         self.kv_cache_seq_rm(0, self.pos, -1)
-        self.context_tokens = self.context_tokens[:self.pos]
+        actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
+        self.context_tokens = input_tokens[:self.pos] # tokens already processed
+
+        n_cache_miss_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = len(input_tokens) - n_cache_miss_tokens
+
+        print_info(
+            f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_cache_miss_tokens} tokens to eval ...'
+        )
 
         sampler_params = sampler_params if sampler_params is not None else SamplerParams(self)
         stop_tokens = stop_tokens if stop_tokens is not None else self.eog_tokens
 
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
-        # print(f'batch_split: {batch_splits=}')
+        print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            # print(f'this batch split index: {i}')
-            batch_tokens = input_tokens[i : i + self._n_batch]
-            # print(f'batch_split: {batch_tokens=}')
+            print(f'this batch split index: {i}')
+            batch_tokens = actual_input_tokens[i : i + self._n_batch]
+            print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                # print(
-                #     f'batch_split: appended batch with {len(batch_tokens)} '
-                #     f'tokens'
-                # )
+                print(
+                    f'batch_split: appended batch with {len(batch_tokens)} '
+                    f'tokens'
+                )
+        
         n_batches = len(batches)
-        # print(f'batch_split: {n_batches=}')
+        print(f'batch_split: {n_batches=}')
 
         # set up the loop
         self.stopwatch.reset()
@@ -1442,15 +1475,15 @@ class Llama:
         n_predicted = 0
 
         # process each input batch one-by-one
-        for batch_number, batch in enumerate(batches, 1):
+        for batch in batches:
 
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                # print(
-                #     f'ppdecode: {batch_tokens=}\n'
-                #     f'ppdecode: {n_batch_tokens=}'
-                # )
+                print(
+                    f'ppdecode: {batch_tokens=}\n'
+                    f'ppdecode: {n_batch_tokens=}'
+                )
                 self.stopwatch.start_pp()
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch, n_batch_tokens
@@ -1458,10 +1491,10 @@ class Llama:
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                # print(
-                #     f'tgdecode: {batch_tokens=}\n'
-                #     f'tgdecode: {n_batch_tokens=}'
-                # )
+                print(
+                    f'tgdecode: {batch_tokens=}\n'
+                    f'tgdecode: {n_batch_tokens=}'
+                )
                 self.stopwatch.start_tg()
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
@@ -1474,25 +1507,13 @@ class Llama:
             
             # update the Llama position and context
             self.pos += n_batch_tokens
-            self.context_tokens.extend(batch_tokens)
-            
-            # if this is the last input batch
-            if batch_number == n_batches:
-                id = self.sample(sampler_params)
-                output_tokens.append(id)
-                n_predicted += 1
-            
-                if id in stop_tokens:
-                    self.stopwatch.print_stats()
-                    return output_tokens
-
-                text = _internals.token_to_piece(self._model.model, id, True)
-                print(text.decode(), end='', flush=True)
+            self.context_tokens.extend(batch)
         
         # continue generating until n_predict or n_ctx is reached
+        print(f'start while loop')
         while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
             self.stopwatch.start_tg()
-            _internals.decode_tg(self._ctx.ctx, self.pos, output_tokens[-1])
+            _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
             self.stopwatch.stop_tg()
             self.stopwatch.increment_tg_tokens(1)
             self.pos += 1
@@ -1502,15 +1523,139 @@ class Llama:
             output_tokens.append(id)
             n_predicted += 1
 
-            text = _internals.token_to_piece(self._model.model, id, True)
-            print(text.decode(), end='', flush=True)
-
             if id in stop_tokens:
                 self.stopwatch.print_stats()
                 return output_tokens
         
         self.stopwatch.print_stats()
         return output_tokens
+
+    def stream(
+        self,
+        input_tokens: Iterable[int],
+        n_predict: int,
+        stop_tokens: Optional[Iterable[int]] = None,
+        sampler_params: Optional['SamplerParams'] = None
+    ) -> Generator[int, None, None]:
+        """
+        Return a Generator which yields one or more tokens
+
+        - input_tokens:
+            The tokens to evaluate
+        - n_predict:
+            The number of tokens to predict. If `n_predict <= 0`, then the
+            number of tokens predicted is only limited by the context length.
+        - stop_tokens:
+            A list of token IDs that will end the generation early. Note that
+            the stop token will be included in the output. If this parameter is
+            None, all built-in stop tokens for the model will be used. Pass an
+            empty list `[]` to ignore all stop tokens.
+        - sampler_params:
+            The `SamplerParams` object to use for sampling. If not specified,
+            use the default sampler parameters
+        """
+
+        n_tokens = len(input_tokens)
+
+        if n_tokens == 0:
+            raise ValueError('Llama.stream: input_tokens cannot be empty')
+        
+        # find how many tokens in the input are already in the KV cache
+        self.pos = self.first_valid_pos(input_tokens)
+
+        # remove all tokens that are past that point
+        self.kv_cache_seq_rm(0, self.pos, -1)
+        actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
+        self.context_tokens = input_tokens[:self.pos] # tokens already processed
+
+        n_cache_miss_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = len(input_tokens) - n_cache_miss_tokens
+
+        print_info(
+            f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_cache_miss_tokens} tokens to eval ...'
+        )
+
+        sampler_params = sampler_params if sampler_params is not None else SamplerParams(self)
+        stop_tokens = stop_tokens if stop_tokens is not None else self.eog_tokens
+
+        # split the input into batches of tokens
+        batch_splits = range(0, n_tokens, self._n_batch)
+        print(f'batch_split: {batch_splits=}')
+        batches = []
+        for i in batch_splits:
+            print(f'this batch split index: {i}')
+            batch_tokens = actual_input_tokens[i : i + self._n_batch]
+            print(f'batch_split: {batch_tokens=}')
+            if len(batch_tokens) > 0:
+                batches.append(batch_tokens)
+                print(
+                    f'batch_split: appended batch with {len(batch_tokens)} '
+                    f'tokens'
+                )
+        
+        n_batches = len(batches)
+        print(f'batch_split: {n_batches=}')
+
+        # set up the loop
+        self.stopwatch.reset()
+        n_predicted = 0
+
+        # process each input batch one-by-one
+        for batch in batches:
+
+            n_batch_tokens = len(batch)
+            
+            if n_batch_tokens > 1:
+                print(
+                    f'ppdecode: {batch_tokens=}\n'
+                    f'ppdecode: {n_batch_tokens=}'
+                )
+                self.stopwatch.start_pp()
+                _internals.decode_pp(
+                    self._ctx.ctx, self.pos, batch, n_batch_tokens
+                )
+                self.stopwatch.stop_pp()
+                self.stopwatch.increment_pp_tokens(n_batch_tokens)
+            elif n_batch_tokens == 1:
+                print(
+                    f'tgdecode: {batch_tokens=}\n'
+                    f'tgdecode: {n_batch_tokens=}'
+                )
+                self.stopwatch.start_tg()
+                _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
+                self.stopwatch.stop_tg()
+                self.stopwatch.increment_tg_tokens(1)
+            else:
+                raise RuntimeError(
+                    f'Llama.generate: unexpected n_batch_tokens value '
+                    f'{n_batch_tokens}'
+                )
+            
+            # update the Llama position and context
+            self.pos += n_batch_tokens
+            self.context_tokens.extend(batch)
+        
+        # continue generating until n_predict or n_ctx is reached
+        print(f'start while loop')
+        while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
+            self.stopwatch.start_tg()
+            _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
+            self.stopwatch.stop_tg()
+            self.stopwatch.increment_tg_tokens(1)
+            self.pos += 1
+
+            id = self.sample(sampler_params)
+            self.context_tokens.append(id)
+            yield id
+            n_predicted += 1
+
+            if id in stop_tokens:
+                self.stopwatch.print_stats()
+                return
+        
+        self.stopwatch.print_stats()
+        return
     
     def sample(self, params: 'SamplerParams') -> int:
       id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
@@ -1525,12 +1670,23 @@ class Llama:
 
 class SamplerParams:
 
+    def _get_random_seed() -> int:
+        # uint32_t
+        return int.from_bytes(
+            bytes=os.urandom(4),
+            byteorder=sys.byteorder,
+            signed=False
+        )
+
     # TODO: support different sampler orders?
     
-    def __init__( # ref: llama.cpp/common/common.h: struct common_params_sampling { ... }
+    def __init__( 
+        #
+        # ref: llama.cpp/common/common.h: struct common_params_sampling { ... }
+        #
         self,
         llama: Llama,                 # some samplers require info about n_ctx_train, n_vocab, etc.
-        seed:  Optional[int] = None,  # the seed used to initialize llama_sampler; None = use random seed
+        seed:  Optional[int] = None,  # the seed used to initialize llama_sampler; None = use default seed
 
         top_k:              Optional[int]   = 40,    # <= 0 to use vocab size
         top_p:              Optional[float] = 0.95,  # 1.0 = disabled
@@ -1559,27 +1715,61 @@ class SamplerParams:
         
         # TODO: grammar
     ):
-        # ref: llama.cpp/common/sampling.cpp: common_sampler_init(...) { ... }
+        #
+        # Store parameter values as attributes
+        #
 
-        seed = seed if seed is not None else _get_random_seed()
+        # NOTE: Changing these attributes will not change the sampling
+
+        self.llama = llama
+        self.seed  = seed if seed is not None else SamplerParams._get_random_seed()
+
+        self.top_k              = top_k
+        self.top_p              = top_p
+        self.min_p              = min_p
+        self.xtc_probability    = xtc_probability
+        self.xtc_threshold      = xtc_threshold
+        self.typical_p          = typical_p
+        self.temp               = temp
+        self.dynatemp_range     = dynatemp_range
+        self.dynatemp_exponent  = dynatemp_exponent
+        self.penalty_last_n     = penalty_last_n
+        self.penalty_repeat     = penalty_repeat
+        self.penalty_freq       = penalty_freq
+        self.penalty_present    = penalty_present
+        self.dry_multiplier     = dry_multiplier
+        self.dry_base           = dry_base
+        self.dry_allowed_length = dry_allowed_length
+        self.dry_penalty_last_n = dry_penalty_last_n
+        self.mirostat           = mirostat
+        self.mirostat_tau       = mirostat_tau
+        self.mirostat_eta       = mirostat_eta
+        
+        self.dry_sequence_breakers = dry_sequence_breakers
+
+        self.logit_bias = logit_bias
+
+        #
+        # ref: llama.cpp/common/common.h: common_sampler_init(...) { ... }
+        #
 
         sparams = lib.llama_sampler_chain_default_params()
-        null_ptr_check(sparams, 'sparams', '_LlamaSampler.__init__')
+        null_ptr_check(sparams, 'sparams', 'SamplerParams.__init__')
 
         smpl = lib.llama_sampler_chain_init(sparams)
-        null_ptr_check(smpl, 'smpl', '_LlamaSampler.__init__')
+        null_ptr_check(smpl, 'smpl', 'SamplerParams.__init__')
 
         if mirostat == 1:
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(temp))
             lib.llama_sampler_chain_add(
                 smpl,
-                lib.llama_sampler_init_mirostat(seed, mirostat_tau, mirostat_eta)
+                lib.llama_sampler_init_mirostat(self.seed, mirostat_tau, mirostat_eta)
             )
         elif mirostat == 2:
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(temp))
             lib.llama_sampler_chain_add(
                 smpl,
-                lib.llama_sampler_init_mirostat_v2(seed, mirostat_tau, mirostat_eta)
+                lib.llama_sampler_init_mirostat_v2(self.seed, mirostat_tau, mirostat_eta)
             )
         elif mirostat == 0:
             if top_k is not None:
@@ -1611,7 +1801,7 @@ class SamplerParams:
             if xtc_probability is not None:
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_xtc(
-                        p=xtc_probability, t=xtc_threshold, min_keep=1, seed=seed
+                        p=xtc_probability, t=xtc_threshold, min_keep=1, seed=self.seed
                     )
                 )
             if any(i is not None for i in [penalty_repeat, penalty_freq, penalty_present]):
@@ -1624,9 +1814,8 @@ class SamplerParams:
                     )
                 )
             if dry_multiplier is not None:
-                # TODO: i think this is right, but i'm not sure
                 _model = llama._model.model
-                null_ptr_check(_model, '_model', '_LlamaSampler.__init__')
+                null_ptr_check(_model, '_model', 'SamplerParams.__init__')
                 seq_breakers = dry_sequence_breakers
                 seq_breakers_bytes = [s.encode() for s in seq_breakers]
                 arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
@@ -1642,35 +1831,61 @@ class SamplerParams:
                     )
                 )
             if logit_bias is not None:
-                # TODO: this is probably wrong somehow. test it and fix it.
-                logit_biases = []
-                for id, bias in logit_bias:
-                    this_logit_bias = lib.llama_logit_bias()
-                    this_logit_bias.token = id
-                    this_logit_bias.bias = bias
-                    logit_biases.append(this_logit_bias)
-                logit_bias_arr = (lib.llama_logit_bias * len(logit_biases))(*logit_biases)
+                print('logit_bias is not None')
+                print(f'{repr(logit_bias)=}')
+                logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
+                print(f'logit_bias_arr: {logit_bias_arr!r}')
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_logit_bias(
                         n_vocab=llama._n_vocab,
-                        n_logit_bias=len(logit_biases),
+                        n_logit_bias=len(logit_bias),
                         logit_bias=logit_bias_arr
-
                     )
                 )
-
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dist(seed=seed))
+                print('added logit_bias sampler')
+            
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dist(seed=self.seed))
 
         else:
-            raise ValueError(f'unknown mirostat version {mirostat}')
+            raise ValueError(
+                f'SamplerParams.__init__: unknown mirostat version {mirostat!r}'
+            )
 
         self.smpl = smpl
-        self.seed = seed
     
     def __del__(self):
         if self.smpl is not None:
             lib.llama_sampler_free(self.smpl)
             self.smpl = None
+    
+    def __repr__(self) -> str:
+        return (
+            f"SamplerParams("
+            f"<Llama object>, "
+            f"seed={self.seed}, "
+            f"top_k={self.top_k}, "
+            f"min_p={self.min_p}, "
+            f"xtc_probability={self.xtc_probability}, "
+            f"xtc_threshold={self.xtc_threshold}, "
+            f"typical_p={self.typical_p}, "
+            f"temp={self.temp}, "
+            f"dynatemp_range={self.dynatemp_range}, "
+            f"dynatemp_exponent={self.dynatemp_exponent}, "
+            f"penalty_last_n={self.penalty_last_n}, "
+            f"penalty_repeat={self.penalty_repeat}, "
+            f"penalty_freq={self.penalty_freq}, "
+            f"penalty_present={self.penalty_present}, "
+            f"dry_multiplayer={self.dry_multiplier}, "
+            f"dry_base={self.dry_base}, "
+            f"dry_allowed_length={self.dry_allowed_length}, "
+            f"dry_penalty_last_n={self.dry_penalty_last_n}, "
+            f"mirostat={self.mirostat}, "
+            f"mirostat_tau={self.mirostat_tau}, "
+            f"mirostat_eta={self.mirostat_eta}, "
+            f"dry_sequence_breakers={self.dry_sequence_breakers!r}, "
+            f"logit_bias={self.logit_bias!r}"
+            f")"
+        )
 
 #
 # End of functions / Begin test
@@ -1678,13 +1893,8 @@ class SamplerParams:
 
 def main():
 
-    test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
-    #test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
-    
-    this_module_name = os.path.splitext(os.path.basename(__file__))[0]
-
-    def test_print(text: str) -> None:
-        print_verbose(f'{this_module_name} test: {text}')
+    #test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
+    test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
 
     TestLlama = Llama(
         path_model=test_model_path,
@@ -1696,18 +1906,32 @@ def main():
         flash_attn=True
     )
 
-    print("-" * 80)
+    chktxt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein famous for?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    chktxt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    tokens_a = TestLlama.tokenize(chktxt_a.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
+    tokens_b = TestLlama.tokenize(chktxt_b.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
 
-    #chktxt = '\n \n\n \n\n\n \t \t\t \t\n  \n   \n    \n     \n🚀 (normal) 😶\u200d🌫️ (multiple emojis concatenated) ✅ 🦙🦙 3 33 333 3333 33333 333333 3333333 33333333 3.3 3..3 3...3 កាន់តែពិសេសអាច😁 ?我想在apple工作1314151天～ ------======= нещо на Български \'\'\'\'\'\'```````""""......!!!!!!?????? I\'ve been \'told he\'s there, \'RE you sure? \'M not sure I\'ll make it, \'D you like some tea? We\'Ve a\'lL'
-    chktxt = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nTell me a story about a girl who won the lottery.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    test_print(f'prompt: {chktxt!r}')
-    tokens = TestLlama.tokenize(chktxt.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
-    test_print(f'tokenized prompt: {tokens!r}')
-    test_print(f"num prompt characters - {len(chktxt)}")
-    test_print(f"num prompt tokens ----- {len(tokens)}")
-    test_print('using tokenized prompt as input for eval')
-    print("-" * 80)
-    TestLlama.generate(tokens, n_predict=-1, stop_tokens=None, sampler_params=None)
+    output = TestLlama.generate(tokens_a, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=None)
+    #TestLlama.generate(tokens_b, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=None)
+
+    print('Output with default sampler: ' + TestLlama.detokenize(output, True).decode())
+
+    # TestLlama.generate_single(tokens_a, sampler_params=None)
+    # TestLlama.generate_single(tokens_b, sampler_params=None)
+
+    print("Creating sampler ...")
+    sampler = SamplerParams(TestLlama, logit_bias=[(67722, -100000.0), (55152, -1000000.0)])
+    print("Created sampler: " + repr(sampler))
+
+    TestLlama.reset()
+
+    stream = TestLlama.stream(tokens_a, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=sampler)
+    print('Output with new sampler: ', end='', file=sys.stderr, flush=True)
+    for tok in stream:
+        txt = TestLlama.token_to_piece(tok, True).decode()
+        print(txt, end='', file=sys.stderr, flush=True)
+    print('\n', end='', file=sys.stderr, flush=True)
+
 
 if __name__ == '__main__':
     main()
