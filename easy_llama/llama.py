@@ -1174,7 +1174,6 @@ class Llama:
     def tokenize(
         self,
         text_bytes: bytes,
-        n_tokens_max: int,
         add_special: bool,
         parse_special: bool,
     ) -> list[int]:
@@ -1183,10 +1182,6 @@ class Llama:
 
         - text_bytes:
             The text to be tokenized
-        - n_tokens_max:
-            Tokenization will fail if the text is more than this many tokens.
-            Larger numbers allow more text to be tokenized but will allocate
-            more memory (4 bytes per token).
         - add_special:
             Allow to add BOS and EOS tokens if model is configured to do so.
         - parse_special:
@@ -1197,10 +1192,16 @@ class Llama:
         null_ptr_check(
             self._model.model, 'self._model.model', 'Llama.tokenize'
         )
+        n_tokens = _internals.get_length(
+            model=self._model.model,
+            text_bytes=text_bytes,
+            add_special=add_special,
+            parse_special=parse_special
+        )
         return _internals.tokenize(
             model=self._model.model,
             text_bytes=text_bytes,
-            n_tokens_max=n_tokens_max,
+            n_tokens_max=n_tokens,
             add_special=add_special,
             parse_special=parse_special
         )
@@ -1748,8 +1749,8 @@ def main() -> int:
 
     chktxt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein famous for?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
     chktxt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    tokens_a = TestLlama.tokenize(chktxt_a.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
-    tokens_b = TestLlama.tokenize(chktxt_b.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
+    tokens_a = TestLlama.tokenize(chktxt_a.encode(), add_special=True, parse_special=True)
+    tokens_b = TestLlama.tokenize(chktxt_b.encode(), add_special=True, parse_special=True)
 
     print('-' * 80)
 

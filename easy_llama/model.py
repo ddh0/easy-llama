@@ -23,9 +23,9 @@ from .utils import (
     softmax
 )
 
-from .samplers  import SamplerSettings, print_sampler_settings
+from sampling  import SamplerSettings, print_sampler_settings
 from llama_cpp  import Llama, StoppingCriteriaList
-from .constants import MAX_DEFAULT_CONTEXT_LENGTH
+from constants import MAX_DEFAULT_CONTEXT_LENGTH
 from typing     import Generator, Optional
 
 

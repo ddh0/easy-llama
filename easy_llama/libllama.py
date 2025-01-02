@@ -744,13 +744,13 @@ def llama_model_desc(model: llama_model, buf: ctypes.c_char_p, buf_size: int) ->
 def llama_model_size(model: llama_model) -> int:
     """Get the total size of all tensors in the model in bytes"""
     libllama.llama_model_size.argtypes = [llama_model_p]
-    libllama.llama_model_size.restype = ctypes.c_int
+    libllama.llama_model_size.restype = size_t
     return libllama.llama_model_size(model)
 
 def llama_model_n_params(model: llama_model) -> int:
     """Get the total number of parameters in the model"""
     libllama.llama_model_n_params.argtypes = [llama_model_p]
-    libllama.llama_model_n_params.restype = ctypes.c_int
+    libllama.llama_model_n_params.restype = size_t
     return libllama.llama_model_n_params(model)
 
 def llama_get_model_tensor(model: llama_model, name: str) -> ptr:
