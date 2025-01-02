@@ -10,11 +10,14 @@ import ctypes
 
 import libllama as lib
 
-from utils  import print_verbose, print_info, print_warning, print_error, print_stopwatch
-from typing import NoReturn, Optional, Iterable, Generator
+from utils    import (
+    print_verbose, print_info, print_warning, print_error, print_stopwatch,
+    null_ptr_check
+)
+from typing   import Optional, Iterable, Generator
 from libllama import _internals, GGUFValueType
-from io     import BufferedReader
-
+from io       import BufferedReader
+from sampling import SamplerParams
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -30,29 +33,6 @@ _SUPPORTED_KV_TYPES = [
 _DEFAULT_KV_TYPE = lib.GGMLType.GGML_TYPE_F16
 
 _cpu_count = None
-
-class LlamaNullException(Exception):
-    """Raised when a libllama function returns NULL or NULLPTR"""
-
-def null_ptr_check(
-    ptr: lib.ptr, ptr_name: str, loc_hint: str
-) -> None | NoReturn:
-    """
-    Ensure that the given object `ptr` is not NULL / NULLPTR
-
-    Raise LlamaNullException on failure
-
-    - ptr:
-        The object to check
-    - ptr_name:
-        The name of the object (for error messages)
-    - loc_hint:
-        Code location hint used in easy-llama
-    """
-    if not bool(ptr):
-        raise LlamaNullException(
-            f"{loc_hint}: {ptr_name} is NULL"
-        )
 
 def _init_backend_if_needed() -> None:
     global _cpu_count
@@ -1668,225 +1648,6 @@ class Llama:
         self.pos = 0
         self.context_tokens = []
 
-class SamplerParams:
-
-    def _get_random_seed() -> int:
-        # uint32_t
-        return int.from_bytes(
-            bytes=os.urandom(4),
-            byteorder=sys.byteorder,
-            signed=False
-        )
-
-    # TODO: support different sampler orders?
-    
-    def __init__( 
-        #
-        # ref: llama.cpp/common/common.h: struct common_params_sampling { ... }
-        #
-        self,
-        llama: Llama,                 # some samplers require info about n_ctx_train, n_vocab, etc.
-        seed:  Optional[int] = None,  # the seed used to initialize llama_sampler; None = use default seed
-
-        top_k:              Optional[int]   = 40,    # <= 0 to use vocab size
-        top_p:              Optional[float] = 0.95,  # 1.0 = disabled
-        min_p:              Optional[float] = 0.05,  # 0.0 = disabled
-        xtc_probability:    Optional[float] = 0.0,   # 0.0 = disabled
-        xtc_threshold:      Optional[float] = 0.1,   # > 0.5 disables XTC
-        typical_p:          Optional[float] = 1.0,   # 1.0 = disabled 
-        temp:               Optional[float] = 0.8,   # <= 0.0 to sample greedily
-        dynatemp_range:     Optional[float] = 0.0,   # 0.0 = disabled
-        dynatemp_exponent:  Optional[float] = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
-        penalty_last_n:     Optional[int]   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
-        penalty_repeat:     Optional[float] = 1.0,   # 1.0 = disabled
-        penalty_freq:       Optional[float] = 0.0,   # 0.0 = disabled
-        penalty_present:    Optional[float] = 0.0,   # 0.0 = disabled
-        dry_multiplier:     Optional[float] = 0.0,   # 0.0 = disabled;      DRY repetition penalty for tokens extending repetition:
-        dry_base:           Optional[float] = 1.75,  # 0.0 = disabled;      multiplier * base ^ (length of sequence before token - allowed length)
-        dry_allowed_length: Optional[int]   = 2,     # tokens extending repetitions beyond this receive penalty
-        dry_penalty_last_n: Optional[int]   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
-        mirostat:           Optional[int]   = 0,     # 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-        mirostat_tau:       Optional[float] = 5.0,   # target entropy
-        mirostat_eta:       Optional[float] = 0.1,   # learning rate
-
-        dry_sequence_breakers: Optional[list[str]] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
-
-        logit_bias: Optional[list[tuple[int, float]]] = None
-        
-        # TODO: grammar
-    ):
-        #
-        # Store parameter values as attributes
-        #
-
-        # NOTE: Changing these attributes will not change the sampling
-
-        self.llama = llama
-        self.seed  = seed if seed is not None else SamplerParams._get_random_seed()
-
-        self.top_k              = top_k
-        self.top_p              = top_p
-        self.min_p              = min_p
-        self.xtc_probability    = xtc_probability
-        self.xtc_threshold      = xtc_threshold
-        self.typical_p          = typical_p
-        self.temp               = temp
-        self.dynatemp_range     = dynatemp_range
-        self.dynatemp_exponent  = dynatemp_exponent
-        self.penalty_last_n     = penalty_last_n
-        self.penalty_repeat     = penalty_repeat
-        self.penalty_freq       = penalty_freq
-        self.penalty_present    = penalty_present
-        self.dry_multiplier     = dry_multiplier
-        self.dry_base           = dry_base
-        self.dry_allowed_length = dry_allowed_length
-        self.dry_penalty_last_n = dry_penalty_last_n
-        self.mirostat           = mirostat
-        self.mirostat_tau       = mirostat_tau
-        self.mirostat_eta       = mirostat_eta
-        
-        self.dry_sequence_breakers = dry_sequence_breakers
-
-        self.logit_bias = logit_bias
-
-        #
-        # ref: llama.cpp/common/common.h: common_sampler_init(...) { ... }
-        #
-
-        sparams = lib.llama_sampler_chain_default_params()
-        null_ptr_check(sparams, 'sparams', 'SamplerParams.__init__')
-
-        smpl = lib.llama_sampler_chain_init(sparams)
-        null_ptr_check(smpl, 'smpl', 'SamplerParams.__init__')
-
-        if mirostat == 1:
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(temp))
-            lib.llama_sampler_chain_add(
-                smpl,
-                lib.llama_sampler_init_mirostat(self.seed, mirostat_tau, mirostat_eta)
-            )
-        elif mirostat == 2:
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(temp))
-            lib.llama_sampler_chain_add(
-                smpl,
-                lib.llama_sampler_init_mirostat_v2(self.seed, mirostat_tau, mirostat_eta)
-            )
-        elif mirostat == 0:
-            if top_k is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_top_k(k=top_k)
-                )
-            if top_p is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1)
-                )
-            if min_p is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
-                )
-            if typical_p is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_typical(p=typical_p, min_keep=1)
-                )
-            if temp is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_temp(t=temp)
-                )
-            if dynatemp_range is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_temp_ext(
-                        t=temp, delta=dynatemp_range, exponent=dynatemp_exponent
-                    )
-                )
-            if xtc_probability is not None:
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_xtc(
-                        p=xtc_probability, t=xtc_threshold, min_keep=1, seed=self.seed
-                    )
-                )
-            if any(i is not None for i in [penalty_repeat, penalty_freq, penalty_present]):
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_penalties(
-                        penalty_last_n=penalty_last_n if penalty_last_n is not None else 0,
-                        penalty_repeat=penalty_repeat,
-                        penalty_freq=penalty_freq,
-                        penalty_present=penalty_present
-                    )
-                )
-            if dry_multiplier is not None:
-                _model = llama._model.model
-                null_ptr_check(_model, '_model', 'SamplerParams.__init__')
-                seq_breakers = dry_sequence_breakers
-                seq_breakers_bytes = [s.encode() for s in seq_breakers]
-                arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_dry(
-                        model=_model,
-                        dry_multiplier=dry_multiplier,
-                        dry_base=dry_base,
-                        dry_allowed_length=dry_allowed_length,
-                        dry_penalty_last_n=dry_penalty_last_n,
-                        seq_breakers=arr,
-                        num_breakers=len(seq_breakers)
-                    )
-                )
-            if logit_bias is not None:
-                print('logit_bias is not None')
-                print(f'{repr(logit_bias)=}')
-                logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
-                print(f'logit_bias_arr: {logit_bias_arr!r}')
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_logit_bias(
-                        n_vocab=llama._n_vocab,
-                        n_logit_bias=len(logit_bias),
-                        logit_bias=logit_bias_arr
-                    )
-                )
-                print('added logit_bias sampler')
-            
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dist(seed=self.seed))
-
-        else:
-            raise ValueError(
-                f'SamplerParams.__init__: unknown mirostat version {mirostat!r}'
-            )
-
-        self.smpl = smpl
-    
-    def __del__(self):
-        if self.smpl is not None:
-            lib.llama_sampler_free(self.smpl)
-            self.smpl = None
-    
-    def __repr__(self) -> str:
-        return (
-            f"SamplerParams("
-            f"<Llama object>, "
-            f"seed={self.seed}, "
-            f"top_k={self.top_k}, "
-            f"min_p={self.min_p}, "
-            f"xtc_probability={self.xtc_probability}, "
-            f"xtc_threshold={self.xtc_threshold}, "
-            f"typical_p={self.typical_p}, "
-            f"temp={self.temp}, "
-            f"dynatemp_range={self.dynatemp_range}, "
-            f"dynatemp_exponent={self.dynatemp_exponent}, "
-            f"penalty_last_n={self.penalty_last_n}, "
-            f"penalty_repeat={self.penalty_repeat}, "
-            f"penalty_freq={self.penalty_freq}, "
-            f"penalty_present={self.penalty_present}, "
-            f"dry_multiplayer={self.dry_multiplier}, "
-            f"dry_base={self.dry_base}, "
-            f"dry_allowed_length={self.dry_allowed_length}, "
-            f"dry_penalty_last_n={self.dry_penalty_last_n}, "
-            f"mirostat={self.mirostat}, "
-            f"mirostat_tau={self.mirostat_tau}, "
-            f"mirostat_eta={self.mirostat_eta}, "
-            f"dry_sequence_breakers={self.dry_sequence_breakers!r}, "
-            f"logit_bias={self.logit_bias!r}"
-            f")"
-        )
-
 #
 # End of functions / Begin test
 #
@@ -1920,10 +1681,10 @@ def main():
     # TestLlama.generate_single(tokens_b, sampler_params=None)
 
     print("Creating sampler ...")
-    sampler = SamplerParams(TestLlama, logit_bias=[(67722, -100000.0), (55152, -1000000.0)])
+    sampler = SamplerParams(TestLlama, logit_bias={67722: -100000.0, 55152: -1000000.0})
     print("Created sampler: " + repr(sampler))
 
-    TestLlama.reset()
+    # TestLlama.reset()
 
     stream = TestLlama.stream(tokens_a, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=sampler)
     print('Output with new sampler: ', end='', file=sys.stderr, flush=True)

@@ -18,9 +18,9 @@ import sys
 import ctypes
 import faulthandler
 
-from enum import IntEnum
-from typing import Optional, Generic, TypeVar, Iterable
-from utils import print_verbose, print_info, print_warning, print_error
+from enum   import IntEnum
+from typing import Optional, Iterable
+from utils  import ptr, print_warning
 
 faulthandler.enable() # prints more helpful info if python crashes
 
@@ -72,15 +72,6 @@ MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
 
 # keep state for backend
 _BACKEND_INIT = False
-
-T = TypeVar('T')
-
-class ptr(Generic[T]):
-    """
-    Generic type hint representing any ctypes pointer
-    
-    Optionally subscriptable with any type
-    """
 
 #
 # Stuff from llama.cpp/ggml/include/ggml.h
@@ -1992,14 +1983,16 @@ class _internals:
         llama_perf_sampler_print(smpl)
         llama_perf_sampler_reset(smpl)
     
-    def get_logit_bias_array(logit_biases: list[tuple[int, float]]) -> LogitBiasArray:
+    def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
         if len(logit_biases) == 0:
             raise ValueError(f'logit_biases parameter cannot be empty')
         LogitBiasArrayType = llama_logit_bias * len(logit_biases)
         arr = LogitBiasArrayType()
-        for i, _tuple in enumerate(logit_biases):
-            arr[i].token = _tuple[0]
-            arr[i].bias = _tuple[1]
+        i = 0
+        for k, v in logit_biases.items():
+            arr[i].token = k
+            arr[i].bias = v
+            i += 1
         return arr
     
 def main():
@@ -2036,10 +2029,7 @@ def main():
 
     llama_set_n_threads(ctx, ctx_params.n_threads, ctx_params.n_threads_batch)
 
-    logit_biases = [
-        (67722, -100.00),
-        (55152, -100.00)
-    ]
+    logit_biases = {67722: -100.00, 55152: -100.00}
     logit_bias_arr = _internals.get_logit_bias_array(logit_biases)
 
     smpl = llama_sampler_chain_init(llama_sampler_chain_default_params())

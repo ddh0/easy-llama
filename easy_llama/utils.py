@@ -10,7 +10,7 @@ import os
 import sys
 import numpy as np
 
-from typing import Iterable, TextIO, Optional
+from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn
 
 class Colors:
     """
@@ -53,6 +53,18 @@ class UnreachableException(Exception):
             "unreachable. please report this issue to the developer at this "
             "link: https://github.com/ddh0/easy-llama/issues/new/choose"
         )
+
+class LlamaNullException(Exception):
+    """Raised when a libllama function returns NULL or NULLPTR"""
+
+T = TypeVar('T')
+
+class ptr(Generic[T]):
+    """
+    Generic type hint representing any ctypes pointer
+    
+    Optionally subscriptable with any type
+    """
 
 def softmax(
     z: _ArrayLike,
@@ -192,4 +204,24 @@ def assert_only_ints(iterable: Iterable) -> None:
     if any(not isinstance(x, int) for x in iterable):
         raise TypeAssertionError(
             f"assert_only_ints: some item in the given iterable is not an int"
+        )
+
+def null_ptr_check(
+    ptr: ptr, ptr_name: str, loc_hint: str
+) -> None | NoReturn:
+    """
+    Ensure that the given object `ptr` is not NULL / NULLPTR
+
+    Raise LlamaNullException on failure
+
+    - ptr:
+        The object to check
+    - ptr_name:
+        The name of the object (for error messages)
+    - loc_hint:
+        Code location hint used in easy-llama
+    """
+    if not bool(ptr):
+        raise LlamaNullException(
+            f"{loc_hint}: {ptr_name} is NULL"
         )
