@@ -78,8 +78,7 @@ def softmax(
     Any floating-point value for temperature `T` is valid, including 0.0 and
     negative numbers.
 
-    If `dtype` is not specified, the highest precision numpy `dtype` available
-    will be used.
+    If `dtype` is not specified, `np.float32` is used if available.
     """
     if dtype is None:
         if hasattr(np, 'float32'):

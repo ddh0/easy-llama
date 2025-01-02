@@ -8,11 +8,12 @@ import time
 import struct
 import ctypes
 
+import numpy    as np
 import libllama as lib
 
 from utils    import (
-    print_verbose, print_info, print_warning, print_error, print_stopwatch,
-    null_ptr_check
+    print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
+    softmax
 )
 from typing   import Optional, Iterable, Generator
 from libllama import _internals, GGUFValueType
@@ -35,17 +36,17 @@ _DEFAULT_KV_TYPE = lib.GGMLType.GGML_TYPE_F16
 _cpu_count = None
 
 def _init_backend_if_needed() -> None:
-    global _cpu_count
 
     # if already initialized, no need to do anything
     if lib._BACKEND_INIT is True:
         return
     
-    _cpu_count = os.cpu_count()
+    global _cpu_count
+    _cpu_count = int(os.cpu_count())
     
     # most cases
     if sys.byteorder == 'little':
-        print_verbose(
+        print_info(
             "host is little-endian"
         )
     # rare
@@ -56,7 +57,7 @@ def _init_backend_if_needed() -> None:
         )
     # extremely rare
     else:
-        print_warning(
+        print_error(
             f"unexpected value for sys.byteorder: {sys.byteorder!r}; "
             f"expected 'little' for little-endian host or 'big' for "
             f"big-endian host"
@@ -69,7 +70,7 @@ def _init_backend_if_needed() -> None:
 #       to the number of physical cores (for homogenous CPUs) or
 #       to the number of performance cores (for heterogenous CPUs)
 #
-#       the optimal n_threads_batch value (for prompt eval) is equal
+#       the optimal n_threads_batch value (for prompt processing) is equal
 #       to the total number of logical cores, regardless of
 #       their type
 
@@ -157,12 +158,8 @@ class LlamaStopwatch:
     # A: comments in llama.h state to only use that in llama.cpp examples,
     #    and to do your own performance measurements instead.
     #
-    #    trying to use llama_perf_context leads to output like this:
-    #
-    # llama_perf_context_print:        load time =     507.04 ms
-    # llama_perf_context_print: prompt eval time =       0.00 ms /    37 tokens (    0.00 ms per token,      inf tokens per second)
-    # llama_perf_context_print:        eval time =       0.00 ms /    31 runs   (    0.00 ms per token,      inf tokens per second)
-    # llama_perf_context_print:       total time =    2844.00 ms /    68 tokens
+    #    trying to use llama_perf_context leads to output with
+    #    "0.00 ms per token" and "inf tokens per second"
     #
     def __init__(self):
         self.pp_start_time = None
@@ -664,6 +661,8 @@ class Llama:
                 f"not a GGUF file"
             )
         
+        # TODO: use group attention scaling instead of rope scaling?
+        
         # peek at metadata from GGUF file header before loading model
 
         self.metadata = QuickGGUFReader.load_metadata(path_model)
@@ -804,6 +803,9 @@ class Llama:
         (End-Of-Generation)
         """
 
+        # internal use only - the default SamplerParams with this model
+        self._default_sampler_params = SamplerParams(self)
+
         self.pos = 0
         """The number of tokens in the context window that have been processed"""
 
@@ -811,7 +813,8 @@ class Llama:
         """A list of all tokens currently in the context window"""
 
         # warm up the model with an empty run - this is optional
-        self.warmup()
+        print_info('warming up the model with an empty run ...')
+        _internals.decode_tg(self._ctx.ctx, 0, 0)
 
         # End of Llama.__init__
     
@@ -1285,7 +1288,7 @@ class Llama:
     def generate_single(
         self,
         input_tokens: Iterable[int],
-        sampler_params: Optional['SamplerParams'] = None
+        sampler_params: Optional[SamplerParams] = None,
     ) -> int:
         """
         Generate a single token
@@ -1294,7 +1297,7 @@ class Llama:
             The tokens to evaluate
         - sampler:
             The `SamplerParams` object to use for sampling. If not specified,
-            use the default sampler parameters
+            use the model's default sampler parameters
         """
 
         n_tokens = len(input_tokens)
@@ -1320,25 +1323,23 @@ class Llama:
             f'{n_cache_miss_tokens} tokens to eval ...'
         )
 
-        sampler_params = sampler_params if sampler_params is not None else SamplerParams(self)
-
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
-        print(f'batch_split: {batch_splits=}')
+        # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            print(f'this batch split index: {i}')
+            # print(f'this batch split index: {i}')
             batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            print(f'batch_split: {batch_tokens=}')
+            # print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                print(
-                    f'batch_split: appended batch with {len(batch_tokens)} '
-                    f'tokens'
-                )
+                # print(
+                #     f'batch_split: appended batch with {len(batch_tokens)} '
+                #     f'tokens'
+                # )
 
-        n_batches = len(batches)
-        print(f'batch_split: {n_batches=}')
+        # n_batches = len(batches)
+        # print(f'batch_split: {n_batches=}')
 
         # set up the stopwatch
         self.stopwatch.reset()
@@ -1349,10 +1350,10 @@ class Llama:
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                print(
-                    f'ppdecode: {batch_tokens=}\n'
-                    f'ppdecode: {n_batch_tokens=}'
-                )
+                # print(
+                #     f'ppdecode: {batch_tokens=}\n'
+                #     f'ppdecode: {n_batch_tokens=}'
+                # )
                 self.stopwatch.start_pp()
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch, n_batch_tokens
@@ -1360,10 +1361,10 @@ class Llama:
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                print(
-                    f'tgdecode: {batch_tokens=}\n'
-                    f'tgdecode: {n_batch_tokens=}'
-                )
+                # print(
+                #     f'tgdecode: {batch_tokens=}\n'
+                #     f'tgdecode: {n_batch_tokens=}'
+                # )
                 self.stopwatch.start_tg()
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
@@ -1387,7 +1388,7 @@ class Llama:
         input_tokens: Iterable[int],
         n_predict: int,
         stop_tokens: Optional[Iterable[int]] = None,
-        sampler_params: Optional['SamplerParams'] = None
+        sampler_params: Optional[SamplerParams] = None
     ) -> list[int]:
         """
         Generate one or more tokens and return them all at once
@@ -1428,26 +1429,25 @@ class Llama:
             f'{n_cache_miss_tokens} tokens to eval ...'
         )
 
-        sampler_params = sampler_params if sampler_params is not None else SamplerParams(self)
         stop_tokens = stop_tokens if stop_tokens is not None else self.eog_tokens
 
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
-        print(f'batch_split: {batch_splits=}')
+        # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            print(f'this batch split index: {i}')
+            # print(f'this batch split index: {i}')
             batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            print(f'batch_split: {batch_tokens=}')
+            # print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                print(
-                    f'batch_split: appended batch with {len(batch_tokens)} '
-                    f'tokens'
-                )
+                # print(
+                #     f'batch_split: appended batch with {len(batch_tokens)} '
+                #     f'tokens'
+                # )
         
-        n_batches = len(batches)
-        print(f'batch_split: {n_batches=}')
+        # n_batches = len(batches)
+        # print(f'batch_split: {n_batches=}')
 
         # set up the loop
         self.stopwatch.reset()
@@ -1460,10 +1460,10 @@ class Llama:
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                print(
-                    f'ppdecode: {batch_tokens=}\n'
-                    f'ppdecode: {n_batch_tokens=}'
-                )
+                # print(
+                #     f'ppdecode: {batch_tokens=}\n'
+                #     f'ppdecode: {n_batch_tokens=}'
+                # )
                 self.stopwatch.start_pp()
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch, n_batch_tokens
@@ -1471,10 +1471,10 @@ class Llama:
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                print(
-                    f'tgdecode: {batch_tokens=}\n'
-                    f'tgdecode: {n_batch_tokens=}'
-                )
+                # print(
+                #     f'tgdecode: {batch_tokens=}\n'
+                #     f'tgdecode: {n_batch_tokens=}'
+                # )
                 self.stopwatch.start_tg()
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
@@ -1490,7 +1490,7 @@ class Llama:
             self.context_tokens.extend(batch)
         
         # continue generating until n_predict or n_ctx is reached
-        print(f'start while loop')
+        # print(f'start while loop')
         while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
             self.stopwatch.start_tg()
             _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
@@ -1556,26 +1556,25 @@ class Llama:
             f'{n_cache_miss_tokens} tokens to eval ...'
         )
 
-        sampler_params = sampler_params if sampler_params is not None else SamplerParams(self)
         stop_tokens = stop_tokens if stop_tokens is not None else self.eog_tokens
 
         # split the input into batches of tokens
         batch_splits = range(0, n_tokens, self._n_batch)
-        print(f'batch_split: {batch_splits=}')
+        # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            print(f'this batch split index: {i}')
+            # print(f'this batch split index: {i}')
             batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            print(f'batch_split: {batch_tokens=}')
+            # print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                print(
-                    f'batch_split: appended batch with {len(batch_tokens)} '
-                    f'tokens'
-                )
+                # print(
+                #     f'batch_split: appended batch with {len(batch_tokens)} '
+                #     f'tokens'
+                # )
         
-        n_batches = len(batches)
-        print(f'batch_split: {n_batches=}')
+        # n_batches = len(batches)
+        # print(f'batch_split: {n_batches=}')
 
         # set up the loop
         self.stopwatch.reset()
@@ -1587,10 +1586,10 @@ class Llama:
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                print(
-                    f'ppdecode: {batch_tokens=}\n'
-                    f'ppdecode: {n_batch_tokens=}'
-                )
+                # print(
+                #     f'ppdecode: {batch_tokens=}\n'
+                #     f'ppdecode: {n_batch_tokens=}'
+                # )
                 self.stopwatch.start_pp()
                 _internals.decode_pp(
                     self._ctx.ctx, self.pos, batch, n_batch_tokens
@@ -1598,17 +1597,17 @@ class Llama:
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                print(
-                    f'tgdecode: {batch_tokens=}\n'
-                    f'tgdecode: {n_batch_tokens=}'
-                )
+                # print(
+                #     f'tgdecode: {batch_tokens=}\n'
+                #     f'tgdecode: {n_batch_tokens=}'
+                # )
                 self.stopwatch.start_tg()
                 _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
-                    f'Llama.generate: unexpected n_batch_tokens value '
+                    f'Llama.stream: unexpected n_batch_tokens value '
                     f'{n_batch_tokens}'
                 )
             
@@ -1617,7 +1616,7 @@ class Llama:
             self.context_tokens.extend(batch)
         
         # continue generating until n_predict or n_ctx is reached
-        print(f'start while loop')
+        # print(f'start while loop')
         while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
             self.stopwatch.start_tg()
             _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
@@ -1637,22 +1636,102 @@ class Llama:
         self.stopwatch.print_stats()
         return
     
-    def sample(self, params: 'SamplerParams') -> int:
+    def sample(self, params: Optional[SamplerParams] = None) -> int:
+      """
+      Sample a token using the current context
+
+      - params
+            The `sampling.SamplerParams` object which defines the sampling
+            parameters to use. If this parameter is None, the default sampler
+            paramater values will be used.
+      """
+      params = params if params is not None else self._default_sampler_params
       id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
       lib.llama_sampler_accept(params.smpl, id)
       return id
+    
+    def logits(self) -> np.ndarray:
+        """
+        Return the raw logits for the last token in the context
+
+        The returned array has shape `(n_vocab)`.
+        """
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.logits')
+        raw_logits = lib.llama_get_logits_ith(self._ctx.ctx, -1)
+        return np.ctypeslib.as_array(raw_logits, shape=[1, self._n_vocab])[0]
+
+    def scores(self, temp: Optional[float] = None) -> np.ndarray:
+        """
+        Return the normalized logits for the last token in the context.
+        Optionally apply temperature `temp` if specified.
+
+        Any floating-point value for temperature `temp` is valid, including 0.0
+        and negative numbers.
+
+        The returned array has shape `(n_vocab)`.
+        """
+        logits = self.logits()
+        return softmax(logits, T=temp)
+    
+    def sample_greedy(self) -> int:
+        id = _internals.sample_greedy(self._ctx.ctx)
+        lib.llama_sampler_accept(_internals.greedy_sampler, id)
+        return id
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""
         self.kv_cache_clear()
         self.pos = 0
         self.context_tokens = []
+        print_info('model was reset')
+
+class InferenceLock:
+    """
+    A context manager that can be used to prevent a `llama.Llama` instance from
+    accepting more than one generation at a time, which is not supported and can
+    cause a hard crash.
+
+    This is mostly useful in asychronous / multi-threaded contexts
+    """
+
+    class LockFailure(Exception):
+        pass
+
+    def __init__(self):
+        self.locked = False
+
+    def __enter__(self):
+        return self.acquire()
+    
+    def __exit__(self, *_):
+        return self.release()
+
+    async def __aenter__(self):
+        return self.__enter__()
+
+    async def __aexit__(self, *_):
+       return self.__exit__()
+    
+    def acquire(self):
+        if self.locked:
+            raise self.LockFailure(
+                'failed to acquire InferenceLock (already locked)'
+            )
+        self.locked = True
+        return self
+    
+    def release(self):
+        if not self.locked:
+            raise self.LockFailure(
+                'tried to release InferenceLock that is not acquired'
+            )
+        self.locked = False
 
 #
 # End of functions / Begin test
 #
 
-def main():
+def main() -> int:
 
     #test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
     test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
@@ -1672,27 +1751,16 @@ def main():
     tokens_a = TestLlama.tokenize(chktxt_a.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
     tokens_b = TestLlama.tokenize(chktxt_b.encode(), n_tokens_max=1024, add_special=True, parse_special=True)
 
-    output = TestLlama.generate(tokens_a, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=None)
-    #TestLlama.generate(tokens_b, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=None)
+    print('-' * 80)
 
-    print('Output with default sampler: ' + TestLlama.detokenize(output, True).decode())
-
-    # TestLlama.generate_single(tokens_a, sampler_params=None)
-    # TestLlama.generate_single(tokens_b, sampler_params=None)
-
-    print("Creating sampler ...")
-    sampler = SamplerParams(TestLlama, logit_bias={67722: -100000.0, 55152: -1000000.0})
-    print("Created sampler: " + repr(sampler))
-
-    # TestLlama.reset()
-
-    stream = TestLlama.stream(tokens_a, n_predict=32, stop_tokens=TestLlama.eog_tokens, sampler_params=sampler)
-    print('Output with new sampler: ', end='', file=sys.stderr, flush=True)
+    stream = TestLlama.stream(tokens_a, n_predict=128)
     for tok in stream:
         txt = TestLlama.token_to_piece(tok, True).decode()
         print(txt, end='', file=sys.stderr, flush=True)
     print('\n', end='', file=sys.stderr, flush=True)
 
+    return 0
+
 
 if __name__ == '__main__':
-    main()
+    exit(main())

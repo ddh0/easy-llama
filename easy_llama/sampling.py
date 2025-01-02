@@ -28,7 +28,47 @@ def _get_random_seed() -> int:
 
 class SamplerParams:
 
-    # TODO: support different sampler orders?
+    # NOTE: as of 2025-01-01, the default sampler chain for llama-cli is:
+    #
+    #       logits -> logit-bias -> penalties -> dry -> top-k -> typical ->
+    #       top-p -> min-p -> xtc -> temp-ext -> dist
+    #
+    #       ----------------------------------------------------------------
+    #
+    #       as of 2025-01-01, the sampler chain for easy-llama is:
+    #
+    #       -- ALWAYS APPLIED:
+    #
+    #       logits -> logit-bias -> top-k (k=128) -> penalties -> dry -> xtc ...
+    #
+    #       -- IF TEMP <= 0.0:
+    #
+    #       ... -> greedy
+    #
+    #       -- IF MIROSTAT v1:
+    #
+    #       ... -> temp(-ext) -> mirostat-v1
+    #
+    #       -- IF MIROSTAT v2:
+    #
+    #       ... -> temp(-ext) -> mirostat-v2
+    #
+    #       -- DEFAULT CASE:
+    #
+    #       ... top-k -> typical -> top-p -> min-p -> temp(-ext) -> dist
+    #       
+    #       ----------------------------------------------------------------
+    #
+    #       - "temp(-ext)" denotes "temp" if dynatemp_range == 0.0, otherwise
+    #         "temp-ext"
+    #
+    #       - "top-k (k=128)" is always performed before applying penalties
+    #         and DRY to improve performance
+    #
+    #       - note that "logit-bias", "top-k (k=128)", "penalties", and "dry"
+    #         are always applied
+
+    # TODO: support grammar
     
     def __init__( 
         #
@@ -45,7 +85,7 @@ class SamplerParams:
         xtc_threshold:      float = 0.1,   # > 0.5 disables XTC
         typical_p:          float = 1.0,   # 1.0 = disabled 
         temp:               float = 0.8,   # <= 0.0 to sample greedily
-        dynatemp_range:     float = 0.0,   # 0.0 = disabled
+        dynatemp_delta:     float = 0.0,   # 0.0 = disabled
         dynatemp_exponent:  float = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
         penalty_last_n:     int   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
         penalty_repeat:     float = 1.0,   # 1.0 = disabled
@@ -55,15 +95,13 @@ class SamplerParams:
         dry_base:           float = 1.75,  # 0.0 = disabled;      multiplier * base ^ (length of sequence before token - allowed length)
         dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
         dry_penalty_last_n: int   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
-        mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+        mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat v1, 2 = mirostat v2
         mirostat_tau:       float = 5.0,   # target entropy
         mirostat_eta:       float = 0.1,   # learning rate
 
         dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
 
         logit_bias: Optional[dict[int, float]] = None
-        
-        # TODO: grammar
     ):
         self.smpl = None
         
@@ -87,7 +125,7 @@ class SamplerParams:
         self.xtc_threshold      = xtc_threshold
         self.typical_p          = typical_p
         self.temp               = temp
-        self.dynatemp_range     = dynatemp_range
+        self.dynatemp_delta     = dynatemp_delta
         self.dynatemp_exponent  = dynatemp_exponent
         self.penalty_last_n     = penalty_last_n
         self.penalty_repeat     = penalty_repeat
@@ -104,45 +142,6 @@ class SamplerParams:
         self.dry_sequence_breakers = dry_sequence_breakers
 
         self.logit_bias = logit_bias
-
-        # NOTE: as of 2025-01-01, the default sampler chain for llama-cli is:
-        #
-        #       logits -> logit-bias -> penalties -> dry -> top-k -> typical ->
-        #       top-p -> min-p -> xtc -> temp-ext -> dist
-        #
-        #       ----------------------------------------------------------------
-        #
-        #       as of 2025-01-01, the sampler chain for easy-llama is:
-        #
-        #       -- ALWAYS APPLIED:
-        #
-        #       logits -> logit-bias -> penalties -> dry -> xtc ...
-        #
-        #       -- IF TEMP <= 0.0:
-        #
-        #       ... -> greedy
-        #
-        #       -- IF MIROSTAT v1:
-        #
-        #       ... -> temp(-ext) ->
-        #       mirostat-v1
-        #
-        #       -- IF MIROSTAT v2:
-        #
-        #       ... -> temp(-ext) -> mirostat-v2
-        #
-        #       -- DEFAULT CASE:
-        #
-        #       ... top-k -> typical -> top-p -> min-p -> temp(-ext) -> dist
-        #       
-        #       ----------------------------------------------------------------
-        #
-        #       NOTE:
-        #             - "temp(-ext)" denotes "temp" if dynatemp_range == 0.0, else
-        #               "temp-ext"
-        #
-        #             - note that "logit-bias", "penalties", and "dry" are
-        #               always applied
 
         sparams = lib.llama_sampler_chain_default_params()
         null_ptr_check(sparams, 'sparams', 'SamplerParams.__init__')
@@ -161,6 +160,20 @@ class SamplerParams:
                     logit_bias=logit_bias_arr
                 )
             )
+        
+        # Top-K (where k == 128)
+        #
+        # NOTE: This improves performance by greatly reducing the number of
+        #       tokens that the penalties and DRY samplers need to consider. It
+        #       should have absolutely no effect on the output except under the
+        #       strangest and most unlikely circumstances (like when temp > 10.0
+        #       and all other samplers are explicitly disabled).
+        #
+        lib.llama_sampler_chain_add(
+            smpl, lib.llama_sampler_init_top_k(
+                k=128
+            )
+        )
 
         # Penalties
         
@@ -218,13 +231,12 @@ class SamplerParams:
 
         if mirostat == 1:
             # ... -> temp(-ext) -> mirostat-v1
-            if dynatemp_range != 0.0:
+            if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
                         t=temp,
-                        # internally, "range" is referred to as "delta"
-                        delta=dynatemp_range,
+                        delta=dynatemp_delta,
                         exponent=dynatemp_exponent
                     )
                 )
@@ -245,13 +257,12 @@ class SamplerParams:
 
         elif mirostat == 2:
             # ... -> temp(-ext) -> mirostat-v2
-            if dynatemp_range != 0.0:
+            if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
                         t=temp,
-                        # internally, "range" is referred to as "delta"
-                        delta=dynatemp_range,
+                        delta=dynatemp_delta,
                         exponent=dynatemp_exponent
                     )
                 )
@@ -288,13 +299,12 @@ class SamplerParams:
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
                 )
-            if dynatemp_range != 0.0:
+            if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
                         t=temp,
-                        # internally, "range" is referred to as "delta"
-                        delta=dynatemp_range,
+                        delta=dynatemp_delta,
                         exponent=dynatemp_exponent
                     )
                 )
@@ -354,8 +364,8 @@ class SamplerParams:
         if self.smpl is not None:
             lib.llama_sampler_reset(self.smpl)
 
-class SamplerPresets:
-    pass
+# class SamplerPresets:
+#     pass
 
     # TODO: what to do with these presets? presets need llama.Llama param.
     

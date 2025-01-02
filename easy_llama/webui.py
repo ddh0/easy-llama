@@ -11,7 +11,7 @@ import base64
 
 from .thread import Thread
 from .model import InferenceLock
-from .utils import print_verbose, assert_type, Colors
+from .utils import print_info, assert_type, Colors
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -207,7 +207,7 @@ class WebUI:
 
     def log(self, text: str) -> None:
         if any(i is None for i in [self._log_host, self._log_port]):
-            print_verbose(text)
+            print_info(text)
         else:
             print(
                 f'easy_llama: WebUI @ '
@@ -260,7 +260,7 @@ class WebUI:
             else:
                 self.log('generating self-signed SSL certifcate')
                 generate_self_signed_ssl_cert()
-                print_verbose(SSL_CERT_FIRST_TIME_WARNING)
+                print(SSL_CERT_FIRST_TIME_WARNING, file=sys.stderr, flush=True)
 
 
         @self.app.route('/')
