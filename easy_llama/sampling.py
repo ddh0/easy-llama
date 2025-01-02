@@ -327,9 +327,7 @@ class SamplerParams:
         self.smpl = smpl
     
     def __del__(self):
-        if self.smpl is not None:
-            lib.llama_sampler_free(self.smpl)
-            self.smpl = None
+        self.free()
     
     def __repr__(self) -> str:
         return (
@@ -360,9 +358,14 @@ class SamplerParams:
             f")"
         )
     
-    def reset(self) -> None:
+    def free(self) -> None:
         if self.smpl is not None:
-            lib.llama_sampler_reset(self.smpl)
+            lib.llama_sampler_free(self.smpl)
+            self.smpl = None
+    
+    def reset(self) -> None:
+        null_ptr_check(self.smpl, 'self.smpl', 'SamplerParams.reset')
+        lib.llama_sampler_reset(self.smpl)
 
 # class SamplerPresets:
 #     pass

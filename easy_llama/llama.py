@@ -1637,6 +1637,11 @@ class Llama:
         self.stopwatch.print_stats()
         return
     
+    def sample_greedy(self) -> int:
+        id = _internals.sample_greedy(self._ctx.ctx)
+        lib.llama_sampler_accept(_internals.greedy_sampler, id)
+        return id
+    
     def sample(self, params: Optional[SamplerParams] = None) -> int:
       """
       Sample a token using the current context
@@ -1673,11 +1678,6 @@ class Llama:
         """
         logits = self.logits()
         return softmax(logits, T=temp)
-    
-    def sample_greedy(self) -> int:
-        id = _internals.sample_greedy(self._ctx.ctx)
-        lib.llama_sampler_accept(_internals.greedy_sampler, id)
-        return id
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""
