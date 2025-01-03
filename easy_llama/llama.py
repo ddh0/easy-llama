@@ -2,6 +2,8 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
+from _version import __version__
+
 import os
 import sys
 import time
@@ -15,8 +17,8 @@ from utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
     softmax
 )
-from typing   import Optional, Iterable, Generator
 from libllama import _internals, GGUFValueType
+from typing   import Optional, Iterable
 from io       import BufferedReader
 from sampling import SamplerParams
 
@@ -40,6 +42,10 @@ def _init_backend_if_needed() -> None:
     # if already initialized, no need to do anything
     if lib._BACKEND_INIT is True:
         return
+    
+    print_info(
+        f'easy_llama package version: {__version__}'
+    )
     
     global _cpu_count
     _cpu_count = int(os.cpu_count())
@@ -219,8 +225,7 @@ class LlamaStopwatch:
         #### NOTE:
         The `n_tg_tokens` value will be equal to the number of calls to
         llama_decode which have a batch size of 1, which is technically not
-        always equal to the number of tokens generated - it may often by off
-        by one.
+        always equal to the number of tokens generated - it may be off by one.
         """
 
         print(f"\n", end='', file=sys.stderr, flush=True)
@@ -597,7 +602,7 @@ class _LlamaCtx:
             lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16
         ]:
             print_warning(
-                f'V cache quantization requires flash_attn, program may fail'
+                f'V cache quantization requires flash_attn; program may fail'
             )
         if logits_all is not None:
             self.params.logits_all = logits_all
@@ -643,13 +648,14 @@ class Llama:
         n_gpu_layers: int = 0, # use < 0 to offload all layers
         use_mmap: bool = True,
         use_mlock: bool = False,
-        n_ctx: int = 512, # use <= 0 for n_ctx_train, otherwise unmodified
+        n_ctx: int = 512, # use <= 0 for n_ctx_train
         n_batch: int = 2048,
-        rope_freq_base: float = 0.0, # use 0.0 for auto, otherwise unmodified
+        rope_freq_base: float = 0.0, # use 0.0 for auto
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
         offload_kqv: bool = False,
-        flash_attn: bool = False
+        flash_attn: bool = False,
+        warmup: bool = True
     ):
         if not os.path.exists(path_model):
             raise FileNotFoundError(
@@ -812,9 +818,11 @@ class Llama:
         self.context_tokens = []
         """A list of all tokens currently in the context window"""
 
-        # warm up the model with an empty run - this is optional
-        print_info('warming up the model with an empty run ...')
-        _internals.decode_tg(self._ctx.ctx, 0, 0)
+        if warmup:
+            # warm up the model with an empty run
+            print_info('warming up the model with an empty run ...')
+            _internals.decode_tg(self._ctx.ctx, 0, 0)
+            print_info('model is warm')
 
         # End of Llama.__init__
     
@@ -1022,35 +1030,13 @@ class Llama:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads_batch")
         return lib.llama_n_threads_batch(self._ctx.ctx)
 
-    def get_logits(self) -> lib.ptr:
-        """
-        Token logits obtained from the last call to `llama_decode()`
-        The logits for which llama_batch.logits[i] != 0 are stored contiguously
-        in the order they have appeared in the batch.
-        - Rows:
-            number of tokens for which llama_batch.logits[i] != 0
-        - Cols:
-            n_vocab
-        """
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.get_logits")
-        return lib.llama_get_logits(self._ctx.ctx)
-
-    def get_logits_ith(self, i: int) -> lib.ptr:
-        """
-        Logits for the ith token. For positive indices, Equivalent to:
-        llama_get_logits(ctx) + ctx->output_ids[i]*n_vocab
-        Negative indicies can be used to access logits in reverse order, -1 is
-        the last logit. returns NULL for invalid ids.
-        """
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.get_logits_ith")
-        return lib.llama_get_logits_ith(self._ctx.ctx, i)
-
-    def token_get_score(self, token: int) -> float:
-        """Get the score of a token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_get_score"
-        )
-        return lib.llama_token_get_score(self._model.model, token)
+    # NOTE: this is disabled until i figure out what it does
+    # def token_get_score(self, token: int) -> float:
+    #     """Get the score of a token"""
+    #     null_ptr_check(
+    #         self._model.model, "self._model.model", "Llama.token_get_score"
+    #     )
+    #     return lib.llama_token_get_score(self._model.model, token)
 
     def token_is_eog(self, token: int) -> bool:
         """If the token is marked as EOG (End-Of-Generation)"""
@@ -1260,13 +1246,6 @@ class Llama:
             add_special=add_special,
             parse_special=parse_special
         )
-    
-    def warmup(self) -> None:
-        """Warm up the model with an empty run (this also resets the model)"""
-        print_info('warming up the model with an empty run ...')
-        self.reset()
-        _internals.decode_tg(self._ctx.ctx, 0, 0)
-        print_info('model is warm')
 
     def first_valid_pos(self, tokens: Iterable[int]) -> int:
         """
@@ -1517,7 +1496,7 @@ class Llama:
         n_predict: int,
         stop_tokens: Optional[Iterable[int]] = None,
         sampler_params: Optional['SamplerParams'] = None
-    ) -> Generator[int, None, None]:
+    ) -> Iterable[int]:
         """
         Return a Generator which yields one or more tokens
 
@@ -1656,7 +1635,7 @@ class Llama:
       lib.llama_sampler_accept(params.smpl, id)
       return id
     
-    def logits(self) -> np.ndarray:
+    def get_logits(self) -> np.ndarray:
         """
         Return the raw logits for the last token in the context
 
@@ -1666,9 +1645,9 @@ class Llama:
         raw_logits = lib.llama_get_logits_ith(self._ctx.ctx, -1)
         return np.ctypeslib.as_array(raw_logits, shape=[1, self._n_vocab])[0]
 
-    def scores(self, temp: Optional[float] = None) -> np.ndarray:
+    def get_scores(self, temp: Optional[float] = None) -> np.ndarray:
         """
-        Return the normalized logits for the last token in the context.
+        Return the softmaxed logits for the last token in the context.
         Optionally apply temperature `temp` if specified.
 
         Any floating-point value for temperature `temp` is valid, including 0.0
@@ -1676,7 +1655,7 @@ class Llama:
 
         The returned array has shape `(n_vocab)`.
         """
-        logits = self.logits()
+        logits = self.get_logits()
         return softmax(logits, T=temp)
 
     def reset(self) -> None:

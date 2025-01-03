@@ -9,7 +9,7 @@ import sys
 import uuid
 import numpy as np
 
-from .utils import (
+from utils import (
     _SupportsWriteAndFlush,
     UnreachableException,
     print_version_info,
@@ -24,9 +24,8 @@ from .utils import (
 )
 
 from sampling  import SamplerSettings, print_sampler_settings
-from llama_cpp  import Llama, StoppingCriteriaList
-from constants import MAX_DEFAULT_CONTEXT_LENGTH
-from typing     import Generator, Optional
+from llama_cpp import Llama, StoppingCriteriaList
+from typing    import Generator, Optional
 
 
 class ModelUnloadedException(Exception):

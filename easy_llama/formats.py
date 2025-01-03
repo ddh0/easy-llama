@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timedelta
 
 from typing import Callable, Any, Optional
-from .utils import assert_type, NoneType
+from utils  import assert_type, NoneType
 
 
 class AdvancedFormat:

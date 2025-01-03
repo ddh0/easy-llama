@@ -8,12 +8,11 @@ import ctypes
 
 import libllama as lib
 
-from libllama import _internals
 from typing   import Optional
+from libllama import _internals
 from utils    import null_ptr_check
 
-# not technically the maximum temperature, just a very large value
-MAX_TEMP = 1000000.0
+HIGH_TEMP = 10_000.0
 
 class Llama:
     "Type hint denoting a `llama.Llama` instance"
