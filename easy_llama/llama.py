@@ -15,7 +15,7 @@ import libllama as lib
 
 from utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
-    softmax
+    softmax, _SupportsWriteAndFlush
 )
 from libllama import _internals, GGUFValueType
 from typing   import Optional, Iterable
@@ -155,6 +155,9 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
             return n_ctx_train
         else:
             return rounded
+
+class ExceededContextLengthException(Exception):
+    """Exception raised when an input exceeds a model's context length"""
 
 class LlamaStopwatch:
     """Track elapsed time for prompt processing and text generation"""
@@ -1355,6 +1358,12 @@ class Llama:
                 f'Llama.generate_single: input_tokens cannot be empty'
             )
         
+        if n_tokens + 1 > self._n_ctx:
+            raise ExceededContextLengthException(
+                f'Llama.generate_single: input is too large for context length '
+                f'{self._n_ctx} (got {n_tokens})'
+            )
+        
         # find how many tokens in the input are already in the KV cache
         self.pos = self.first_valid_pos(input_tokens)
 
@@ -1460,6 +1469,18 @@ class Llama:
 
         if n_tokens == 0:
             raise ValueError('Llama.generate: input_tokens cannot be empty')
+        
+        if n_tokens + 1 > self._n_ctx:
+            raise ExceededContextLengthException(
+                f'Llama.generate: input is too large for context length '
+                f'{self._n_ctx} (got {n_tokens})'
+            )
+        if n_predict > 0:
+            if n_tokens + n_predict > self._n_ctx:
+                print_warning(
+                    f'Llama.generate: n_tokens + n_predict exceeds context '
+                    f'length '
+                )
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self.first_valid_pos(input_tokens)
@@ -1587,6 +1608,17 @@ class Llama:
 
         if n_tokens == 0:
             raise ValueError('Llama.stream: input_tokens cannot be empty')
+        
+        if n_tokens + 1 > self._n_ctx:
+            raise ExceededContextLengthException(
+                f'Llama.stream: input is too large for context length '
+                f'{self._n_ctx} (got {n_tokens})'
+            )
+        if n_predict > 0:
+            if n_tokens + n_predict > self._n_ctx:
+                print_warning(
+                    f'Llama.stream: n_tokens + n_predict exceeds context length'
+                )
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self.first_valid_pos(input_tokens)
@@ -1725,6 +1757,48 @@ class Llama:
         """
         logits = self.get_logits()
         return softmax(logits, T=temp)
+    
+    def get_tokenization_mapping(
+            self,
+            tokens: Iterable[int],
+        ) -> list[tuple[int, bytes]]:
+        """
+        Given some tokens, return a list of tuples where the first item in the
+        tuple is the token ID and the second item is the corresponding UTF-8
+        text bytes.
+        """
+        return list(
+            zip(
+                tokens,
+                [
+                    self.token_to_piece(id, special=True) for id in tokens
+                ]
+            )
+        )
+    
+    def print_tokenization_mapping(
+            self,
+            tokens: Iterable[int],
+            file: _SupportsWriteAndFlush = sys.stderr
+        ) -> None:
+        """
+        Given some tokens, print a mapping of each token ID to the
+        corresponding UTF-8 text bytes
+
+        This is meant to be equivalent to `llama.cpp/llama-tokenize`
+
+        - tokens:
+            The tokens to print a mapping for
+        - file:
+            The file or stream to which the mapping will be printed
+        """
+        token_mapping = self.get_tokenization_mapping(tokens)
+        for id, txt in token_mapping:
+            print(f"{id:>7} -> {str(txt)}", file=file)
+        print(
+            f"Total number of tokens: {len(token_mapping)}", file=file,
+            flush=True
+        )
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""
