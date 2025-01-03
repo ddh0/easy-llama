@@ -640,6 +640,19 @@ class _LlamaCtx:
 class Llama:
     """
     Simplified interface for general-purpose Llama model usage
+
+    The `easy_llama.Llama` class provides a high-level Python interface to
+    a llama_model and its associated llama_context.
+
+    Example usage:
+    >>> import easy_llama as ez
+    >>> Llama = ez.Llama('/path/to/model.gguf', n_ctx=8192)
+    >>> in_txt = "The apple doesn't fall far from"
+    >>> in_toks = Llama.tokenize(in_txt.encode(), add_special=True, parse_special=False)
+    >>> out_toks = Llama.generate(in_toks, n_predict=16)
+    >>> out_txt = Llama.detokenize(out_toks, special=True)
+    >>> print(out_txt)
+    b" the tree, as the saying goes, and I think that's especially true when"
     """
     
     def __init__(
@@ -657,6 +670,57 @@ class Llama:
         flash_attn: bool = False,
         warmup: bool = True
     ):
+        """
+        Load a llama model from a file
+
+        - path_model:
+            The path to the GGUF model file you wish to load from
+        - n_gpu_layers:
+            How many of the model's layers should be offloaded from CPU to GPU.
+            Values less than 0 will attempt to offload all layers. Default is 0.
+        - use_mmap:
+            Whether to memory-map the model. Changing this to False will cause
+            slower load times. Default is True. 
+        - use_mlock:
+            Whether to lock the model into memory, which can prevents page-outs.
+            Changing this to True can cause slower load times and increased
+            memory usage. Default is False.
+        - n_ctx:
+            The context length at which to load the model, in tokens. Default is
+            512, which is very small. Increase as needed. Values 0 or less will
+            attempt to load the native context length of the model (which may be
+            very large).
+        - n_batch:
+            The maximum number of tokens to process at once. Higher values
+            will increase prompt processing speed at expense of increased memory
+            usage. Values must be between 32 and n_ctx inclusive.
+        - rope_freq_base:
+            The RoPE frequency base (theta) to use when loading the model.
+            Default is 0.0, which will determine the correct value
+            automatically. Recommended to leave at 0.0 unless you know what
+            you're doing.
+        - type_k:
+            The `libllama.GGMLType` to use for the K cache. Default is 1 (f16).
+            In most cases, this must be the same as `type_v`.
+        - type_v:
+            The `libllama.GGMLType` to use for the V cache. Default is 1 (f16).
+            In most cases, this must be the same as `type_k`. Values other than
+            1 are not compatible with `flash_attn=True`.
+        - offload_kqv:
+            Whether to offload the K, Q, V caches to the GPU, which can greatly
+            improve prompt processing speed at the cost of increased VRAM usage.
+            Default is False for compatability reasons. Recommended to set to
+            True if possible.
+        - flash_attn:
+            Whether to use Flash Attention, which decreases memory usage and
+            can increase both prompt processing and text generation speed,
+            especially at long context lengths. Default is False. Recommended
+            to set to True if possible.
+        - warmup:
+            Whether to warm-up the model with an empty run. This reduces the
+            latency of the first generation at the cost of a slightly slower
+            load time.
+        """
         if not os.path.exists(path_model):
             raise FileNotFoundError(
                 f"Llama: the given path_model {path_model!r} does not exist"
@@ -666,8 +730,6 @@ class Llama:
                 f"Llama: the given path_model {path_model!r} is a directory, "
                 f"not a GGUF file"
             )
-        
-        # TODO: use group attention scaling instead of rope scaling?
         
         # peek at metadata from GGUF file header before loading model
 
@@ -761,6 +823,12 @@ class Llama:
                 f"can sometimes cause problems with llama.cpp - consider "
                 f"changing it to "
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
+            )
+        if actual_n_ctx == 512:
+            print_warning(
+                f'you are using the default n_ctx value {actual_n_ctx}, which '
+                f'is very small. increase n_ctx as needed to support longer '
+                f'inputs and outputs.'
             )
         
         self.stopwatch = LlamaStopwatch()

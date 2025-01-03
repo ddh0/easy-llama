@@ -14,7 +14,7 @@ from utils    import null_ptr_check
 
 HIGH_TEMP = 10_000.0
 
-class Llama:
+class Llama: # can't import the real Llama - would be circular
     "Type hint denoting a `llama.Llama` instance"
 
 def _get_random_seed() -> int:
@@ -281,7 +281,7 @@ class SamplerParams:
         # DEFAULT CASE
 
         elif mirostat == 0:
-            # ... top-k -> typical -> top-p -> min-p -> temp(-ext) -> dist
+            # ... -> top-k -> typical -> top-p -> min-p -> temp(-ext) -> dist
             if top_k > 0:
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_top_k(k=top_k)
