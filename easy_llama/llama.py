@@ -897,6 +897,24 @@ class Llama:
 
         # End of Llama.__init__
     
+    def _validate_model_state(self) -> None:
+        """
+        Ensure `llama_model` and `llama_context` are not NULL and validate
+        `Llama.pos`
+        """
+        null_ptr_check(self._model.model, 'self._model.model', 'Thread.__init__')
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Thread.__init__')
+        def _fail(txt: str):
+            print_error(f'Llama: validation failed: {txt}')
+            raise RuntimeError(f'Llama: validation failed: {txt}')
+        if self.pos < 0:
+            _fail(f'self.pos value {self.pos} is negative')
+        if self.pos != len(self.context_tokens):
+            _fail(
+                f'self.pos value {self.pos} is not equal to the length of '
+                f'self.context_tokens {len(self.context_tokens)}'
+            )
+    
     def __repr__(self) -> str:
         return (
             f"Llama("
@@ -1584,7 +1602,7 @@ class Llama:
         input_tokens: Iterable[int],
         n_predict: int,
         stop_tokens: Optional[Iterable[int]] = None,
-        sampler_params: Optional['SamplerParams'] = None
+        sampler_params: Optional[SamplerParams] = None
     ) -> Iterable[int]:
         """
         Return a Generator which yields one or more tokens
@@ -1866,7 +1884,7 @@ def main() -> int:
         n_ctx=8192,
         offload_kqv=True,
         flash_attn=True
-    )
+    )\
 
     chktxt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein famous for?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
     chktxt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
@@ -1875,11 +1893,13 @@ def main() -> int:
 
     print('-' * 80)
 
-    stream = TestLlama.stream(tokens_a, n_predict=128)
-    for tok in stream:
-        txt = TestLlama.token_to_piece(tok, True).decode()
-        print(txt, end='', file=sys.stderr, flush=True)
-    print('\n', end='', file=sys.stderr, flush=True)
+    in_txt = "I guess the apple don't fall far from"
+    in_toks = TestLlama.tokenize(in_txt.encode(), add_special=True, parse_special=False)
+    tok_gen = TestLlama.stream(in_toks, n_predict=-1)
+    print(in_txt, end='', file=sys.stderr, flush=True)
+    for tok in tok_gen:
+        txt = TestLlama.token_to_piece(tok, special=True)
+        print(txt.decode(errors='ignore'), end='', file=sys.stderr, flush=True)
 
     return 0
 

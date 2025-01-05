@@ -61,8 +61,8 @@ def DEPRECATED(new_func_name: Optional[str] = None):
 # Import shared library
 #
 
-libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama.dylib')
-#libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
+#libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama.dylib')
+libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
 
 #
 # Type hints and other constants

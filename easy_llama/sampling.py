@@ -100,6 +100,8 @@ class SamplerParams:
 
         dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
 
+        # TODO: grammar goes here
+
         logit_bias: Optional[dict[int, float]] = None
     ):
         self.smpl = None
