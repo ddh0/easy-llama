@@ -36,9 +36,6 @@ MAGENTA = TIMER_STYLE   = Colors.MAGENTA
 
 NoneType: type = type(None)
 
-class TypeAssertionError(Exception):
-    "A call to `assert_type()` has failed"
-
 class _ArrayLike(Iterable):
     "Anything that can be interpreted as a numpy array"
 
@@ -180,7 +177,7 @@ def assert_type(
     if not isinstance(expected_type, tuple):
         # represent `int` as 'int' instead of "<class 'int'>"
         expected_type_repr = repr(expected_type.__name__)
-        exc = TypeAssertionError(
+        exc = TypeError(
             f"{code_location}: {obj_name} should be an instance of "
             f"{expected_type_repr}, not {obj_type_repr}"
         )
@@ -188,7 +185,7 @@ def assert_type(
         # represent `(int, list)` as "('int', 'list')" instead of
         # "(<class 'int'>, <class 'list'>)"
         expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
-        exc = TypeAssertionError(
+        exc = TypeError(
             f"{code_location}: {obj_name} should be one of "
             f"{expected_type_repr}, not {obj_type_repr}"
         )
@@ -201,7 +198,7 @@ def assert_only_ints(iterable: Iterable) -> None:
     Ensure that the given iterable contains only `int`s
     """
     if any(not isinstance(x, int) for x in iterable):
-        raise TypeAssertionError(
+        raise TypeError(
             f"assert_only_ints: some item in the given iterable is not an int"
         )
 

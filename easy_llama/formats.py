@@ -12,7 +12,7 @@ def _call_or_return(obj: str | Callable[..., str]) -> str:
     else:
         raise TypeError(
             f'_call_or_return: obj must be a string or a callable that returns '
-            f'a string (got {repr(type(obj))})'
+            f'a string (got {repr(type(obj).__name__)})'
         )
 
 class PromptFormat:
@@ -39,26 +39,34 @@ class PromptFormat:
         self._bot_suffix    = bot_suffix
     
     def system_prefix(self) -> str:
+        """Get the system prompt prefix"""
         return _call_or_return(self._system_prefix)
 
     def system_prompt(self) -> str:
+        """Get the system prompt"""
         return _call_or_return(self._system_prompt)
 
     def system_suffix(self) -> str:
+        """Get the system prompt suffix"""
         return _call_or_return(self._system_suffix)
 
     def user_prefix(self) -> str:
+        """Get the user message prefix"""
         return _call_or_return(self._user_prefix)
 
     def user_suffix(self) -> str:
+        """Get the user message suffix"""
         return _call_or_return(self._user_suffix)
 
     def bot_prefix(self) -> str:
+        """Get the bot message prefix"""
         return _call_or_return(self._bot_prefix)
 
     def bot_suffix(self) -> str:
+        """Get the bot message suffix"""
         return _call_or_return(self._bot_suffix)
 
-def _prompt_format_from_llama_metadata(metadata: dict) -> PromptFormat:
-    if 'tokenizer.chat_template' in metadata.keys():
-        pass # TODO
+# TODO
+# def _prompt_format_from_llama_metadata(metadata: dict) -> PromptFormat:
+#     if 'tokenizer.chat_template' in metadata.keys():
+#         pass

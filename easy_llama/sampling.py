@@ -341,7 +341,7 @@ class SamplerParams:
             f"xtc_threshold={self.xtc_threshold}, "
             f"typical_p={self.typical_p}, "
             f"temp={self.temp}, "
-            f"dynatemp_range={self.dynatemp_range}, "
+            f"dynatemp_delta={self.dynatemp_delta}, "
             f"dynatemp_exponent={self.dynatemp_exponent}, "
             f"penalty_last_n={self.penalty_last_n}, "
             f"penalty_repeat={self.penalty_repeat}, "
