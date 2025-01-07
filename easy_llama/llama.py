@@ -649,14 +649,56 @@ class Llama:
 
     Example usage:
     >>> import easy_llama as ez
-    >>> Llama = ez.Llama('/path/to/model.gguf', n_ctx=8192)
+    >>> MyLlama = ez.Llama('/path/to/model.gguf', n_ctx=8192)
     >>> in_txt = "The apple doesn't fall far from"
-    >>> in_toks = Llama.tokenize(in_txt.encode(), add_special=True, parse_special=False)
-    >>> out_toks = Llama.generate(in_toks, n_predict=16)
-    >>> out_txt = Llama.detokenize(out_toks, special=True)
+    >>> in_toks = MyLlama.tokenize(in_txt.encode(), add_special=True, parse_special=False)
+    >>> out_toks = MyLlama.generate(in_toks, n_predict=16)
+    >>> out_txt = MyLlama.detokenize(out_toks, special=True)
     >>> print(out_txt)
     b" the tree, as the saying goes, and I think that's especially true when"
     """
+
+    class InferenceLockException(Exception):
+        pass
+
+    class InferenceLock:
+        """
+        A context manager that can be used to prevent a `llama.Llama` instance
+        from accepting more than one generation at a time, which is not
+        supported and can cause a hard crash.
+
+        This is mostly useful in asychronous / multi-threaded contexts
+        """
+
+        def __init__(self):
+            self.locked = False
+
+        def __enter__(self):
+            return self.acquire()
+        
+        def __exit__(self, *_):
+            return self.release()
+
+        async def __aenter__(self):
+            return self.__enter__()
+
+        async def __aexit__(self, *_):
+            return self.__exit__()
+        
+        def acquire(self):
+            if self.locked:
+                raise Llama.InferenceLockException(
+                    'failed to acquire InferenceLock (already locked)'
+                )
+            self.locked = True
+            return self
+        
+        def release(self):
+            if not self.locked:
+                raise Llama.InferenceLockException(
+                    'tried to release InferenceLock that is not acquired'
+                )
+            self.locked = False
     
     def __init__(
         self,
@@ -696,7 +738,7 @@ class Llama:
         - n_batch:
             The maximum number of tokens to process at once. Higher values
             will increase prompt processing speed at expense of increased memory
-            usage. Values must be between 32 and n_ctx inclusive.
+            usage. Values must be between 32 and n_ctx, inclusive.
         - rope_freq_base:
             The RoPE frequency base (theta) to use when loading the model.
             Default is 0.0, which will determine the correct value
@@ -708,7 +750,7 @@ class Llama:
         - type_v:
             The `libllama.GGMLType` to use for the V cache. Default is 1 (f16).
             In most cases, this must be the same as `type_k`. Values other than
-            1 are not compatible with `flash_attn=True`.
+            0 and 1 are not compatible with `flash_attn=True`.
         - offload_kqv:
             Whether to offload the K, Q, V caches to the GPU, which can greatly
             improve prompt processing speed at the cost of increased VRAM usage.
@@ -827,6 +869,7 @@ class Llama:
                 f"changing it to "
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
             )
+        # warn about default context length 512 - this will prevent headaches
         if actual_n_ctx == 512:
             print_warning(
                 f'you are using the default n_ctx value {actual_n_ctx}, which '
@@ -889,10 +932,13 @@ class Llama:
         self.context_tokens = []
         """A list of all tokens currently in the context window"""
 
+        self.lock = Llama.InferenceLock()
+
         if warmup:
             # warm up the model with an empty run
             print_info('warming up the model with an empty run ...')
-            _internals.decode_tg(self._ctx.ctx, 0, 0)
+            with self.lock:
+                _internals.decode_tg(self._ctx.ctx, 0, 0)
             print_info('model is warm')
 
         # End of Llama.__init__
@@ -1336,7 +1382,7 @@ class Llama:
             parse_special=parse_special
         )
 
-    def first_valid_pos(self, tokens: Iterable[int]) -> int:
+    def _first_valid_pos(self, tokens: Iterable[int]) -> int:
         """
         Given a list of tokens, and using `Llama.context_tokens`, find the first
         valid `Llama.pos`
@@ -1383,23 +1429,23 @@ class Llama:
             )
         
         # find how many tokens in the input are already in the KV cache
-        self.pos = self.first_valid_pos(input_tokens)
+        self.pos = self._first_valid_pos(input_tokens)
 
         # remove all tokens that are past that point
         self.kv_cache_seq_rm(0, self.pos, -1)
         actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
         self.context_tokens = input_tokens[:self.pos] # tokens already processed
 
-        n_cache_miss_tokens = len(actual_input_tokens)
-        n_cache_hit_tokens = len(input_tokens) - n_cache_miss_tokens
+        n_actual_input_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         print_info(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_cache_miss_tokens} tokens to eval ...'
+            f'{n_actual_input_tokens} tokens to eval ...'
         )
 
         # split the input into batches of tokens
-        batch_splits = range(0, n_tokens, self._n_batch)
+        batch_splits = range(0, n_actual_input_tokens, self._n_batch)
         # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
@@ -1430,9 +1476,10 @@ class Llama:
                 #     f'ppdecode: {n_batch_tokens=}'
                 # )
                 self.stopwatch.start_pp()
-                _internals.decode_pp(
-                    self._ctx.ctx, self.pos, batch, n_batch_tokens
-                )
+                with self.lock:
+                    _internals.decode_pp(
+                        self._ctx.ctx, self.pos, batch, n_batch_tokens
+                    )
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
@@ -1441,7 +1488,8 @@ class Llama:
                 #     f'tgdecode: {n_batch_tokens=}'
                 # )
                 self.stopwatch.start_tg()
-                _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
+                with self.lock:
+                    _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
@@ -1493,33 +1541,32 @@ class Llama:
                 f'Llama.generate: input is too large for context length '
                 f'{self._n_ctx} (got {n_tokens})'
             )
-        if n_predict > 0:
-            if n_tokens + n_predict > self._n_ctx:
-                print_warning(
-                    f'Llama.generate: n_tokens + n_predict exceeds context '
-                    f'length '
-                )
+        if (n_predict > 0) and (n_tokens + n_predict > self._n_ctx):
+            print_warning(
+                f'Llama.generate: n_tokens + n_predict exceeds context '
+                f'length '
+            )
+        
+        stops = stop_tokens if stop_tokens is not None else self.eog_tokens
         
         # find how many tokens in the input are already in the KV cache
-        self.pos = self.first_valid_pos(input_tokens)
+        self.pos = self._first_valid_pos(input_tokens)
 
         # remove all tokens that are past that point
         self.kv_cache_seq_rm(0, self.pos, -1)
         actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
         self.context_tokens = input_tokens[:self.pos] # tokens already processed
 
-        n_cache_miss_tokens = len(actual_input_tokens)
-        n_cache_hit_tokens = len(input_tokens) - n_cache_miss_tokens
+        n_actual_input_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         print_info(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_cache_miss_tokens} tokens to eval ...'
+            f'{n_actual_input_tokens} tokens to eval ...'
         )
 
-        stop_tokens = stop_tokens if stop_tokens is not None else self.eog_tokens
-
         # split the input into batches of tokens
-        batch_splits = range(0, n_tokens, self._n_batch)
+        batch_splits = range(0, n_actual_input_tokens, self._n_batch)
         # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
@@ -1552,9 +1599,10 @@ class Llama:
                 #     f'ppdecode: {n_batch_tokens=}'
                 # )
                 self.stopwatch.start_pp()
-                _internals.decode_pp(
-                    self._ctx.ctx, self.pos, batch, n_batch_tokens
-                )
+                with self.lock:
+                    _internals.decode_pp(
+                        self._ctx.ctx, self.pos, batch, n_batch_tokens
+                    )
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
@@ -1563,7 +1611,8 @@ class Llama:
                 #     f'tgdecode: {n_batch_tokens=}'
                 # )
                 self.stopwatch.start_tg()
-                _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
+                with self.lock:
+                    _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
@@ -1580,7 +1629,8 @@ class Llama:
         # print(f'start while loop')
         while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
             self.stopwatch.start_tg()
-            _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
+            with self.lock:
+                _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
             self.stopwatch.stop_tg()
             self.stopwatch.increment_tg_tokens(1)
             self.pos += 1
@@ -1590,7 +1640,7 @@ class Llama:
             output_tokens.append(id)
             n_predicted += 1
 
-            if id in stop_tokens:
+            if id in stops:
                 self.stopwatch.print_stats()
                 return output_tokens
         
@@ -1638,26 +1688,26 @@ class Llama:
                     f'Llama.stream: n_tokens + n_predict exceeds context length'
                 )
         
+        stops = stop_tokens if stop_tokens is not None else self.eog_tokens
+        
         # find how many tokens in the input are already in the KV cache
-        self.pos = self.first_valid_pos(input_tokens)
+        self.pos = self._first_valid_pos(input_tokens)
 
         # remove all tokens that are past that point
         self.kv_cache_seq_rm(0, self.pos, -1)
         actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
         self.context_tokens = input_tokens[:self.pos] # tokens already processed
 
-        n_cache_miss_tokens = len(actual_input_tokens)
-        n_cache_hit_tokens = len(input_tokens) - n_cache_miss_tokens
+        n_actual_input_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         print_info(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_cache_miss_tokens} tokens to eval ...'
+            f'{n_actual_input_tokens} tokens to eval ...'
         )
 
-        stop_tokens = stop_tokens if stop_tokens is not None else self.eog_tokens
-
         # split the input into batches of tokens
-        batch_splits = range(0, n_tokens, self._n_batch)
+        batch_splits = range(0, n_actual_input_tokens, self._n_batch)
         # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
@@ -1689,9 +1739,10 @@ class Llama:
                 #     f'ppdecode: {n_batch_tokens=}'
                 # )
                 self.stopwatch.start_pp()
-                _internals.decode_pp(
-                    self._ctx.ctx, self.pos, batch, n_batch_tokens
-                )
+                with self.lock:
+                    _internals.decode_pp(
+                        self._ctx.ctx, self.pos, batch, n_batch_tokens
+                    )
                 self.stopwatch.stop_pp()
                 self.stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
@@ -1700,7 +1751,8 @@ class Llama:
                 #     f'tgdecode: {n_batch_tokens=}'
                 # )
                 self.stopwatch.start_tg()
-                _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
+                with self.lock:
+                    _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
                 self.stopwatch.stop_tg()
                 self.stopwatch.increment_tg_tokens(1)
             else:
@@ -1717,7 +1769,8 @@ class Llama:
         # print(f'start while loop')
         while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
             self.stopwatch.start_tg()
-            _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
+            with self.lock:
+                _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
             self.stopwatch.stop_tg()
             self.stopwatch.increment_tg_tokens(1)
             self.pos += 1
@@ -1727,7 +1780,7 @@ class Llama:
             yield id
             n_predicted += 1
 
-            if id in stop_tokens:
+            if id in stops:
                 self.stopwatch.print_stats()
                 return
         
@@ -1736,22 +1789,26 @@ class Llama:
     
     def sample_greedy(self) -> int:
         id = _internals.sample_greedy(self._ctx.ctx)
-        lib.llama_sampler_accept(_internals.greedy_sampler, id)
+        # llama_sampler_sample internally calls llama_sampler_accept.
+        # uncomment the next line if this changes
+        #lib.llama_sampler_accept(_internals.greedy_sampler, id)
         return id
     
     def sample(self, params: Optional[SamplerParams] = None) -> int:
-      """
-      Sample a token using the current context
+        """
+        Sample a token using the current context
 
-      - params
+        - params:
             The `sampling.SamplerParams` object which defines the sampling
             parameters to use. If this parameter is None, the default sampler
             paramater values will be used.
-      """
-      params = params if params is not None else self._default_sampler_params
-      id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
-      lib.llama_sampler_accept(params.smpl, id)
-      return id
+        """
+        params = params if params is not None else self._default_sampler_params
+        id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
+        # llama_sampler_sample internally calls llama_sampler_accept.
+        # # uncomment the next line if this changes
+        #lib.llama_sampler_accept(params.smpl, id)
+        return id
     
     def get_logits(self) -> np.ndarray:
         """
@@ -1788,9 +1845,7 @@ class Llama:
         return list(
             zip(
                 tokens,
-                [
-                    self.token_to_piece(id, special=True) for id in tokens
-                ]
+                [self.token_to_piece(id, special=True) for id in tokens]
             )
         )
     
@@ -1825,48 +1880,6 @@ class Llama:
         self.context_tokens = []
         print_info('model was reset')
 
-class InferenceLock:
-    """
-    A context manager that can be used to prevent a `llama.Llama` instance from
-    accepting more than one generation at a time, which is not supported and can
-    cause a hard crash.
-
-    This is mostly useful in asychronous / multi-threaded contexts
-    """
-
-    class LockFailure(Exception):
-        pass
-
-    def __init__(self):
-        self.locked = False
-
-    def __enter__(self):
-        return self.acquire()
-    
-    def __exit__(self, *_):
-        return self.release()
-
-    async def __aenter__(self):
-        return self.__enter__()
-
-    async def __aexit__(self, *_):
-       return self.__exit__()
-    
-    def acquire(self):
-        if self.locked:
-            raise self.LockFailure(
-                'failed to acquire InferenceLock (already locked)'
-            )
-        self.locked = True
-        return self
-    
-    def release(self):
-        if not self.locked:
-            raise self.LockFailure(
-                'tried to release InferenceLock that is not acquired'
-            )
-        self.locked = False
-
 #
 # End of functions / Begin test
 #
@@ -1884,7 +1897,7 @@ def main() -> int:
         n_ctx=8192,
         offload_kqv=True,
         flash_attn=True
-    )\
+    )
 
     chktxt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein famous for?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
     chktxt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"

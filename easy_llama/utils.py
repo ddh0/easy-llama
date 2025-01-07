@@ -219,5 +219,5 @@ def null_ptr_check(
     """
     if not bool(ptr):
         raise LlamaNullException(
-            f"{loc_hint}: {ptr_name} is NULL"
+            f"{loc_hint}: pointer `{ptr_name}` is null"
         )

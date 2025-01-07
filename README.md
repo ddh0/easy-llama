@@ -13,6 +13,12 @@
 
 easy-llama's purpose is to make use of **on-device large language models (LLMs) as easily as possible**. It is a layer of abstraction over [llama-cpp-python](https://github.com/abetlen/llama-cpp-python), which itself provides the Python bindings for the underlying [llama.cpp](https://github.com/ggerganov/llama.cpp) project.
 
+## Note about project status
+#### ⚠️ Breaking changes incoming ⚠️
+The incoming package version 0.2.0 will be a dramatic change. The `llama-cpp-python` dependency is being removed, and its functionality is being implemented in this project directly. This will make the project more efficient, maintainable, and independent. This README will also be updated with code examples.
+
+Existing code which utilizes easy-llama will need to be updated for compatibility with `easy_llama>=0.2.0`.
+
 ## Documentation
 Documentation is available [in DOCS.md](DOCS.md).
 
