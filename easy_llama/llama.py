@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-from _version import __version__
+from ._version import __version__
 
 import os
 import sys
