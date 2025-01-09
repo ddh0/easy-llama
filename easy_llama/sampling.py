@@ -8,7 +8,7 @@ import ctypes
 
 from typing    import Optional
 from .libllama import _internals
-from utils     import null_ptr_check, print_info
+from .utils    import null_ptr_check, print_info
 
 from . import libllama as lib
 
