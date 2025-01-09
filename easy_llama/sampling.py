@@ -333,7 +333,7 @@ class SamplerParams:
     def __repr__(self) -> str:
         return (
             f"SamplerParams("
-            f"<Llama object>, "
+            f"llama=<Llama object>, "
             f"seed={self.seed}, "
             f"top_k={self.top_k}, "
             f"min_p={self.min_p}, "

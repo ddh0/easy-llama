@@ -8,6 +8,7 @@ from _version import __version__
 
 import os
 import sys
+import contextlib
 import numpy as np
 
 from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn
@@ -62,7 +63,7 @@ class ptr(Generic[T]):
     
     Optionally subscriptable with any type
     """
-
+        
 def softmax(
     z: _ArrayLike,
     T: Optional[float] = None,
@@ -118,8 +119,37 @@ def cls() -> None:
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
-def print_version_info(file: _SupportsWriteAndFlush = sys.stderr) -> None:
-    print(f"easy_llama: package version: {__version__}", file=file)
+_open = open
+_sys = sys
+_os = os
+
+@contextlib.contextmanager
+def suppress_output(disable: bool = False):
+    if disable:
+        yield
+    else:
+        # save the original file descriptors
+        original_stdout_fd = _sys.stdout.fileno()
+        original_stderr_fd = _sys.stderr.fileno()
+
+        saved_stdout_fd = _os.dup(original_stdout_fd)
+        saved_stderr_fd = _os.dup(original_stderr_fd)
+
+        with _open(_os.devnull, 'wb') as devnull:
+            devnull_fd = devnull.fileno()
+
+            _os.dup2(devnull_fd, original_stdout_fd)
+            _os.dup2(devnull_fd, original_stderr_fd)
+
+            try:
+                yield
+            finally:
+                # restore the original file descriptors
+                _os.dup2(saved_stdout_fd, original_stdout_fd)
+                _os.dup2(saved_stderr_fd, original_stderr_fd)
+
+                _os.close(saved_stdout_fd)
+                _os.close(saved_stderr_fd)
 
 def print_verbose(text: str) -> None:
     print(

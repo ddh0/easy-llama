@@ -38,6 +38,19 @@ class PromptFormat:
         self._bot_prefix    = bot_prefix
         self._bot_suffix    = bot_suffix
     
+    def __repr__(self) -> str:
+        return (
+            f"PromptFormat("
+            f"system_prefix={self._system_prefix!r}, "
+            f"system_prompt={self._system_prompt!r}, "
+            f"system_suffix={self._system_suffix!r}, "
+            f"user_prefix={self._user_prefix!r}, "
+            f"user_suffix={self._user_suffix!r}, "
+            f"bot_prefix={self._bot_prefix!r}, "
+            f"bot_suffix={self._bot_suffix!r}"
+            f")"
+        )
+    
     def system_prefix(self) -> str:
         """Get the system prompt prefix"""
         return _call_or_return(self._system_prefix)

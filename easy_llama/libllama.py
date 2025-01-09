@@ -2146,14 +2146,6 @@ class _internals:
             parse_special=parse_special
         )
     
-    def perf_ctx_print_and_reset(ctx: ptr[llama_context]) -> None:
-        llama_perf_context_print(ctx)
-        llama_perf_context_reset(ctx)
-
-    def perf_smpl_print_and_reset(smpl: ptr[llama_sampler]) -> None:
-        llama_perf_sampler_print(smpl)
-        llama_perf_sampler_reset(smpl)
-    
     def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
         if len(logit_biases) == 0:
             raise ValueError(f'logit_biases parameter cannot be empty')

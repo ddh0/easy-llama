@@ -15,7 +15,7 @@ import libllama as lib
 
 from utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
-    softmax, _SupportsWriteAndFlush
+    softmax, suppress_output, _SupportsWriteAndFlush
 )
 from libllama import _internals, GGUFValueType
 from typing   import Optional, Iterable
@@ -25,11 +25,10 @@ from sampling import SamplerParams
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
     lib.GGMLType.GGML_TYPE_F16,   # k-types
-    lib.GGMLType.GGML_TYPE_Q8_1,
-    lib.GGMLType.GGML_TYPE_Q8_0,  # BF16 is also sometimes supported, but not
-    lib.GGMLType.GGML_TYPE_Q5_1,  # always, and offers no benefit compared
-    lib.GGMLType.GGML_TYPE_Q5_0,  # to F16, so is not included here
-    lib.GGMLType.GGML_TYPE_Q4_1,
+    lib.GGMLType.GGML_TYPE_Q8_0,
+    lib.GGMLType.GGML_TYPE_Q5_1,  # BF16 is also sometimes supported, but not
+    lib.GGMLType.GGML_TYPE_Q5_0,  # always, and offers no benefit compared
+    lib.GGMLType.GGML_TYPE_Q4_1,  # to F16, so is not included here
     lib.GGMLType.GGML_TYPE_Q4_0
 ]
 
@@ -37,13 +36,28 @@ _DEFAULT_KV_TYPE = lib.GGMLType.GGML_TYPE_F16
 
 _cpu_count = None
 
-def _init_backend_if_needed() -> None:
+verbose = True
+"""Module-level variable to enable or disable llama.cpp and easy-llama output"""
+
+def set_verbose(state: bool) -> None:
+    global verbose
+    verbose = state
+
+def get_verbose() -> bool:
+    global verbose
+    return verbose
+
+def print_info_if_verbose(text: str) -> None:
+    if get_verbose():
+        print_info(text)
+
+def _init_backend_if_needed(verbose: bool = True) -> None:
 
     # if already initialized, no need to do anything
     if lib._BACKEND_INIT is True:
         return
     
-    print_info(
+    print_info_if_verbose(
         f'easy_llama package version: {__version__}'
     )
     
@@ -52,9 +66,10 @@ def _init_backend_if_needed() -> None:
     
     # most cases
     if sys.byteorder == 'little':
-        print_info(
-            "host is little-endian"
-        )
+        if verbose:
+            print_info_if_verbose(
+                "host is little-endian"
+            )
     # rare
     elif sys.byteorder == 'big':
         print_warning(
@@ -87,14 +102,6 @@ def _get_optimal_n_threads() -> int:
 def _get_optimal_n_threads_batch() -> int:
     global _cpu_count
     return _cpu_count
-
-# def _get_random_seed() -> int:
-#     # uint32_t
-#     return int.from_bytes(
-#         bytes=os.urandom(4),
-#         byteorder=sys.byteorder,
-#         signed=False
-#     )
 
 def _calculate_rope_freq_base(
         n_ctx_train: int,
@@ -159,7 +166,7 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
 class ExceededContextLengthException(Exception):
     """Exception raised when an input exceeds a model's context length"""
 
-class LlamaStopwatch:
+class _LlamaStopwatch:
     """Track elapsed time for prompt processing and text generation"""
     #
     # Q: why don't you use llama_perf_context?
@@ -173,8 +180,10 @@ class LlamaStopwatch:
     def __init__(self):
         self.pp_start_time = None
         self.tg_start_time = None
+        self.wall_start_time = None
         self.pp_elapsed_time = 0
         self.tg_elapsed_time = 0
+        self.wall_elapsed_time = 0
         self.n_pp_tokens = 0
         self.n_tg_tokens = 0
 
@@ -197,6 +206,16 @@ class LlamaStopwatch:
         if self.tg_start_time is not None:
             self.tg_elapsed_time += time.time_ns() - self.tg_start_time
             self.tg_start_time = None
+    
+    def start_wall_time(self):
+        """Start wall-time stopwatch"""
+        self.wall_start_time = time.time_ns()
+
+    def stop_wall_time(self):
+        """Stop wall-time stopwatch"""
+        if self.wall_start_time is not None:
+            self.wall_elapsed_time += time.time_ns() - self.wall_start_time
+            self.wall_start_time = None
 
     def get_elapsed_time_pp(self) -> int:
         """Total nanoseconds elapsed during prompt processing"""
@@ -205,6 +224,10 @@ class LlamaStopwatch:
     def get_elapsed_time_tg(self) -> int:
         """Total nanoseconds elapsed during text generation"""
         return self.tg_elapsed_time
+    
+    def get_elapsed_wall_time(self) -> int:
+        """Total wall-time nanoseconds elapsed"""
+        return self.wall_elapsed_time
 
     def increment_pp_tokens(self, n: int):
         self.n_pp_tokens += max(n, 0) # do not allow negative increment
@@ -216,8 +239,10 @@ class LlamaStopwatch:
         """Reset the stopwatch to its original state"""
         self.pp_start_time = None
         self.tg_start_time = None
+        self.wall_start_time = None
         self.pp_elapsed_time = 0
         self.tg_elapsed_time = 0
+        self.wall_elapsed_time = 0
         self.n_pp_tokens = 0
         self.n_tg_tokens = 0
 
@@ -238,7 +263,6 @@ class LlamaStopwatch:
                 f'print_stats was called but no tokens were processed or '
                 f'generated'
             )
-            return
 
         if self.n_pp_tokens > 0:
             pp_elapsed_ns = self.get_elapsed_time_pp()
@@ -261,6 +285,12 @@ class LlamaStopwatch:
                 f'{tg_elapsed_ms:>13.3f}ms '
                 f'({tg_tps:>10.2f} tok/s)'
             )
+        
+        wall_elapsed_ns = self.get_elapsed_wall_time()
+        wall_elapsed_ms = wall_elapsed_ns / 1e6
+        print_stopwatch(
+            f'        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms'
+        )
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
@@ -429,19 +459,20 @@ class _LlamaModel:
     def __init__(
         self,
         path_model: str,
-        devices: Optional[lib.ptr] = None,
-        n_gpu_layers: Optional[int] = None,
-        split_mode: Optional[int] = None,
-        main_gpu: Optional[int] = None,
-        tensor_split: Optional[lib.ptr] = None,
-        rpc_servers: Optional[str] = None,
-        progress_callback: Optional[lib.ptr] = None,
-        progress_callback_user_data: Optional[lib.ptr] = None,
-        kv_overrides: Optional[lib.llama_model_kv_override] = None,
-        vocab_only: Optional[bool] = None,
-        use_mmap: Optional[bool] = None,
-        use_mlock: Optional[bool] = None,
-        check_tensors: Optional[bool] = None
+
+        devices:                     Optional[lib.ptr]                     = None,
+        n_gpu_layers:                Optional[int]                         = None,
+        split_mode:                  Optional[int]                         = None,
+        main_gpu:                    Optional[int]                         = None,
+        tensor_split:                Optional[lib.ptr]                     = None,
+        rpc_servers:                 Optional[str]                         = None,
+        progress_callback:           Optional[lib.ptr]                     = None,
+        progress_callback_user_data: Optional[lib.ptr]                     = None,
+        kv_overrides:                Optional[lib.llama_model_kv_override] = None,
+        vocab_only:                  Optional[bool]                        = None,
+        use_mmap:                    Optional[bool]                        = None,
+        use_mlock:                   Optional[bool]                        = None,
+        check_tensors:               Optional[bool]                        = None
     ):
         _init_backend_if_needed()
         self.path_model = path_model
@@ -491,7 +522,10 @@ class _LlamaModel:
             )
         
         # load model
-        self.model = lib.llama_load_model_from_file(path_model, self.params)
+        
+        print(f'_model: {verbose=}')
+        with suppress_output(disable=verbose):
+            self.model = lib.llama_load_model_from_file(path_model, self.params)
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
     
     def __del__(self):
@@ -499,7 +533,8 @@ class _LlamaModel:
 
     def free(self):
         if self.model is not None:
-            lib.llama_free_model(self.model)
+            with suppress_output(disable=verbose):
+                lib.llama_free_model(self.model)
             self.model = None
 
 
@@ -508,33 +543,34 @@ class _LlamaCtx:
     def __init__(
         self,
         model: _LlamaModel,
-        n_ctx: Optional[int] = None,
-        n_batch: Optional[int] = None,
-        n_ubatch: Optional[int] = None,
-        n_seq_max: Optional[int] = None,
-        n_threads: Optional[int] = None,
-        n_threads_batch: Optional[int] = None,
-        rope_scaling_type: Optional[int] = None,
-        pooling_type: Optional[int] = None,
-        attention_type: Optional[int] = None,
-        rope_freq_base: Optional[float] = None,
-        rope_freq_scale: Optional[float] = None,
-        yarn_ext_factor: Optional[float] = None,
-        yarn_attn_factor: Optional[float] = None,
-        yarn_beta_fast: Optional[float] = None,
-        yarn_beta_slow: Optional[float] = None,
-        yarn_orig_ctx: Optional[int] = None,
-        defrag_thold: Optional[float] = None,
-        cb_eval: Optional[lib.ptr] = None,
-        cb_eval_user_data: Optional[lib.ptr] = None,
-        type_k: Optional[int] = None,
-        type_v: Optional[int] = None,
-        logits_all: Optional[bool] = None,
-        embeddings: Optional[bool] = None,
-        offload_kqv: Optional[bool] = None,
-        flash_attn: Optional[bool] = None,
-        no_perf: Optional[bool] = None,
-        abort_callback: Optional[lib.ptr] = None,
+
+        n_ctx:               Optional[int]     = None,
+        n_batch:             Optional[int]     = None,
+        n_ubatch:            Optional[int]     = None,
+        n_seq_max:           Optional[int]     = None,
+        n_threads:           Optional[int]     = None,
+        n_threads_batch:     Optional[int]     = None,
+        rope_scaling_type:   Optional[int]     = None,
+        pooling_type:        Optional[int]     = None,
+        attention_type:      Optional[int]     = None,
+        rope_freq_base:      Optional[float]   = None,
+        rope_freq_scale:     Optional[float]   = None,
+        yarn_ext_factor:     Optional[float]   = None,
+        yarn_attn_factor:    Optional[float]   = None,
+        yarn_beta_fast:      Optional[float]   = None,
+        yarn_beta_slow:      Optional[float]   = None,
+        yarn_orig_ctx:       Optional[int]     = None,
+        defrag_thold:        Optional[float]   = None,
+        cb_eval:             Optional[lib.ptr] = None,
+        cb_eval_user_data:   Optional[lib.ptr] = None,
+        type_k:              Optional[int]     = None,
+        type_v:              Optional[int]     = None,
+        logits_all:          Optional[bool]    = None,
+        embeddings:          Optional[bool]    = None,
+        offload_kqv:         Optional[bool]    = None,
+        flash_attn:          Optional[bool]    = None,
+        no_perf:             Optional[bool]    = None,
+        abort_callback:      Optional[lib.ptr] = None,
         abort_callback_data: Optional[lib.ptr] = None
     ):
         _init_backend_if_needed()
@@ -601,9 +637,10 @@ class _LlamaCtx:
             print_warning(
                 f'type_v value {_v} is unsupported; program may fail'
             )
-        if flash_attn and _v not in [
-            lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16
-        ]:
+        if (not flash_attn) and (_v not in [
+            lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16,
+            lib.GGMLType.GGML_TYPE_BF16
+        ]):
             print_warning(
                 f'V cache quantization requires flash_attn; program may fail'
             )
@@ -623,9 +660,10 @@ class _LlamaCtx:
             self.params.abort_callback_data = abort_callback_data
         
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
-        self.ctx = lib.llama_new_context_with_model(
-            model.model, self.params
-        )
+        
+        print(f'_ctx: {verbose=}')
+        with suppress_output(disable=verbose):
+            self.ctx = lib.llama_new_context_with_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
     
     def __del__(self):
@@ -633,8 +671,55 @@ class _LlamaCtx:
 
     def free(self):
         if self.ctx is not None:
-            lib.llama_free(self.ctx)
+            with suppress_output(disable=verbose):
+                lib.llama_free(self.ctx)
             self.ctx = None
+
+#
+# InferenceLock
+#
+
+class InferenceLockException(Exception):
+    pass
+
+class _InferenceLock:
+    """
+    A context manager that can be used to prevent a `llama.Llama` instance
+    from accepting more than one generation at a time, which is not
+    supported and can cause a hard crash.
+
+    This is mostly useful in asychronous / multi-threaded contexts
+    """
+
+    def __init__(self):
+        self._locked = False
+
+    def __enter__(self):
+        return self.acquire()
+    
+    def __exit__(self, *_):
+        return self.release()
+
+    async def __aenter__(self):
+        return self.__enter__()
+
+    async def __aexit__(self, *_):
+        return self.__exit__()
+    
+    def acquire(self):
+        if self._locked:
+            raise InferenceLockException(
+                'failed to acquire InferenceLock (already locked)'
+            )
+        self._locked = True
+        return self
+    
+    def release(self):
+        if not self._locked:
+            raise InferenceLockException(
+                'tried to release InferenceLock that is not acquired'
+            )
+        self._locked = False
 
 #
 # Llama
@@ -657,63 +742,22 @@ class Llama:
     >>> print(out_txt)
     b" the tree, as the saying goes, and I think that's especially true when"
     """
-
-    class InferenceLockException(Exception):
-        pass
-
-    class InferenceLock:
-        """
-        A context manager that can be used to prevent a `llama.Llama` instance
-        from accepting more than one generation at a time, which is not
-        supported and can cause a hard crash.
-
-        This is mostly useful in asychronous / multi-threaded contexts
-        """
-
-        def __init__(self):
-            self.locked = False
-
-        def __enter__(self):
-            return self.acquire()
-        
-        def __exit__(self, *_):
-            return self.release()
-
-        async def __aenter__(self):
-            return self.__enter__()
-
-        async def __aexit__(self, *_):
-            return self.__exit__()
-        
-        def acquire(self):
-            if self.locked:
-                raise Llama.InferenceLockException(
-                    'failed to acquire InferenceLock (already locked)'
-                )
-            self.locked = True
-            return self
-        
-        def release(self):
-            if not self.locked:
-                raise Llama.InferenceLockException(
-                    'tried to release InferenceLock that is not acquired'
-                )
-            self.locked = False
     
     def __init__(
         self,
         path_model: str,
-        n_gpu_layers: int = 0, # use < 0 to offload all layers
+        n_gpu_layers: int = 0,
         use_mmap: bool = True,
         use_mlock: bool = False,
-        n_ctx: int = 512, # use <= 0 for n_ctx_train
+        n_ctx: int = 512,
         n_batch: int = 2048,
-        rope_freq_base: float = 0.0, # use 0.0 for auto
+        rope_freq_base: float = 0.0,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
         offload_kqv: bool = False,
         flash_attn: bool = False,
-        warmup: bool = True
+        warmup: bool = True,
+        verbose: bool = True
     ):
         """
         Load a llama model from a file
@@ -765,6 +809,10 @@ class Llama:
             Whether to warm-up the model with an empty run. This reduces the
             latency of the first generation at the cost of a slightly slower
             load time.
+        - verbose:
+            Print informational output when loading model as well as at
+            runtime. Default is True. If set to False, warnings and errors
+            will still be shown.
         """
         if not os.path.exists(path_model):
             raise FileNotFoundError(
@@ -776,6 +824,8 @@ class Llama:
                 f"not a GGUF file"
             )
         
+        set_verbose(verbose)
+        
         # peek at metadata from GGUF file header before loading model
 
         self.metadata = QuickGGUFReader.load_metadata(path_model)
@@ -784,19 +834,20 @@ class Llama:
         # Load model from file
         #
 
-        self._model = _LlamaModel(
-            path_model=path_model,
-            n_gpu_layers=n_gpu_layers,
-            use_mmap=use_mmap,
-            use_mlock=use_mlock
-        )
+        with suppress_output(disable=verbose):
+            self._model = _LlamaModel(
+                path_model=path_model,
+                n_gpu_layers=n_gpu_layers,
+                use_mmap=use_mmap,
+                use_mlock=use_mlock
+            )
 
         n_ctx_train = lib.llama_n_ctx_train(self._model.model)
 
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
         if n_ctx <= 0:
-            print_info(
+            print_info_if_verbose(
                 f'n_ctx value {n_ctx}; using n_ctx_train value '
                 f'{n_ctx_train}'
             )
@@ -831,18 +882,19 @@ class Llama:
         # New context with model
         #
         
-        self._ctx = _LlamaCtx(
-            model=self._model,
-            n_ctx=_n_ctx,
-            n_batch=n_batch,
-            n_threads=_get_optimal_n_threads(),
-            n_threads_batch=_get_optimal_n_threads_batch(),
-            rope_freq_base=_rope_freq_base,
-            type_k=type_k,
-            type_v=type_v,
-            offload_kqv=offload_kqv,
-            flash_attn=flash_attn
-        )
+        with suppress_output(disable=verbose):
+            self._ctx = _LlamaCtx(
+                model=self._model,
+                n_ctx=_n_ctx,
+                n_batch=n_batch,
+                n_threads=_get_optimal_n_threads(),
+                n_threads_batch=_get_optimal_n_threads_batch(),
+                rope_freq_base=_rope_freq_base,
+                type_k=type_k,
+                type_v=type_v,
+                offload_kqv=offload_kqv,
+                flash_attn=flash_attn
+            )
 
         #
         # Display warnings about n_ctx if necessary
@@ -877,7 +929,7 @@ class Llama:
                 f'inputs and outputs.'
             )
         
-        self.stopwatch = LlamaStopwatch()
+        self._stopwatch = _LlamaStopwatch()
 
         #
         # Store immutable Llama metadata as attributes for faster access
@@ -932,14 +984,14 @@ class Llama:
         self.context_tokens = []
         """A list of all tokens currently in the context window"""
 
-        self.lock = Llama.InferenceLock()
+        self._lock = _InferenceLock()
 
         if warmup:
             # warm up the model with an empty run
-            print_info('warming up the model with an empty run ...')
-            with self.lock:
+            print_info_if_verbose('warming up the model with an empty run ...')
+            with self._lock:
                 _internals.decode_tg(self._ctx.ctx, 0, 0)
-            print_info('model is warm')
+            print_info_if_verbose('model is warm')
 
         # End of Llama.__init__
     
@@ -1010,9 +1062,7 @@ class Llama:
 
     def n_ctx_train(self) -> int:
         """Get the trained context length"""
-        null_ptr_check(
-            self._model.model, 'self._model.model', 'Llama.n_ctx_train'
-        )
+        null_ptr_check(self._model.model, 'self._model.model', 'Llama.n_ctx_train')
         return lib.llama_n_ctx_train(self._model.model)
 
     def n_embd(self) -> int:
@@ -1037,60 +1087,42 @@ class Llama:
 
     def vocab_type(self) -> int:
         """Get the vocab type"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.vocab_type"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.vocab_type")
         return lib.llama_vocab_type(self._model.model)
 
     def rope_type(self) -> int:
         """Get the RoPE type"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.rope_type"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.rope_type")
         return lib.llama_rope_type(self._model.model)
 
     def rope_freq_scale_train(self) -> float:
         """Get the trained RoPE frequency scale"""
-        null_ptr_check(
-            self._model.model,
-            "self._model.model",
-            "Llama.rope_freq_scale_train"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.rope_freq_scale_train")
         return lib.llama_rope_freq_scale_train(self._model.model)
 
     def model_size(self) -> int:
         """Get the total size of the model in bytes"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.model_size"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_size")
         return lib.llama_model_size(self._model.model)
 
     def model_n_params(self) -> int:
         """Get the total number of parameters in the model"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.model_n_params"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_n_params")
         return lib.llama_model_n_params(self._model.model)
 
     def model_has_encoder(self) -> bool:
         """If the model has an encoder"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.model_has_encoder"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_has_encoder")
         return lib.llama_model_has_encoder(self._model.model)
 
     def model_has_decoder(self) -> bool:
         """If the model has a decoder"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.model_has_decoder"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_has_decoder")
         return lib.llama_model_has_decoder(self._model.model)
 
     def model_is_recurrent(self) -> bool:
         """If the model is recurrent"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.model_is_recurrent"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_is_recurrent")
         return lib.llama_model_is_recurrent(self._model.model)
 
     def kv_cache_clear(self) -> None:
@@ -1112,9 +1144,7 @@ class Llama:
 
     def kv_cache_seq_keep(self, seq_id: int) -> None:
         """Remove all tokens except for the ones in this sequence"""
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep"
-        )
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep")
         lib.llama_kv_cache_seq_keep(self._ctx.ctx, seq_id)
 
     def kv_cache_seq_add(
@@ -1126,16 +1156,12 @@ class Llama:
 
     def kv_cache_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
         """Integer division of the positions by factor of `d > 1`"""
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div"
-        )
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div")
         lib.llama_kv_cache_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
 
     def kv_cache_seq_pos_max(self, seq_id: int) -> int:
         """Returns the largest position present in the KV cache for the specified sequence"""
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max"
-        )
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max")
         return lib.llama_kv_cache_seq_pos_max(self._ctx.ctx, seq_id)
 
     def kv_cache_defrag(self) -> None:
@@ -1150,9 +1176,7 @@ class Llama:
 
     def kv_cache_can_shift(self) -> bool:
         """Check if the context supports KV cache shifting"""
-        null_ptr_check(
-            self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_can_shift"
-        )
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_can_shift")
         return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
     def n_threads(self) -> int:
@@ -1165,131 +1189,94 @@ class Llama:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads_batch")
         return lib.llama_n_threads_batch(self._ctx.ctx)
 
-    # NOTE: this is disabled until i figure out what it does
-    # def token_get_score(self, token: int) -> float:
-    #     """Get the score of a token"""
-    #     null_ptr_check(
-    #         self._model.model, "self._model.model", "Llama.token_get_score"
-    #     )
-    #     return lib.llama_token_get_score(self._model.model, token)
+    def token_get_score(self, token: int) -> float:
+        """Get the score of a token"""
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_get_score")
+        return lib.llama_token_get_score(self._model.model, token)
 
     def token_is_eog(self, token: int) -> bool:
         """If the token is marked as EOG (End-Of-Generation)"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_is_eog"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_is_eog")
         return lib.llama_token_is_eog(self._model.model, token)
 
     def token_is_control(self, token: int) -> bool:
         """If the token is marked as a control token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_is_control"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_is_control")
         return lib.llama_token_is_control(self._model.model, token)
 
     def token_bos(self) -> int:
         """Get the BOS (Beginning-Of-Sequence) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_bos"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_bos")
         return lib.llama_token_bos(self._model.model)
 
     def token_eos(self) -> int:
         """Get the EOS (End-Of-Sequence) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_eos"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_eos")
         return lib.llama_token_eos(self._model.model)
 
     def token_eot(self) -> int:
         """Get the EOT (End-Of-Turn) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_eot"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_eot")
         return lib.llama_token_eot(self._model.model)
 
     def token_cls(self) -> int:
         """Get the CLS (Classification) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_cls"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_cls")
         return lib.llama_token_cls(self._model.model)
 
     def token_sep(self) -> int:
         """Get the SEP (Separator) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_sep"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_sep")
         return lib.llama_token_sep(self._model.model)
 
     def token_nl(self) -> int:
         """Get the NL (Newline) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_nl"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_nl")
         return lib.llama_token_nl(self._model.model)
 
     def token_pad(self) -> int:
         """Get the PAD (Padding) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_pad"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_pad")
         return lib.llama_token_pad(self._model.model)
 
     def add_bos_token(self) -> bool:
         """If the model is configured to add a BOS token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.add_bos_token"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.add_bos_token")
         return lib.llama_add_bos_token(self._model.model)
 
     def add_eos_token(self) -> bool:
         """If the model is configured to add an EOS token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.add_eos_token"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.add_eos_token")
         return lib.llama_add_eos_token(self._model.model)
 
     def token_fim_pre(self) -> int:
         """Get the FIM PRE (Fill-In-Middle Prefix) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_fim_pre"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_pre")
         return lib.llama_token_fim_pre(self._model.model)
 
     def token_fim_suf(self) -> int:
         """Get the FIM SUF (Fill-In-Middle Suffix) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_fim_suf"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_suf")
         return lib.llama_token_fim_suf(self._model.model)
 
     def token_fim_mid(self) -> int:
         """Get the FIM MID (Fill-In-Middle Middle) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_fim_mid"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_mid")
         return lib.llama_token_fim_mid(self._model.model)
 
     def token_fim_pad(self) -> int:
         """Get the FIM PAD (Fill-In-Middle Padding) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_fim_pad"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_pad")
         return lib.llama_token_fim_pad(self._model.model)
 
     def token_fim_rep(self) -> int:
         """Get the FIM REP (Fill-In-Middle Repository) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_fim_rep"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_rep")
         return lib.llama_token_fim_rep(self._model.model)
 
     def token_fim_sep(self) -> int:
         """Get the FIM SEP (Fill-In-Middle Separator) token"""
-        null_ptr_check(
-            self._model.model, "self._model.model", "Llama.token_fim_sep"
-        )
+        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_sep")
         return lib.llama_token_fim_sep(self._model.model)
     
     def tokenize(
@@ -1310,9 +1297,7 @@ class Llama:
             not exposed and treated as plaintext. Does not insert a leading
             space.
         """
-        null_ptr_check(
-            self._model.model, 'self._model.model', 'Llama.tokenize'
-        )
+        null_ptr_check(self._model.model, 'self._model.model', 'Llama.tokenize')
         n_tokens = _internals.get_length(
             model=self._model.model,
             text_bytes=text_bytes,
@@ -1334,9 +1319,7 @@ class Llama:
         - special:
             If True, special tokens are rendered in the output
         """
-        null_ptr_check(
-            self._model.model, 'self._model.model', 'Llama.token_to_piece'
-        )
+        null_ptr_check(self._model.model, 'self._model.model', 'Llama.token_to_piece')
         return _internals.token_to_piece(
             model=self._model.model,
             token=token,
@@ -1354,9 +1337,7 @@ class Llama:
         - special:
             If True, special tokens are rendered in the output
         """
-        null_ptr_check(
-            self._model.model, 'self._model.model', 'Llama.detokenize'
-        )
+        null_ptr_check(self._model.model, 'self._model.model', 'Llama.detokenize')
         return _internals.detokenize(
             model=self._model.model,
             tokens=tokens,
@@ -1372,9 +1353,7 @@ class Llama:
         """
         Return the length of a given text as measured in tokens
         """
-        null_ptr_check(
-            self._model.model, 'self._model.model', 'Llama.get_length'
-        )
+        null_ptr_check(self._model.model, 'self._model.model', 'Llama.get_length')
         return _internals.get_length(
             model=self._model.model,
             text_bytes=text_bytes,
@@ -1415,6 +1394,9 @@ class Llama:
             use the model's default sampler parameters
         """
 
+        self._stopwatch.reset()
+        self._stopwatch.start_wall_time()
+
         n_tokens = len(input_tokens)
 
         if n_tokens == 0:
@@ -1439,7 +1421,7 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
-        print_info(
+        print_info_if_verbose(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1462,9 +1444,6 @@ class Llama:
         # n_batches = len(batches)
         # print(f'batch_split: {n_batches=}')
 
-        # set up the stopwatch
-        self.stopwatch.reset()
-
         # process each batch one-by-one
         for batch in batches:
 
@@ -1475,23 +1454,23 @@ class Llama:
                 #     f'ppdecode: {batch_tokens=}\n'
                 #     f'ppdecode: {n_batch_tokens=}'
                 # )
-                self.stopwatch.start_pp()
-                with self.lock:
+                self._stopwatch.start_pp()
+                with self._lock:
                     _internals.decode_pp(
                         self._ctx.ctx, self.pos, batch, n_batch_tokens
                     )
-                self.stopwatch.stop_pp()
-                self.stopwatch.increment_pp_tokens(n_batch_tokens)
+                self._stopwatch.stop_pp()
+                self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
                 # print(
                 #     f'tgdecode: {batch_tokens=}\n'
                 #     f'tgdecode: {n_batch_tokens=}'
                 # )
-                self.stopwatch.start_tg()
-                with self.lock:
+                self._stopwatch.start_tg()
+                with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
-                self.stopwatch.stop_tg()
-                self.stopwatch.increment_tg_tokens(1)
+                self._stopwatch.stop_tg()
+                self._stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
                     f'Llama.generate_single: unexpected n_batch_tokens value '
@@ -1503,7 +1482,9 @@ class Llama:
             self.context_tokens.extend(batch)
         
         # sample and return
-        self.stopwatch.print_stats()
+        self._stopwatch.stop_wall_time()
+        if verbose:
+            self._stopwatch.print_stats()
         return self.sample(sampler_params)
 
     def generate(
@@ -1519,8 +1500,10 @@ class Llama:
         - input_tokens:
             The tokens to evaluate
         - n_predict:
-            The number of tokens to predict. If `n_predict <= 0`, then the
+            The number of tokens to predict. If `n_predict < 0`, then the
             number of tokens predicted is only limited by the context length.
+            If `n_predict == 0`, then no new tokens will be predicted, but the
+            input_tokens will still be processed.
         - stop_tokens:
             A list of token IDs that will end the generation early. Note that
             the stop token will be included in the output. If this parameter is
@@ -1530,6 +1513,9 @@ class Llama:
             The `SamplerParams` object to use for sampling. If not specified,
             use the default sampler parameters
         """
+
+        self._stopwatch.reset()
+        self._stopwatch.start_wall_time()
 
         n_tokens = len(input_tokens)
 
@@ -1560,7 +1546,7 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
-        print_info(
+        print_info_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1584,7 +1570,6 @@ class Llama:
         # print(f'batch_split: {n_batches=}')
 
         # set up the loop
-        self.stopwatch.reset()
         output_tokens = []
         n_predicted = 0
 
@@ -1598,23 +1583,23 @@ class Llama:
                 #     f'ppdecode: {batch_tokens=}\n'
                 #     f'ppdecode: {n_batch_tokens=}'
                 # )
-                self.stopwatch.start_pp()
-                with self.lock:
+                self._stopwatch.start_pp()
+                with self._lock:
                     _internals.decode_pp(
                         self._ctx.ctx, self.pos, batch, n_batch_tokens
                     )
-                self.stopwatch.stop_pp()
-                self.stopwatch.increment_pp_tokens(n_batch_tokens)
+                self._stopwatch.stop_pp()
+                self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
                 # print(
                 #     f'tgdecode: {batch_tokens=}\n'
                 #     f'tgdecode: {n_batch_tokens=}'
                 # )
-                self.stopwatch.start_tg()
-                with self.lock:
+                self._stopwatch.start_tg()
+                with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
-                self.stopwatch.stop_tg()
-                self.stopwatch.increment_tg_tokens(1)
+                self._stopwatch.stop_tg()
+                self._stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
                     f'Llama.generate: unexpected n_batch_tokens value '
@@ -1627,12 +1612,12 @@ class Llama:
         
         # continue generating until n_predict or n_ctx is reached
         # print(f'start while loop')
-        while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
-            self.stopwatch.start_tg()
-            with self.lock:
+        while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
+            self._stopwatch.start_tg()
+            with self._lock:
                 _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
-            self.stopwatch.stop_tg()
-            self.stopwatch.increment_tg_tokens(1)
+            self._stopwatch.stop_tg()
+            self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
             id = self.sample(sampler_params)
@@ -1641,10 +1626,14 @@ class Llama:
             n_predicted += 1
 
             if id in stops:
-                self.stopwatch.print_stats()
+                self._stopwatch.stop_wall_time()
+                if verbose:
+                    self._stopwatch.print_stats()
                 return output_tokens
         
-        self.stopwatch.print_stats()
+        self._stopwatch.stop_wall_time()
+        if verbose:
+            self._stopwatch.print_stats()
         return output_tokens
 
     def stream(
@@ -1671,6 +1660,9 @@ class Llama:
             The `SamplerParams` object to use for sampling. If not specified,
             use the default sampler parameters
         """
+
+        self._stopwatch.reset()
+        self._stopwatch.start_wall_time()
 
         n_tokens = len(input_tokens)
 
@@ -1701,7 +1693,7 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
-        print_info(
+        print_info_if_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1724,8 +1716,6 @@ class Llama:
         # n_batches = len(batches)
         # print(f'batch_split: {n_batches=}')
 
-        # set up the loop
-        self.stopwatch.reset()
         n_predicted = 0
 
         # process each input batch one-by-one
@@ -1738,23 +1728,23 @@ class Llama:
                 #     f'ppdecode: {batch_tokens=}\n'
                 #     f'ppdecode: {n_batch_tokens=}'
                 # )
-                self.stopwatch.start_pp()
-                with self.lock:
+                self._stopwatch.start_pp()
+                with self._lock:
                     _internals.decode_pp(
                         self._ctx.ctx, self.pos, batch, n_batch_tokens
                     )
-                self.stopwatch.stop_pp()
-                self.stopwatch.increment_pp_tokens(n_batch_tokens)
+                self._stopwatch.stop_pp()
+                self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
                 # print(
                 #     f'tgdecode: {batch_tokens=}\n'
                 #     f'tgdecode: {n_batch_tokens=}'
                 # )
-                self.stopwatch.start_tg()
-                with self.lock:
+                self._stopwatch.start_tg()
+                with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
-                self.stopwatch.stop_tg()
-                self.stopwatch.increment_tg_tokens(1)
+                self._stopwatch.stop_tg()
+                self._stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
                     f'Llama.stream: unexpected n_batch_tokens value '
@@ -1767,12 +1757,12 @@ class Llama:
         
         # continue generating until n_predict or n_ctx is reached
         # print(f'start while loop')
-        while (n_predicted < n_predict) if n_predict > 0 else (self.pos < self._n_ctx):
-            self.stopwatch.start_tg()
-            with self.lock:
+        while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
+            self._stopwatch.start_tg()
+            with self._lock:
                 _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
-            self.stopwatch.stop_tg()
-            self.stopwatch.increment_tg_tokens(1)
+            self._stopwatch.stop_tg()
+            self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
             id = self.sample(sampler_params)
@@ -1781,10 +1771,14 @@ class Llama:
             n_predicted += 1
 
             if id in stops:
-                self.stopwatch.print_stats()
+                self._stopwatch.stop_wall_time()
+                if verbose:
+                    self._stopwatch.print_stats()
                 return
         
-        self.stopwatch.print_stats()
+        self._stopwatch.stop_wall_time()
+        if verbose:
+            self._stopwatch.print_stats()
         return
     
     def sample_greedy(self) -> int:
@@ -1806,7 +1800,7 @@ class Llama:
         params = params if params is not None else self._default_sampler_params
         id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
         # llama_sampler_sample internally calls llama_sampler_accept.
-        # # uncomment the next line if this changes
+        # uncomment the next line if this changes
         #lib.llama_sampler_accept(params.smpl, id)
         return id
     
@@ -1818,7 +1812,7 @@ class Llama:
         """
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.logits')
         raw_logits = lib.llama_get_logits_ith(self._ctx.ctx, -1)
-        return np.ctypeslib.as_array(raw_logits, shape=[1, self._n_vocab])[0]
+        return np.ctypeslib.as_array(raw_logits, shape=(1, self._n_vocab))[0]
 
     def get_scores(self, temp: Optional[float] = None) -> np.ndarray:
         """
@@ -1878,7 +1872,7 @@ class Llama:
         self.kv_cache_clear()
         self.pos = 0
         self.context_tokens = []
-        print_info('model was reset')
+        print_info_if_verbose('model was reset')
 
 #
 # End of functions / Begin test
@@ -1894,25 +1888,41 @@ def main() -> int:
         n_gpu_layers=-1,
         use_mmap=True,
         use_mlock=False,
-        n_ctx=8192,
         offload_kqv=True,
         flash_attn=True
     )
 
-    chktxt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein famous for?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    chktxt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    tokens_a = TestLlama.tokenize(chktxt_a.encode(), add_special=True, parse_special=True)
-    tokens_b = TestLlama.tokenize(chktxt_b.encode(), add_special=True, parse_special=True)
+    txt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWho was Albert Einstein?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    txt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    tokens_a = TestLlama.tokenize(txt_a.encode(), add_special=True, parse_special=True)
+    tokens_b = TestLlama.tokenize(txt_b.encode(), add_special=True, parse_special=True)
 
-    print('-' * 80)
-
-    in_txt = "I guess the apple don't fall far from"
-    in_toks = TestLlama.tokenize(in_txt.encode(), add_special=True, parse_special=False)
-    tok_gen = TestLlama.stream(in_toks, n_predict=-1)
-    print(in_txt, end='', file=sys.stderr, flush=True)
-    for tok in tok_gen:
-        txt = TestLlama.token_to_piece(tok, special=True)
-        print(txt.decode(errors='ignore'), end='', file=sys.stderr, flush=True)
+    temp = 0.0
+    while temp <= 5.0:
+        #  67722 -> 'Albert'
+        #  55152 -> ' Einstein'
+        #  17971 -> ' Albert'
+        sampler_params = SamplerParams(
+            TestLlama,
+            seed=42,
+            top_k=0,
+            top_p=1.0,
+            min_p=0.0,
+            temp=temp,
+            logit_bias={
+                67722: -100.0,
+                55152: -100.0,
+                17971: -100.0,
+            }
+        )
+        print('-' * 80)
+        print(f'using temp = {temp}:')
+        tok_gen = TestLlama.stream(tokens_a, n_predict=128, sampler_params=sampler_params)
+        for tok in tok_gen:
+            txt = TestLlama.token_to_piece(tok, special=True)
+            print(txt.decode(errors='ignore'), end='', file=sys.stderr, flush=True)
+        
+        temp += 0.1
 
     return 0
 
