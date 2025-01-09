@@ -301,7 +301,7 @@ class _LlamaStopwatch:
         wall_elapsed_ns = self.get_elapsed_wall_time()
         wall_elapsed_ms = wall_elapsed_ns / 1e6
         print_stopwatch(
-            f'        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms'
+            f"        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms"
         )
 
 class QuickGGUFReader:
