@@ -9,9 +9,8 @@ import sys
 import json
 import base64
 
-from .thread import Thread
-from .model import InferenceLock
-from .utils import print_info, assert_type, Colors
+from thread import Thread
+from utils import print_info, assert_type, Colors
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -122,7 +121,6 @@ def generate_self_signed_ssl_cert() -> None:
     with open(f"{ASSETS_FOLDER}/cert.pem", "wb") as f:
         f.write(certificate.public_bytes(Encoding.PEM))
 
-
 def check_for_ssl_cert() -> bool:
     """
     Return `True` if a local SSL certificate already exists
@@ -141,24 +139,23 @@ def check_for_ssl_cert() -> bool:
                 os.remove(fn)
         return False
 
-
 def newline() -> None:
     """Print a newline to stderr"""
     print('', end='\n', file=sys.stderr, flush=True)
 
-
-def encode(text: str) -> str:
+def encode(text: str | bytes) -> str:
     """ utf-8 str -> bytes -> ascii base64 """
-    data = (text).encode('utf-8')
+    if not isinstance(text, bytes):
+        data = text.encode('utf-8')
+    else:
+        data = text
     encoded = base64.b64encode(data).decode('utf-8')
     #print(f"sending encoded: {encoded!r}")
     return encoded
 
-
 def decode(text: str) -> str:
     """ ascii base64 -> bytes -> utf-8 str """
     return base64.b64decode(text).decode('utf-8')
-
 
 def assert_max_length(text: str) -> None:
     """Fail if the given text exceeds the allowed input length"""
@@ -167,16 +164,6 @@ def assert_max_length(text: str) -> None:
             f'length of input exceeds maximum allowed length of '
             f'{MAX_LENGTH_INPUT:,} characters'
         )
-
-
-def _print_inference_string(text: str) -> None:
-    print(
-        f"{'#' * 80}\n"
-        f"{YELLOW}'''{RESET}{text}{YELLOW}'''{RESET}\n"
-        f"{'#' * 80}",
-        file=sys.stderr,
-        flush=True
-    )
 
 
 class WebUI:
@@ -190,7 +177,6 @@ class WebUI:
         """
         assert_type(thread, Thread, 'thread', 'WebUI')
         self.thread = thread
-        self.lock = InferenceLock()
         self._cancel_flag = False
 
         self.app = Flask(
@@ -219,8 +205,8 @@ class WebUI:
         
 
     def _get_context_string(self) -> str:
-        thread_len_tokens = self.thread.len_messages()
-        max_ctx_len = self.thread.model.context_length
+        thread_len_tokens = len(self.thread.get_input_ids(role=None))
+        max_ctx_len = self.thread.llama._n_ctx
 
         return f"{thread_len_tokens} / {max_ctx_len} tokens used"
     
@@ -247,7 +233,6 @@ class WebUI:
         self._log_port = None
 
         self.log(f"starting WebUI instance:")
-        self.log(f"   thread.uuid == {self.thread.uuid}")
         self.log(f"   host        == {host}")
         self.log(f"   port        == {port}")
         self.log(f"   ssl (HTTPS) == {ssl}")
@@ -300,38 +285,47 @@ class WebUI:
                 return '', 418
 
             def generate():
-                with self.lock:
-                    self.thread.add_message('user', prompt)
-                    print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
-                    inf_str = self.thread.inf_str()
-                    _print_inference_string(inf_str)
-                    token_generator = self.thread.model.stream(
-                        inf_str,
-                        stops=self.thread.format['stops'],
-                        sampler=self.thread.sampler
+                self.thread.messages.append({
+                    'role': 'user',
+                    'content': prompt
+                })
+                print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
+                input_ids = self.thread.get_input_ids()
+                token_generator = self.thread.llama.stream(
+                    input_tokens=input_ids,
+                    n_predict=-1,
+                    stop_tokens=self.thread.llama.eog_tokens,
+                    sampler_params=self.thread.sampler_params
+                )
+                response = ''
+
+                for token in token_generator:
+                    if self._cancel_flag:
+                        print(file=sys.stderr)
+                        self.log('cancel generation from /submit. teapot')
+                        self._cancel_flag = False
+                        return '', 418  # I'm a teapot
+
+                    tok_bytes = self.thread.llama.token_to_piece(
+                        token=token,
+                        special=False
                     )
-                    response = ''
+                    tok_text = tok_bytes.decode(errors='ignore')
+                    response += tok_text
+                    print(
+                        f'{BLUE}{tok_text}{RESET}',
+                        end='',
+                        flush=True,
+                        file=sys.stderr
+                    )
+                    yield encode(tok_bytes) + '\n' # delimiter between tokens
 
-                    for token in token_generator:
-                        if self._cancel_flag:
-                            print(file=sys.stderr)
-                            self.log('cancel generation from /submit. teapot')
-                            self._cancel_flag = False
-                            return '', 418  # I'm a teapot
-
-                        tok_text = token['choices'][0]['text']
-                        response += tok_text
-                        print(
-                            f'{BLUE}{tok_text}{RESET}',
-                            end='',
-                            flush=True,
-                            file=sys.stderr
-                        )
-                        yield encode(tok_text) + '\n' # delimiter between tokens
-
-                    self._cancel_flag = False
-                    newline()
-                    self.thread.add_message('bot', response)
+                self._cancel_flag = False
+                newline()
+                self.thread.messages.append({
+                    'role': 'bot',
+                    'content': response
+                })
 
             if prompt not in ['', None]:
                 return Response(generate(), mimetype='text/plain')
@@ -376,44 +370,54 @@ class WebUI:
 
             if prompt not in ['', None]:
                 self.log(f'trigger with prompt: {prompt!r}')
+                prompt_tokens = self.thread.llama.tokenize(
+                    text_bytes=prompt,
+                    add_special=False,
+                    parse_special=False
+                )
             else:
                 self.log(f'trigger without prompt')
-                prompt = ''
+                prompt_tokens = []
 
             def generate():
-                with self.lock:
-                    inf_str = self.thread.inf_str() + prompt
-                    _print_inference_string(inf_str)
-                    token_generator = self.thread.model.stream(
-                        inf_str,
-                        stops=self.thread.format['stops'],
-                        sampler=self.thread.sampler
+                input_ids = self.thread.get_input_ids(role='bot') + prompt_tokens
+                token_generator = self.thread.llama.stream(
+                    input_tokens=input_ids,
+                    n_predict=-1,
+                    stop_tokens=self.thread.llama.eog_tokens,
+                    sampler_params=self.thread.sampler_params
+                )
+                response = ''
+
+                for token in token_generator:
+                    if self._cancel_flag:
+                        print()
+                        self.log('cancel generation from /trigger. teapot')
+                        self._cancel_flag = False  # reset flag
+                        return '', 418  # I'm a teapot
+
+                    tok_bytes = self.thread.llama.token_to_piece(
+                        token=token,
+                        special=False
                     )
-                    response = ''
+                    tok_text = tok_bytes.decode(errors='ignore')
+                    response += tok_text
+                    print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
+                    yield encode(tok_bytes) + '\n' # delimiter between tokens
 
-                    for token in token_generator:
-                        if self._cancel_flag:
-                            print()
-                            self.log('cancel generation from /trigger. teapot')
-                            self._cancel_flag = False  # reset flag
-                            return '', 418  # I'm a teapot
-
-                        tok_text = token['choices'][0]['text']
-                        response += tok_text
-                        print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
-                        yield encode(tok_text) + '\n' # delimiter between tokens
-
-                    self._cancel_flag = False
-                    print('', file=sys.stderr)
-                    self.thread.add_message('bot', prompt + response)
+                self._cancel_flag = False
+                print('', file=sys.stderr)
+                self.thread.messages.append({
+                    'role': 'bot',
+                    'content': prompt + response
+                })
 
             return Response(generate(), mimetype='text/plain')
         
 
         @self.app.route('/summarize', methods=['GET'])
         def summarize():
-            with self.lock:
-                summary = self.thread.summarize()
+            summary = self.thread.summarize()
             response = encode(summary)
             self.log(f"generated summary: {BLUE}{summary!r}{RESET}")
             return response, 200, {'ContentType': 'text/plain'}
@@ -421,11 +425,13 @@ class WebUI:
 
         @self.app.route('/settings', methods=['GET'])
         def settings():
+            # TODO: update this to work with SamplerParams
             return render_template('settings.html')
 
 
         @self.app.route('/update_sampler', methods=['POST'])
         def update_sampler():
+            # TODO: update this to work with SamplerParams
             data = request.get_json()
             self.thread.sampler.max_len_tokens = data.get('max_len_tokens', self.thread.sampler.max_len_tokens)
             self.thread.sampler.top_k = data.get('top_k', self.thread.sampler.top_k)
@@ -440,6 +446,7 @@ class WebUI:
 
         @self.app.route('/get_sampler', methods=['GET'])
         def get_sampler():
+            # TODO: update this to work with SamplerParams
             sampler_settings = {
                 'max_len_tokens': self.thread.sampler.max_len_tokens,
                 'top_k': self.thread.sampler.top_k,
@@ -451,16 +458,6 @@ class WebUI:
                 'repeat_penalty': self.thread.sampler.repeat_penalty
             }
             return json.dumps(sampler_settings), 200, {'ContentType': 'application/json'}
-
-
-        if not self.thread.model.is_loaded():
-
-            self.log('loading model')
-            self.thread.model.load()
-
-        else:
-
-            self.log('model is already loaded')
         
         self.log('warming up thread')
         self.thread.warmup()

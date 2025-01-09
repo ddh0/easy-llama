@@ -22,6 +22,10 @@ from typing   import Optional, Iterable
 from io       import BufferedReader
 from sampling import SamplerParams
 
+#
+# Constants, etc.
+#
+
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
     lib.GGMLType.GGML_TYPE_F16,   # k-types
@@ -38,6 +42,10 @@ _cpu_count = None
 
 verbose = True
 """Module-level variable to enable or disable llama.cpp and easy-llama output"""
+
+#
+# Functions
+#
 
 def set_verbose(state: bool) -> None:
     global verbose
@@ -161,6 +169,10 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
             return n_ctx_train
         else:
             return rounded
+
+#
+# Exceptions and other classes
+#
 
 class ExceededContextLengthException(Exception):
     """Exception raised when an input exceeds a model's context length"""
@@ -1418,6 +1430,9 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
+        if verbose:
+            sampler_params.print_chain()
+        
         print_info_if_verbose(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
@@ -1525,6 +1540,9 @@ class Llama:
 
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
+
+        if verbose:
+            sampler_params.print_chain()
 
         print_info_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
@@ -1653,6 +1671,9 @@ class Llama:
 
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
+
+        if verbose:
+            sampler_params.print_chain()
 
         print_info_if_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '

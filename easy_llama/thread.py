@@ -11,16 +11,16 @@ from formats  import PromptFormat
 from sampling import SamplerParams
 
 from utils import (
-    _SupportsWriteAndFlush, Colors, print_verbose, print_warning, assert_type
+    _SupportsWriteAndFlush, Colors, print_warning, assert_type
 )
 
 @contextlib.contextmanager
 def KeyboardInterruptHandler():
-    print_verbose('Press CTRL+C to exit')
+    _llama.print_info_if_verbose('Press CTRL+C to exit')
     try:
         yield
     except KeyboardInterrupt:
-        print(Colors.RESET, flush=True)
+        print(Colors.RESET, end='\n\n', flush=True)
 
 class Thread:
 
@@ -53,12 +53,10 @@ class Thread:
             system_prompt = prompt_format.system_prompt()
 
             if system_prompt != '':
-                self.messages.append(
-                    {
-                        'role': 'system',
-                        'content': system_prompt
-                    }
-                )
+                self.messages.append({
+                    'role': 'system',
+                    'content': system_prompt
+                })
         else:
             self.messages = messages
         

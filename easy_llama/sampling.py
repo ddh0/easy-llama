@@ -10,7 +10,7 @@ import libllama as lib
 
 from typing   import Optional
 from libllama import _internals
-from utils    import null_ptr_check
+from utils    import null_ptr_check, print_info
 
 HIGH_TEMP = 10_000.0
 
@@ -144,6 +144,8 @@ class SamplerParams:
 
         self.logit_bias = logit_bias
 
+        self._chain_str = ''
+
         sparams = lib.llama_sampler_chain_default_params()
         null_ptr_check(sparams, 'sparams', 'SamplerParams.__init__')
 
@@ -153,6 +155,7 @@ class SamplerParams:
         # Logit bias
 
         if logit_bias is not None:
+            self._chain_str += 'logit bias -> '
             logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_logit_bias(
@@ -170,6 +173,7 @@ class SamplerParams:
         #       strangest and most unlikely circumstances (like when temp > 10.0
         #       and all other samplers are explicitly disabled).
         #
+        self._chain_str += 'top-k 128 -> '
         lib.llama_sampler_chain_add(
             smpl, lib.llama_sampler_init_top_k(
                 k=128
@@ -179,6 +183,7 @@ class SamplerParams:
         # Penalties
         
         if any([penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]):
+            self._chain_str += 'penalties -> '
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_penalties(
                     penalty_last_n=penalty_last_n if penalty_last_n > 0 else llama._n_ctx,
@@ -191,6 +196,7 @@ class SamplerParams:
         # DRY
         
         if dry_multiplier > 0.0:
+            self._chain_str += 'DRY -> '
             # dry == D.R.Y. ("Don't Repeat Yourself")
             # ref: https://github.com/oobabooga/text-generation-webui/pull/5677
             _model = llama._model.model
@@ -213,6 +219,7 @@ class SamplerParams:
         # XTC
         
         if xtc_probability > 0.0:
+            self._chain_str += 'XTC -> '
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_xtc(
                     p=xtc_probability,
@@ -226,6 +233,7 @@ class SamplerParams:
 
         if temp <= 0.0:
             # ... -> greedy
+            self._chain_str += 'greedy'
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_greedy())
 
         # IF MIROSTAT v1:
@@ -234,6 +242,7 @@ class SamplerParams:
             # ... -> temp(-ext) -> mirostat-v1
             if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling
+                self._chain_str += 'temp-ext -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
                         t=temp,
@@ -243,9 +252,11 @@ class SamplerParams:
                 )
             else:
                 # standard temperature
+                self._chain_str += 'temp -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp(t=temp)
                 )
+            self._chain_str += 'mirostat v1'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_mirostat(
                     seed=seed if seed > 0 else _get_random_seed(),
@@ -260,6 +271,7 @@ class SamplerParams:
             # ... -> temp(-ext) -> mirostat-v2
             if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling
+                self._chain_str += 'temp-ext -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
                         t=temp,
@@ -269,9 +281,11 @@ class SamplerParams:
                 )
             else:
                 # standard temperature
+                self._chain_str += 'temp -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp(t=temp)
                 )
+            self._chain_str += 'mirostat v2'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_mirostat_v2(
                     seed=seed if seed > 0 else _get_random_seed(),
@@ -285,23 +299,28 @@ class SamplerParams:
         elif mirostat == 0:
             # ... -> top-k -> typical -> top-p -> min-p -> temp(-ext) -> dist
             if top_k > 0:
+                self._chain_str += 'top-k -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_top_k(k=top_k)
                 )
             if typical_p != 1.0:
+                self._chain_str += 'typical -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_typical(p=typical_p, min_keep=1)
                 )
             if top_p < 1.0:
+                self._chain_str += 'top-p -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1)
                 )
             if min_p > 0.0:
+                self._chain_str += 'min-p -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
                 )
             if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling
+                self._chain_str += 'temp-ext -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
                         t=temp,
@@ -311,9 +330,11 @@ class SamplerParams:
                 )
             else:
                 # standard temperature
+                self._chain_str += 'temp -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp(t=temp)
                 )
+            self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_dist(
                     seed=seed if seed > 0 else _get_random_seed()
@@ -358,6 +379,9 @@ class SamplerParams:
             f"logit_bias={self.logit_bias!r}"
             f")"
         )
+    
+    def print_chain(self) -> None:
+        print_info(f'sampler chain: {self._chain_str}')
     
     def free(self) -> None:
         if self.smpl is not None:

@@ -2147,6 +2147,11 @@ class _internals:
         )
     
     def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
+        """
+        ### INTERNAL
+
+        Create and return a ctypes array of `llama_logit_bias`
+        """
         if len(logit_biases) == 0:
             raise ValueError(f'logit_biases parameter cannot be empty')
         LogitBiasArrayType = llama_logit_bias * len(logit_biases)
