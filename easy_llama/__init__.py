@@ -20,7 +20,6 @@ from . import thread
 from . import llama
 from . import webui
 from . import utils
-from . import model
 
 # shortcuts, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
 
