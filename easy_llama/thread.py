@@ -11,13 +11,12 @@ from formats  import PromptFormat
 from sampling import SamplerParams
 
 from utils import (
-    _SupportsWriteAndFlush, Colors, print_verbose, print_info, print_warning,
-    assert_type
+    _SupportsWriteAndFlush, Colors, print_verbose, print_warning, assert_type
 )
 
 @contextlib.contextmanager
 def KeyboardInterruptHandler():
-    print('Press CTRL+C to exit ...')
+    print_verbose('Press CTRL+C to exit')
     try:
         yield
     except KeyboardInterrupt:
@@ -270,12 +269,12 @@ class Thread:
     def warmup(self) -> None:
         input_ids = self.get_input_ids()
         if self.llama._first_valid_pos(input_ids) < len(input_ids):
-            print_info('Thread.warmup: processing thread content with model ...')
+            _llama.print_info_if_verbose('Thread.warmup: processing thread content with model ...')
             self.llama.generate(
                 input_tokens=input_ids,
                 n_predict=0
             )
-        print_info('Thread.warmup: done')
+        _llama.print_info_if_verbose('Thread.warmup: done')
     
     def interact(self, stream: bool = True) -> None:
         R = Colors.RESET
