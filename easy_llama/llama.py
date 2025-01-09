@@ -11,16 +11,17 @@ import struct
 import ctypes
 
 import numpy    as np
-import libllama as lib
 
-from utils    import (
+from .utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
     softmax, suppress_output, _SupportsWriteAndFlush
 )
-from libllama import _internals, GGUFValueType
-from typing   import Optional, Iterable
-from io       import BufferedReader
-from sampling import SamplerParams
+from .libllama import _internals, GGUFValueType
+from typing    import Optional, Iterable
+from io        import BufferedReader
+from sampling  import SamplerParams
+
+from . import libllama as lib
 
 #
 # Constants, etc.

@@ -6,11 +6,11 @@ import os
 import sys
 import ctypes
 
-import libllama as lib
+from typing    import Optional
+from .libllama import _internals
+from utils     import null_ptr_check, print_info
 
-from typing   import Optional
-from libllama import _internals
-from utils    import null_ptr_check, print_info
+from . import libllama as lib
 
 HIGH_TEMP = 10_000.0
 

@@ -9,8 +9,8 @@ import sys
 import json
 import base64
 
-from thread import Thread
-from utils import print_info, assert_type, Colors
+from .thread import Thread
+from .utils import print_info, assert_type, Colors
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID

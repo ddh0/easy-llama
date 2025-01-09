@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-from _version import __version__
+from ._version import __version__
 
 """
 Text generation in Python, as easy as possible
@@ -13,19 +13,19 @@ https://github.com/ddh0/easy-llama/blob/main/DOCS.md
 
 # all submodules
 
-import libllama
-import sampling
-import formats
-import thread
-import llama
-import webui
-import utils
-import model
+from . import libllama
+from . import sampling
+from . import formats
+from . import thread
+from . import llama
+from . import webui
+from . import utils
+from . import model
 
 # shortcuts, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
 
-from sampling import SamplerParams
-from formats  import PromptFormat
-from thread   import Thread
-from llama    import Llama
-from webui    import WebUI
+from .sampling import SamplerParams
+from .formats  import PromptFormat
+from .thread   import Thread
+from .llama    import Llama
+from .webui    import WebUI

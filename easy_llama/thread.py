@@ -3,16 +3,16 @@
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
 import sys
-import llama as _llama
 import contextlib
 
-from typing   import Optional
-from formats  import PromptFormat
-from sampling import SamplerParams
-
-from utils import (
+from .utils    import (
     _SupportsWriteAndFlush, Colors, print_warning, assert_type
 )
+from typing    import Optional
+from .formats  import PromptFormat
+from .sampling import SamplerParams
+
+from . import llama as _llama
 
 @contextlib.contextmanager
 def KeyboardInterruptHandler():
