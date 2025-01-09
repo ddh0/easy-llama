@@ -19,7 +19,7 @@ from .utils    import (
 from .libllama import _internals, GGUFValueType
 from typing    import Optional, Iterable
 from io        import BufferedReader
-from sampling  import SamplerParams
+from .sampling import SamplerParams
 
 from . import libllama as lib
 
