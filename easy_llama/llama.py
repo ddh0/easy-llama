@@ -66,10 +66,9 @@ def _init_backend_if_needed(verbose: bool = True) -> None:
     
     # most cases
     if sys.byteorder == 'little':
-        if verbose:
-            print_info_if_verbose(
-                "host is little-endian"
-            )
+        print_info_if_verbose(
+            "host is little-endian"
+        )
     # rare
     elif sys.byteorder == 'big':
         print_warning(
@@ -523,7 +522,6 @@ class _LlamaModel:
         
         # load model
         
-        print(f'_model: {verbose=}')
         with suppress_output(disable=verbose):
             self.model = lib.llama_load_model_from_file(path_model, self.params)
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
@@ -660,8 +658,7 @@ class _LlamaCtx:
             self.params.abort_callback_data = abort_callback_data
         
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
-        
-        print(f'_ctx: {verbose=}')
+
         with suppress_output(disable=verbose):
             self.ctx = lib.llama_new_context_with_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
@@ -1428,21 +1425,11 @@ class Llama:
 
         # split the input into batches of tokens
         batch_splits = range(0, n_actual_input_tokens, self._n_batch)
-        # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            # print(f'this batch split index: {i}')
             batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            # print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                # print(
-                #     f'batch_split: appended batch with {len(batch_tokens)} '
-                #     f'tokens'
-                # )
-
-        # n_batches = len(batches)
-        # print(f'batch_split: {n_batches=}')
 
         # process each batch one-by-one
         for batch in batches:
@@ -1450,10 +1437,6 @@ class Llama:
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                # print(
-                #     f'ppdecode: {batch_tokens=}\n'
-                #     f'ppdecode: {n_batch_tokens=}'
-                # )
                 self._stopwatch.start_pp()
                 with self._lock:
                     _internals.decode_pp(
@@ -1462,10 +1445,7 @@ class Llama:
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                # print(
-                #     f'tgdecode: {batch_tokens=}\n'
-                #     f'tgdecode: {n_batch_tokens=}'
-                # )
+
                 self._stopwatch.start_tg()
                 with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
@@ -1553,21 +1533,11 @@ class Llama:
 
         # split the input into batches of tokens
         batch_splits = range(0, n_actual_input_tokens, self._n_batch)
-        # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            # print(f'this batch split index: {i}')
             batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            # print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                # print(
-                #     f'batch_split: appended batch with {len(batch_tokens)} '
-                #     f'tokens'
-                # )
-        
-        # n_batches = len(batches)
-        # print(f'batch_split: {n_batches=}')
 
         # set up the loop
         output_tokens = []
@@ -1579,10 +1549,6 @@ class Llama:
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                # print(
-                #     f'ppdecode: {batch_tokens=}\n'
-                #     f'ppdecode: {n_batch_tokens=}'
-                # )
                 self._stopwatch.start_pp()
                 with self._lock:
                     _internals.decode_pp(
@@ -1591,10 +1557,6 @@ class Llama:
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                # print(
-                #     f'tgdecode: {batch_tokens=}\n'
-                #     f'tgdecode: {n_batch_tokens=}'
-                # )
                 self._stopwatch.start_tg()
                 with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
@@ -1611,7 +1573,6 @@ class Llama:
             self.context_tokens.extend(batch)
         
         # continue generating until n_predict or n_ctx is reached
-        # print(f'start while loop')
         while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
             self._stopwatch.start_tg()
             with self._lock:
@@ -1700,21 +1661,11 @@ class Llama:
 
         # split the input into batches of tokens
         batch_splits = range(0, n_actual_input_tokens, self._n_batch)
-        # print(f'batch_split: {batch_splits=}')
         batches = []
         for i in batch_splits:
-            # print(f'this batch split index: {i}')
             batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            # print(f'batch_split: {batch_tokens=}')
             if len(batch_tokens) > 0:
                 batches.append(batch_tokens)
-                # print(
-                #     f'batch_split: appended batch with {len(batch_tokens)} '
-                #     f'tokens'
-                # )
-        
-        # n_batches = len(batches)
-        # print(f'batch_split: {n_batches=}')
 
         n_predicted = 0
 
@@ -1724,10 +1675,6 @@ class Llama:
             n_batch_tokens = len(batch)
             
             if n_batch_tokens > 1:
-                # print(
-                #     f'ppdecode: {batch_tokens=}\n'
-                #     f'ppdecode: {n_batch_tokens=}'
-                # )
                 self._stopwatch.start_pp()
                 with self._lock:
                     _internals.decode_pp(
@@ -1736,10 +1683,6 @@ class Llama:
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-                # print(
-                #     f'tgdecode: {batch_tokens=}\n'
-                #     f'tgdecode: {n_batch_tokens=}'
-                # )
                 self._stopwatch.start_tg()
                 with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
@@ -1756,7 +1699,6 @@ class Llama:
             self.context_tokens.extend(batch)
         
         # continue generating until n_predict or n_ctx is reached
-        # print(f'start while loop')
         while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
             self._stopwatch.start_tg()
             with self._lock:
