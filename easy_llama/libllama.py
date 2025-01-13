@@ -6,7 +6,7 @@
 This file provides a Python interface to LLAMA_API ("libllama"), which is
 originally defined in `llama.cpp/include/llama.h`.
 
-This file was last updated to match commit `f66f5829276650cd83a087ab2cfed1a760183ea1`.
+This file was last updated to match commit `08f10f69c38288e9e8bb1f933af63a3fc9013d40`.
 
 ---
 
