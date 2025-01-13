@@ -14,7 +14,7 @@ import numpy    as np
 
 from .utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
-    softmax, suppress_output, _SupportsWriteAndFlush
+    softmax, suppress_output, ez_encode, ez_decode, _SupportsWriteAndFlush, ptr
 )
 from .libllama import _internals, GGUFValueType
 from typing    import Optional, Iterable
@@ -472,14 +472,14 @@ class _LlamaModel:
         self,
         path_model: str,
 
-        devices:                     Optional[lib.ptr]                     = None,
+        devices:                     Optional[ptr]                         = None,
         n_gpu_layers:                Optional[int]                         = None,
         split_mode:                  Optional[int]                         = None,
         main_gpu:                    Optional[int]                         = None,
-        tensor_split:                Optional[lib.ptr]                     = None,
+        tensor_split:                Optional[ptr]                         = None,
         rpc_servers:                 Optional[str]                         = None,
-        progress_callback:           Optional[lib.ptr]                     = None,
-        progress_callback_user_data: Optional[lib.ptr]                     = None,
+        progress_callback:           Optional[ptr]                         = None,
+        progress_callback_user_data: Optional[ptr]                         = None,
         kv_overrides:                Optional[lib.llama_model_kv_override] = None,
         vocab_only:                  Optional[bool]                        = None,
         use_mmap:                    Optional[bool]                        = None,
@@ -535,7 +535,7 @@ class _LlamaModel:
         
         # load model
         
-        with suppress_output(disable=verbose):
+        with suppress_output(disable=get_verbose()):
             self.model = lib.llama_load_model_from_file(path_model, self.params)
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
     
@@ -544,7 +544,7 @@ class _LlamaModel:
 
     def free(self):
         if self.model is not None:
-            with suppress_output(disable=verbose):
+            with suppress_output(disable=get_verbose()):
                 lib.llama_free_model(self.model)
             self.model = None
 
@@ -572,8 +572,8 @@ class _LlamaCtx:
         yarn_beta_slow:      Optional[float]   = None,
         yarn_orig_ctx:       Optional[int]     = None,
         defrag_thold:        Optional[float]   = None,
-        cb_eval:             Optional[lib.ptr] = None,
-        cb_eval_user_data:   Optional[lib.ptr] = None,
+        cb_eval:             Optional[ptr]     = None,
+        cb_eval_user_data:   Optional[ptr]     = None,
         type_k:              Optional[int]     = None,
         type_v:              Optional[int]     = None,
         logits_all:          Optional[bool]    = None,
@@ -581,8 +581,8 @@ class _LlamaCtx:
         offload_kqv:         Optional[bool]    = None,
         flash_attn:          Optional[bool]    = None,
         no_perf:             Optional[bool]    = None,
-        abort_callback:      Optional[lib.ptr] = None,
-        abort_callback_data: Optional[lib.ptr] = None
+        abort_callback:      Optional[ptr]     = None,
+        abort_callback_data: Optional[ptr]     = None
     ):
         _init_backend_if_needed()
         self.params = lib.llama_context_default_params()
@@ -672,7 +672,7 @@ class _LlamaCtx:
         
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
 
-        with suppress_output(disable=verbose):
+        with suppress_output(disable=get_verbose()):
             self.ctx = lib.llama_new_context_with_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
     
@@ -681,7 +681,7 @@ class _LlamaCtx:
 
     def free(self):
         if self.ctx is not None:
-            with suppress_output(disable=verbose):
+            with suppress_output(disable=get_verbose()):
                 lib.llama_free(self.ctx)
             self.ctx = None
 
@@ -844,7 +844,7 @@ class Llama:
         # Load model from file
         #
 
-        with suppress_output(disable=verbose):
+        with suppress_output(disable=get_verbose()):
             self._model = _LlamaModel(
                 path_model=path_model,
                 n_gpu_layers=n_gpu_layers,
@@ -892,7 +892,7 @@ class Llama:
         # New context with model
         #
         
-        with suppress_output(disable=verbose):
+        with suppress_output(disable=get_verbose()):
             self._ctx = _LlamaCtx(
                 model=self._model,
                 n_ctx=_n_ctx,
@@ -1431,8 +1431,10 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
+        sampler = sampler_params if sampler_params is not None else self._default_sampler_params
+
         if verbose:
-            sampler_params.print_chain()
+            sampler.print_chain()
         
         print_info_if_verbose(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
@@ -1481,7 +1483,7 @@ class Llama:
         self._stopwatch.stop_wall_time()
         if verbose:
             self._stopwatch.print_stats()
-        return self.sample(sampler_params)
+        return self.sample(sampler)
 
     def generate(
         self,
@@ -1530,6 +1532,7 @@ class Llama:
             )
         
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
+        sampler = sampler_params if sampler_params is not None else self._default_sampler_params
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self._first_valid_pos(input_tokens)
@@ -1543,7 +1546,7 @@ class Llama:
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         if verbose:
-            sampler_params.print_chain()
+            sampler.print_chain()
 
         print_info_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
@@ -1600,7 +1603,7 @@ class Llama:
             self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
-            id = self.sample(sampler_params)
+            id = self.sample(sampler)
             self.context_tokens.append(id)
             output_tokens.append(id)
             n_predicted += 1
@@ -1661,6 +1664,7 @@ class Llama:
                 )
         
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
+        sampler = sampler_params if sampler_params is not None else self._default_sampler_params
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self._first_valid_pos(input_tokens)
@@ -1674,7 +1678,7 @@ class Llama:
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         if verbose:
-            sampler_params.print_chain()
+            sampler.print_chain()
 
         print_info_if_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
@@ -1729,7 +1733,7 @@ class Llama:
             self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
-            id = self.sample(sampler_params)
+            id = self.sample(sampler)
             self.context_tokens.append(id)
             yield id
             n_predicted += 1

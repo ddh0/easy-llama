@@ -119,12 +119,39 @@ def cls() -> None:
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
+def ez_encode(txt: str) -> bytes:
+    """
+    Encode the given text `txt` from string to UTF-8. If strict encoding fails, a warning will
+    be shown and the offending character(s) will be replaced with `?`.
+    """
+    try:
+        return txt.encode('utf-8', errors='strict')
+    except UnicodeEncodeError:
+        print_warning(f'error encoding string to UTF-8. using ? replacement character.')
+        return txt.encode('utf-8', errors='replace')
+
+def ez_decode(txt: bytes) -> str:
+    """
+    Decode the given text `txt` from UTF-8 to string. If strict decoding fails, a warning will
+    be shown and the offending character(s) will be replaced with `�` (U+FFFD).
+    """
+    try:
+        return txt.decode('utf-8', errors='strict')
+    except UnicodeDecodeError:
+        print_warning(f'error decoding string from UTF-8. using � replacement character.')
+        return txt.decode('utf-8', errors='replace')
+
 _open = open
 _sys = sys
 _os = os
 
 @contextlib.contextmanager
 def suppress_output(disable: bool = False):
+
+    # NOTE: simply changing sys.stdout and sys.stderr does not affect output from llama.cpp.
+    #       this method (or similar) is required to suppress all undesired output, for example
+    #       when `verbose=False`.
+
     if disable:
         yield
     else:
@@ -152,34 +179,19 @@ def suppress_output(disable: bool = False):
                 _os.close(saved_stderr_fd)
 
 def print_verbose(text: str) -> None:
-    print(
-        f"easy_llama:",
-        text, file=sys.stderr, flush=True
-    )
+    print(f"{RESET}easy_llama:", text, file=sys.stderr, flush=True)
 
 def print_info(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {GREEN}INFO{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
+    print(f"{RESET}easy_llama: {GREEN}INFO{RESET}:", text, file=sys.stderr, flush=True)
 
 def print_warning(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {YELLOW}WARNING{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
+    print(f"{RESET}easy_llama: {YELLOW}WARNING{RESET}:", text, file=sys.stderr, flush=True)
 
 def print_error(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {RED}ERROR{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
+    print(f"{RESET}easy_llama: {RED}ERROR{RESET}:", text, file=sys.stderr, flush=True)
 
 def print_stopwatch(text: str) -> None:
-    print(
-        f"{RESET}easy_llama: {MAGENTA}STOPWATCH{RESET}:",
-        text, file=sys.stderr, flush=True
-    )
+    print(f"{RESET}easy_llama: {MAGENTA}STOPWATCH{RESET}:", text, file=sys.stderr, flush=True)
 
 def assert_type(
     obj: object,
@@ -228,13 +240,9 @@ def assert_only_ints(iterable: Iterable) -> None:
     Ensure that the given iterable contains only `int`s
     """
     if any(not isinstance(x, int) for x in iterable):
-        raise TypeError(
-            f"assert_only_ints: some item in the given iterable is not an int"
-        )
+        raise TypeError(f"assert_only_ints: some item in the given iterable is not an int")
 
-def null_ptr_check(
-    ptr: ptr, ptr_name: str, loc_hint: str
-) -> None | NoReturn:
+def null_ptr_check(ptr: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
     """
     Ensure that the given object `ptr` is not NULL / NULLPTR
 
@@ -248,6 +256,4 @@ def null_ptr_check(
         Code location hint used in easy-llama
     """
     if not bool(ptr):
-        raise LlamaNullException(
-            f"{loc_hint}: pointer `{ptr_name}` is null"
-        )
+        raise LlamaNullException(f"{loc_hint}: pointer `{ptr_name}` is null")

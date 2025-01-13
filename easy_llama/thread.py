@@ -6,7 +6,7 @@ import sys
 import contextlib
 
 from .utils    import (
-    _SupportsWriteAndFlush, Colors, print_warning, assert_type
+    _SupportsWriteAndFlush, Colors, print_warning, assert_type, ez_encode, ez_decode
 )
 from typing    import Optional
 from .formats  import PromptFormat
@@ -81,49 +81,49 @@ class Thread:
             first_msg = self.messages[0]
             if first_msg['role'].lower() == 'system':
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.system_prefix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.system_prefix()),
                     add_special=True,
                     parse_special=True
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.system_prompt().encode(),
+                    text_bytes=ez_encode(self.prompt_format.system_prompt()),
                     add_special=False,
                     parse_special=False
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.system_suffix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.system_suffix()),
                     add_special=False,
                     parse_special=True
                 ))
             elif first_msg['role'].lower() == 'user':
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.user_prefix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.user_prefix()),
                     add_special=True,
                     parse_special=True
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=first_msg['content'].encode(),
+                    text_bytes=ez_encode(first_msg['content']),
                     add_special=False,
                     parse_special=False
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.user_suffix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.user_suffix()),
                     add_special=False,
                     parse_special=True
                 ))
             elif first_msg['role'].lower() == 'bot':
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.bot_prefix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.bot_prefix()),
                     add_special=True,
                     parse_special=True
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=first_msg['content'].encode(),
+                    text_bytes=ez_encode(first_msg['content']),
                     add_special=False,
                     parse_special=False
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.bot_suffix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.bot_suffix()),
                     add_special=False,
                     parse_special=True
                 ))
@@ -143,33 +143,33 @@ class Thread:
                     )
                 elif msg['role'].lower() == 'user':
                     input_ids.extend(self.llama.tokenize(
-                        text_bytes=self.prompt_format.user_prefix().encode(),
+                        text_bytes=ez_encode(self.prompt_format.user_prefix()),
                         add_special=False,
                         parse_special=True
                     ))
                     input_ids.extend(self.llama.tokenize(
-                        text_bytes=msg['content'].encode(),
+                        text_bytes=ez_encode(msg['content']),
                         add_special=False,
                         parse_special=False
                     ))
                     input_ids.extend(self.llama.tokenize(
-                        text_bytes=self.prompt_format.user_suffix().encode(),
+                        text_bytes=ez_encode(self.prompt_format.user_suffix()),
                         add_special=False,
                         parse_special=True
                     ))
                 elif msg['role'].lower() == 'bot':
                     input_ids.extend(self.llama.tokenize(
-                        text_bytes=self.prompt_format.bot_prefix().encode(),
+                        text_bytes=ez_encode(self.prompt_format.bot_prefix()),
                         add_special=False,
                         parse_special=True
                     ))
                     input_ids.extend(self.llama.tokenize(
-                        text_bytes=msg['content'].encode(),
+                        text_bytes=ez_encode(msg['content']),
                         add_special=False,
                         parse_special=False
                     ))
                     input_ids.extend(self.llama.tokenize(
-                        text_bytes=self.prompt_format.bot_suffix().encode(),
+                        text_bytes=ez_encode(self.prompt_format.bot_suffix()),
                         add_special=False,
                         parse_special=True
                     ))
@@ -188,13 +188,13 @@ class Thread:
                 )
             elif role.lower() == 'user':
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.user_prefix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.user_prefix()),
                     add_special=False,
                     parse_special=True
                 ))
             elif role.lower() == 'bot':
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=self.prompt_format.bot_prefix().encode(),
+                    text_bytes=ez_encode(self.prompt_format.bot_prefix()),
                     add_special=False,
                     parse_special=True
                 ))
@@ -229,7 +229,7 @@ class Thread:
             sampler_params=self.sampler_params
         )
         response_bytes = self.llama.detokenize(response_toks, special=False)
-        response_txt = response_bytes.decode()
+        response_txt = ez_decode(response_bytes)
         self.messages.append({
             'role': 'bot',
             'content': response_txt
@@ -264,10 +264,24 @@ class Thread:
                 )
         return result_str
     
+    def add_message(self, role: str, content: str) -> None:
+        if role.lower() == 'system':
+            self.messages.append({'role': 'system', 'content': content})
+        elif role.lower() == 'user':
+            self.messages.append({'role': 'user', 'content': content})
+        elif role.lower() == 'bot':
+            self.messages.append({'role': 'bot', 'content': content})
+        else:
+            raise ValueError(
+                f'Thread.add_message: invalid role {role!r}'
+            )
+    
     def warmup(self) -> None:
         input_ids = self.get_input_ids()
         if self.llama._first_valid_pos(input_ids) < len(input_ids):
-            _llama.print_info_if_verbose('Thread.warmup: processing thread content with model ...')
+            _llama.print_info_if_verbose(
+                'Thread.warmup: processing thread content with model ...'
+            )
             self.llama.generate(
                 input_tokens=input_ids,
                 n_predict=0
@@ -299,14 +313,14 @@ class Thread:
                     for tok in tok_gen:
                         tok_bytes = self.llama.token_to_piece(tok, special=False)
                         response += tok_bytes
-                        tok_txt = tok_bytes.decode(errors='ignore')
+                        tok_txt = ez_decode(tok_bytes)
                         print(f'{B}{tok_txt}{R}', end='', flush=True)
                     self.messages.append({
                         'role': 'bot',
-                        'content': response.decode()
+                        'content': ez_decode(response)
                     })
                     print()
-                    if not _llama.verbose:
+                    if not _llama.get_verbose():
                         print()
                 else:
                     response = self.send(user_input)
@@ -319,29 +333,27 @@ class Thread:
         self.messages = [
             {
                 'role': 'system',
-                'content': 'Follow the given instructions exactly. Do not add '
-                           'any unnecessary information.'
+                'content': 'Follow the given instructions exactly. Do not add any unnecessary '
+                           'information.'
             },
             {
                 'role': 'user',
-                'content': 'Take a moment to read through the following '
-                           'conversation carefully. When you\'re done, write a '
-                           'single paragraph that explains all of the most '
-                           'relevant details.'
+                'content': 'Take a moment to read through the following conversation '
+                           'carefully. When you\'re done, write a single paragraph that '
+                           'explains all of the most relevant details.'
                            f'\n\n```\n{thread_as_string}\n```\n\n'
-                           'Now that you\'ve read the above conversation, '
-                           'provide a summary in the form of a single '
-                           'paragraph.'
+                           'Now that you\'ve read the above conversation, provide a summary '
+                           'in the form of a single paragraph.'
             }
         ]
-        input_ids = self.get_input_ids(role='bot')
+        input_ids = self.get_input_ids()
         output_ids = self.llama.generate(
             input_tokens=input_ids,
             n_predict=300
         )
         summary = self.llama.detokenize(output_ids, special=False)
         self.messages = orig_thread_messages.copy()
-        return summary.decode()
+        return ez_decode(summary)
 
     def print_stats(
         self,

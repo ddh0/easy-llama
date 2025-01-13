@@ -158,6 +158,12 @@ class GGUFValueType(IntEnum):
 # Begin LLAMA_API
 #
 
+class llama_vocab(ctypes.Structure):
+    """Dummy `ctypes.Structure`"""
+
+llama_vocab_p = ctypes.POINTER(llama_vocab)
+"""Pointer to a llama_vocab struct"""
+
 class llama_model(ctypes.Structure):
     """Dummy `ctypes.Structure`"""
 
@@ -491,11 +497,10 @@ class llama_chat_message(ctypes.Structure):
 
 llama_chat_message_p = ctypes.POINTER(llama_chat_message)
 
-# // TODO: rename to llama_adapter_lora
-class llama_lora_adapter(ctypes.Structure):
+class llama_adapter_lora(ctypes.Structure):
     pass
 
-llama_lora_adapter_p = ctypes.POINTER(llama_lora_adapter)
+llama_adapter_lora_p = ctypes.POINTER(llama_adapter_lora)
 
 #
 # Helpers for getting default parameters
@@ -542,6 +547,19 @@ def llama_backend_init() -> None:
     libllama.llama_backend_init()
     _BACKEND_INIT = True
 
+libllama.llama_backend_free.argtypes = []
+libllama.llama_backend_free.restype = None
+
+def llama_backend_free() -> None:
+    """
+    Free the llama + ggml backend
+    
+    Call once at the end of the program - currently only used for MPI
+    """
+    global _BACKEND_INIT
+    libllama.llama_backend_free()
+    _BACKEND_INIT = False
+
 libllama.llama_numa_init.argtypes = [ctypes.c_int]
 libllama.llama_numa_init.restype = None
 
@@ -563,40 +581,33 @@ def llama_detach_threadpool(ctx: llama_context) -> None:
     """Detach a threadpool from a llama_context"""
     libllama.llama_detach_threadpool(ctx)
 
-libllama.llama_backend_free.argtypes = []
-libllama.llama_backend_free.restype = None
+libllama.llama_model_load_from_file.argtypes = [ctypes.c_char_p, llama_model_params_p]
+libllama.llama_model_load_from_file.restype = llama_model_p
 
-def llama_backend_free() -> None:
-    """
-    Free the llama + ggml backend
-    
-    Call once at the end of the program - currently only used for MPI
-    """
-    global _BACKEND_INIT
-    libllama.llama_backend_free()
-    _BACKEND_INIT = False
-
-libllama.llama_load_model_from_file.argtypes = [ctypes.c_char_p, llama_model_params_p]
-libllama.llama_load_model_from_file.restype = llama_model_p
-
-def llama_load_model_from_file(path_model: str, params: llama_model_params) -> ptr[llama_model]:
+def llama_model_load_from_file(path_model: str, params: llama_model_params) -> ptr[llama_model]:
     """Load a llama model from a file - returns a pointer"""
-    return libllama.llama_load_model_from_file(path_model.encode('utf-8'), ctypes.byref(params))
+    return libllama.llama_model_load_from_file(path_model.encode('utf-8'), ctypes.byref(params))
 
-libllama.llama_free_model.argtypes = [llama_model_p]
-libllama.llama_free_model.restype = None
+libllama.llama_model_free.argtypes = [llama_model_p]
+libllama.llama_model_free.restype = None
 
-# // TODO: rename to llama_model_free
-def llama_free_model(model: llama_model) -> None:
+def llama_model_free(model: llama_model) -> None:
     """Free a model"""
-    libllama.llama_free_model(model)
+    libllama.llama_model_free(model)
 
-libllama.llama_new_context_with_model.argtypes = [llama_model_p, llama_context_params_p]
-libllama.llama_new_context_with_model.restype = llama_context_p
+libllama.llama_init_from_model.argtypes = [llama_model_p, llama_context_params_p]
+libllama.llama_init_from_model.restype = llama_context_p
 
-def llama_new_context_with_model(model: llama_model, params: llama_context_params) -> ptr[llama_context]:
+def llama_init_from_model(model: llama_model, params: llama_context_params) -> ptr[llama_context]:
     """Create a new llama context with a loaded model"""
-    return libllama.llama_new_context_with_model(model, ctypes.byref(params))
+    return libllama.llama_init_from_model(model, ctypes.byref(params))
+
+libllama.llama_model_free.argtypes = [llama_context_p]
+libllama.llama_model_free.restype = None
+
+def llama_model_free(ctx: llama_context) -> None:
+    """Frees all allocated memory"""
+    libllama.llama_model_free(ctx)
 
 libllama.llama_free.argtypes = [llama_context_p]
 libllama.llama_free.restype = None
@@ -604,6 +615,22 @@ libllama.llama_free.restype = None
 def llama_free(ctx: llama_context) -> None:
     """Frees all allocated memory"""
     libllama.llama_free(ctx)
+
+@DEPRECATED(new_func_name='llama_model_load_from_file')
+def llama_load_model_from_file(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_model_free')
+def llama_free_model(*args) -> None:
+    pass
+
+@DEPRECATED(new_func_name='llama_init_from_model')
+def llama_new_context_with_model(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_model_free')
+def llama_free_model(*args):
+    pass
 
 #
 # Llama backend helper functions
@@ -654,6 +681,10 @@ def llama_supports_rpc() -> bool:
 libllama.llama_n_ctx.argtypes = [llama_context_p]
 libllama.llama_n_ctx.restype = ctypes.c_int
 
+#
+# Getters for llama_context
+#
+
 def llama_n_ctx(ctx: llama_context) -> int:
     """Get the context size"""
     return libllama.llama_n_ctx(ctx)
@@ -679,47 +710,6 @@ def llama_n_seq_max(ctx: llama_context) -> int:
     """Get the maximum number of sequences"""
     return libllama.llama_n_seq_max(ctx)
 
-#
-# Getters for model attributes
-#
-
-libllama.llama_n_vocab.argtypes = [llama_model_p]
-libllama.llama_n_vocab.restype = ctypes.c_int
-
-def llama_n_vocab(model: llama_model) -> int:
-    """Get the number of tokens in the vocabulary"""
-    return libllama.llama_n_vocab(model)
-
-libllama.llama_n_ctx_train.argtypes = [llama_model_p]
-libllama.llama_n_ctx_train.restype = ctypes.c_int
-
-def llama_n_ctx_train(model: llama_model) -> int:
-    """Get the context size used during training"""
-    return libllama.llama_n_ctx_train(model)
-
-libllama.llama_n_embd.argtypes = [llama_model_p]
-libllama.llama_n_embd.restype = ctypes.c_int
-
-def llama_n_embd(model: llama_model) -> int:
-    """Get the embedding size"""
-    return libllama.llama_n_embd(model)
-
-libllama.llama_n_layer.argtypes = [llama_model_p]
-libllama.llama_n_layer.restype = ctypes.c_int
-
-def llama_n_layer(model: llama_model) -> int:
-    """Get the number of layers"""
-    return libllama.llama_n_layer(model)
-
-libllama.llama_n_head.argtypes = [llama_model_p]
-libllama.llama_n_head.restype = ctypes.c_int
-
-def llama_n_head(model: llama_model) -> int:
-    """Get the number of attention heads"""
-    return libllama.llama_n_head(model)
-
-# More getters for llama_context ...
-
 libllama.llama_get_model.argtypes = [llama_context_p]
 libllama.llama_get_model.restype = llama_model_p
 
@@ -734,28 +724,80 @@ def llama_pooling_type(ctx: llama_context) -> int:
     """Get the pooling type used by a context"""
     return libllama.llama_pooling_type(ctx)
 
-# More getters for llama_model ...
+#
+# Getters for llama_model
+#
 
-libllama.llama_vocab_type.argtypes = [llama_model_p]
+libllama.llama_model_get_vocab.argtypes = [llama_model_p]
+libllama.llama_model_get_vocab.restype = llama_vocab_p
+
+def llama_model_get_vocab(model: llama_model) -> ptr[llama_vocab]:
+    """Get a pointer to the llama_vocab struct"""
+    return libllama.llama_model_get_vocab(model)
+
+libllama.llama_model_rope_type.argtypes = [llama_model_p]
+libllama.llama_model_rope_type.restype = ctypes.c_int
+
+def llama_model_rope_type(model: llama_model) -> int:
+    """Get the RoPE type used by a model"""
+    return libllama.llama_model_rope_type(model)
+
+libllama.llama_model_n_ctx_train.argtypes = [llama_model_p]
+libllama.llama_model_n_ctx_train.restype = ctypes.c_int
+
+def llama_model_n_ctx_train(model: llama_model) -> int:
+    """Get the context size used during training"""
+    return libllama.llama_model_n_ctx_train(model)
+
+libllama.llama_model_n_embd.argtypes = [llama_model_p]
+libllama.llama_model_n_embd.restype = ctypes.c_int
+
+def llama_model_n_embd(model: llama_model) -> int:
+    """Get the embedding size"""
+    return libllama.llama_model_n_embd(model)
+
+libllama.llama_model_n_layer.argtypes = [llama_model_p]
+libllama.llama_model_n_layer.restype = ctypes.c_int
+
+def llama_model_n_layer(model: llama_model) -> int:
+    """Get the number of layers"""
+    return libllama.llama_model_n_layer(model)
+
+libllama.llama_model_n_head.argtypes = [llama_model_p]
+libllama.llama_model_n_head.restype = ctypes.c_int
+
+def llama_model_n_head(model: llama_model) -> int:
+    """Get the number of attention heads"""
+    return libllama.llama_model_n_head(model)
+
+libllama.llama_model_rope_freq_scale_train.argtypes = [llama_model_p]
+libllama.llama_model_rope_freq_scale_train.restype = ctypes.c_float
+
+def llama_model_rope_freq_scale_train(model: llama_model) -> float:
+    """Get the RoPE frequency scaling factor used during training"""
+    return libllama.llama_model_rope_freq_scale_train(model)
+
+#
+# Getters for llama_vocab
+#
+
+libllama.llama_vocab_type.argtypes = [llama_vocab_p]
 libllama.llama_vocab_type.restype = ctypes.c_int
 
-def llama_vocab_type(model: llama_model) -> int:
-    """Get the vocabulary type used by a model"""
-    return libllama.llama_vocab_type(model)
+def llama_vocab_type(vocab: ptr[llama_vocab]) -> int:
+    """Get the LlamaVocabType of this llama_vocab"""
+    return libllama.llama_vocab_type(vocab)
 
-libllama.llama_rope_type.argtypes = [llama_model_p]
-libllama.llama_rope_type.restype = ctypes.c_int
+libllama.llama_vocab_n_tokens.argtypes = [llama_vocab_p]
+libllama.llama_vocab_n_tokens.restype = ctypes.c_int
 
-def llama_rope_type(model: llama_model) -> int:
-    """Get the RoPE type used by a model"""
-    return libllama.llama_rope_type(model)
+def llama_vocab_n_tokens(vocab: ptr[llama_vocab]) -> int:
+    """Get the number of tokens in this llama_vocab"""
+    return libllama.llama_vocab_n_tokens(vocab)
 
-libllama.llama_rope_freq_scale_train.argtypes = [llama_model_p]
-libllama.llama_rope_freq_scale_train.restype = ctypes.c_float
-
-def llama_rope_freq_scale_train(model: llama_model) -> float:
-    """Get the RoPE frequency scaling factor used during training"""
-    return libllama.llama_rope_freq_scale_train(model)
+#
+# GGUF metadata functions
+#
 
 libllama.llama_model_meta_val_str.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
 libllama.llama_model_meta_val_str.restype = ctypes.c_int
@@ -799,6 +841,13 @@ def llama_model_size(model: llama_model) -> int:
     """Get the total size of all tensors in the model in bytes"""
     return libllama.llama_model_size(model)
 
+libllama.llama_model_chat_template.argtypes = [llama_model_p]
+libllama.llama_model_chat_template.restype = ctypes.c_char_p
+
+def llama_model_chat_template(model: ptr[llama_model]):
+    """Get the built-in chat template for this model. Returns NULL if not available."""
+    return libllama.llama_model_chat_template(model)
+
 libllama.llama_model_n_params.argtypes = [llama_model_p]
 libllama.llama_model_n_params.restype = size_t
 
@@ -834,6 +883,30 @@ def llama_model_is_recurrent(model: llama_model) -> bool:
     """Check if the model is recurrent"""
     return libllama.llama_model_is_recurrent(model)
 
+@DEPRECATED(new_func_name='llama_model_n_ctx_train')
+def llama_n_ctx_train(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_model_n_embd')
+def llama_n_embd(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_model_n_layer')
+def llama_n_layer(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_model_n_head')
+def llama_n_head(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_n_tokens')
+def llama_n_vocab(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_model_rope_freq_scale_train')
+def llama_rope_freq_scale_train(*args):
+    pass
+
 #
 # Quantization
 #
@@ -846,48 +919,67 @@ def llama_model_quantize(fname_inp: str, fname_out: str, params: llama_model_qua
     return libllama.llama_model_quantize(fname_inp.encode('utf-8'), fname_out.encode('utf-8'), ctypes.byref(params))
 
 #
-# LoRA
+# Adapters
 #
 
-libllama.llama_lora_adapter_init.argtypes = [llama_model_p, ctypes.c_char_p]
-libllama.llama_lora_adapter_init.restype = llama_lora_adapter_p
+libllama.llama_adapter_lora_init.argtypes = [llama_model_p, ctypes.c_char_p]
+libllama.llama_adapter_lora_init.restype = llama_adapter_lora_p
 
-# // TODO: rename to llama_adapter_lora_init
-def llama_lora_adapter_init(model: llama_model, path_lora: str) -> ptr[llama_lora_adapter]:
+def llama_adapter_lora_init(model: llama_model, path_lora: str) -> ptr[llama_adapter_lora]:
     """Initialize a LoRA adapter"""
-    return libllama.llama_lora_adapter_init(model, path_lora.encode('utf-8'))
+    return libllama.llama_adapter_lora_init(model, path_lora.encode('utf-8'))
 
-libllama.llama_lora_adapter_set.argtypes = [llama_context_p, llama_lora_adapter_p, ctypes.c_float]
-libllama.llama_lora_adapter_set.restype = ctypes.c_int
+libllama.llama_adapter_lora_set.argtypes = [llama_context_p, llama_adapter_lora_p, ctypes.c_float]
+libllama.llama_adapter_lora_set.restype = ctypes.c_int
 
-# // TODO: rename to llama_set_adapter_lora
-def llama_lora_adapter_set(ctx: llama_context, adapter: llama_lora_adapter, scale: float) -> int:
+def llama_adapter_lora_set(ctx: llama_context, adapter: llama_adapter_lora, scale: float) -> int:
     """Set a LoRA adapter for a context"""
-    return libllama.llama_lora_adapter_set(ctx, adapter, scale)
+    return libllama.llama_adapter_lora_set(ctx, adapter, scale)
 
-libllama.llama_lora_adapter_remove.argtypes = [llama_context_p, llama_lora_adapter_p]
-libllama.llama_lora_adapter_remove.restype = ctypes.c_int
+libllama.llama_rm_adapter_lora.argtypes = [llama_context_p, llama_adapter_lora_p]
+libllama.llama_rm_adapter_lora.restype = ctypes.c_int
 
-# // TODO: rename to llama_rm_adapter_lora
-def llama_lora_adapter_remove(ctx: llama_context, adapter: llama_lora_adapter) -> int:
+def llama_rm_adapter_lora(ctx: llama_context, adapter: llama_adapter_lora) -> int:
     """Remove a LoRA adapter from a context"""
-    return libllama.llama_lora_adapter_remove(ctx, adapter)
+    return libllama.llama_rm_adapter_lora(ctx, adapter)
 
-libllama.llama_lora_adapter_clear.argtypes = [llama_context_p]
-libllama.llama_lora_adapter_clear.restype = None
+libllama.llama_adapter_lora_clear.argtypes = [llama_context_p]
+libllama.llama_adapter_lora_clear.restype = None
 
-# // TODO: rename to llama_clear_adapter_lora
-def llama_lora_adapter_clear(ctx: llama_context) -> None:
+def llama_adapter_lora_clear(ctx: llama_context) -> None:
     """Clear all LoRA adapters from a context"""
-    libllama.llama_lora_adapter_clear(ctx)
+    libllama.llama_adapter_lora_clear(ctx)
 
-libllama.llama_lora_adapter_free.argtypes = [llama_lora_adapter_p]
-libllama.llama_lora_adapter_free.restype = None
+libllama.llama_adapter_lora_free.argtypes = [llama_adapter_lora_p]
+libllama.llama_adapter_lora_free.restype = None
 
-# // TODO: rename to llama_adapter_lora_free
-def llama_lora_adapter_free(adapter: llama_lora_adapter) -> None:
+def llama_adapter_lora_free(adapter: llama_adapter_lora) -> None:
     """Free a LoRA adapter"""
-    libllama.llama_lora_adapter_free(adapter)
+    libllama.llama_adapter_lora_free(adapter)
+
+@DEPRECATED(new_func_name='llama_adapter_lora_init')
+def llama_lora_adapter_init(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_adapter_lora_set')
+def llama_lora_adapter_set(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_rm_adapter_lora')
+def llama_lora_adapter_remove(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_adapter_lora_clear')
+def llama_lora_adapter_clear(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_adapter_lora_free')
+def llama_lora_adapter_free(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_apply_adapter_cvec')
+def llama_control_vector_apply(*args):
+    pass
 
 #
 # Control vector
@@ -1313,175 +1405,248 @@ def llama_get_embeddings_seq(ctx: llama_context, seq_id: int) -> ptr[ctypes.c_fl
 # Vocab
 #
 
-libllama.llama_token_get_text.argtypes = [llama_model_p, ctypes.c_int]
-libllama.llama_token_get_text.restype = ctypes.c_char_p
+libllama.llama_vocab_get_text.argtypes = [llama_vocab_p, ctypes.c_int]
+libllama.llama_vocab_get_text.restype = ctypes.c_char_p
 
-def llama_token_get_text(model: llama_model, token: int) -> str:
-    """Get the text representation of a token"""
-    return libllama.llama_token_get_text(model, token).decode('utf-8')
+def llama_vocab_get_text(vocab: llama_vocab, token: int) -> bytes:
+    """Get the text representation of a token (as bytes)"""
+    return libllama.llama_vocab_get_text(vocab, token)
 
-libllama.llama_token_get_score.argtypes = [llama_model_p, ctypes.c_int]
-libllama.llama_token_get_score.restype = ctypes.c_float
+libllama.llama_vocab_get_score.argtypes = [llama_vocab_p, ctypes.c_int]
+libllama.llama_vocab_get_score.restype = ctypes.c_float
 
-def llama_token_get_score(model: llama_model, token: int) -> float:
+def llama_vocab_get_score(vocab: llama_vocab, token: int) -> float:
     """Get the score of a token"""
-    return libllama.llama_token_get_score(model, token)
+    return libllama.llama_vocab_get_score(vocab, token)
 
-libllama.llama_token_get_attr.argtypes = [llama_model_p, ctypes.c_int]
-libllama.llama_token_get_attr.restype = ctypes.c_int
+libllama.llama_vocab_get_attr.argtypes = [llama_vocab_p, ctypes.c_int]
+libllama.llama_vocab_get_attr.restype = ctypes.c_int
 
-def llama_token_get_attr(model: llama_model, token: int) -> int:
+def llama_vocab_get_attr(vocab: llama_vocab, token: int) -> int:
     """Get the attributes of a token"""
-    return libllama.llama_token_get_attr(model, token)
+    return libllama.llama_vocab_get_attr(vocab, token)
 
-libllama.llama_token_is_eog.argtypes = [llama_model_p, ctypes.c_int]
-libllama.llama_token_is_eog.restype = ctypes.c_bool
+libllama.llama_vocab_is_eog.argtypes = [llama_vocab_p, ctypes.c_int]
+libllama.llama_vocab_is_eog.restype = ctypes.c_bool
 
-def llama_token_is_eog(model: llama_model, token: int) -> bool:
+def llama_vocab_is_eog(vocab: llama_vocab, token: int) -> bool:
     """Check if the token is supposed to end generation (end-of-generation, eg. EOS, EOT, etc.)"""
-    return libllama.llama_token_is_eog(model, token)
+    return libllama.llama_vocab_is_eog(vocab, token)
 
-libllama.llama_token_is_control.argtypes = [llama_model_p, ctypes.c_int]
-libllama.llama_token_is_control.restype = ctypes.c_bool
+libllama.llama_vocab_is_control.argtypes = [llama_vocab_p, ctypes.c_int]
+libllama.llama_vocab_is_control.restype = ctypes.c_bool
 
-def llama_token_is_control(model: llama_model, token: int) -> bool:
-    """Identify if Token Id is a control token or a render-able token"""
-    return libllama.llama_token_is_control(model, token)
+def llama_vocab_is_control(vocab: llama_vocab, token: int) -> bool:
+    """Identify if token ID is a control token or a render-able token"""
+    return libllama.llama_vocab_is_control(vocab, token)
 
 #
-# Special tokens
+# Vocab (special tokens)
 #
 
-libllama.llama_token_bos.argtypes = [llama_model_p]
-libllama.llama_token_bos.restype = ctypes.c_int
+libllama.llama_vocab_bos.argtypes = [llama_vocab_p]
+libllama.llama_vocab_bos.restype = ctypes.c_int
 
-def llama_token_bos(model: llama_model) -> int:
-    """Get the BOS token ID. Returns -1 if not found."""
-    return libllama.llama_token_bos(model)
+def llama_vocab_bos(vocab: llama_vocab) -> int:
+    """Get the BOS token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_bos(vocab)
 
-libllama.llama_token_eos.argtypes = [llama_model_p]
-libllama.llama_token_eos.restype = ctypes.c_int
+libllama.llama_vocab_eos.argtypes = [llama_vocab_p]
+libllama.llama_vocab_eos.restype = ctypes.c_int
 
-def llama_token_eos(model: llama_model) -> int:
-    """Get the EOS token ID. Returns -1 if not found."""
-    return libllama.llama_token_eos(model)
+def llama_vocab_eos(vocab: llama_vocab) -> int:
+    """Get the EOS token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_eos(vocab)
 
-libllama.llama_token_eot.argtypes = [llama_model_p]
-libllama.llama_token_eot.restype = ctypes.c_int
+libllama.llama_vocab_eot.argtypes = [llama_vocab_p]
+libllama.llama_vocab_eot.restype = ctypes.c_int
 
-def llama_token_eot(model: llama_model) -> int:
-    """Get the end-of-turn token ID. Returns -1 if not found."""
-    return libllama.llama_token_eot(model)
+def llama_vocab_eot(vocab: llama_vocab) -> int:
+    """Get the end-of-turn token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_eot(vocab)
 
-libllama.llama_token_cls.argtypes = [llama_model_p]
-libllama.llama_token_cls.restype = ctypes.c_int
+libllama.llama_vocab_sep.argtypes = [llama_vocab_p]
+libllama.llama_vocab_sep.restype = ctypes.c_int
 
-def llama_token_cls(model: llama_model) -> int:
-    """Get the classification token ID. Returns -1 if not found."""
-    return libllama.llama_token_cls(model)
+def llama_vocab_sep(vocab: llama_vocab) -> int:
+    """Get the sentence separator token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_sep(vocab)
 
-libllama.llama_token_sep.argtypes = [llama_model_p]
-libllama.llama_token_sep.restype = ctypes.c_int
+libllama.llama_vocab_nl.argtypes = [llama_vocab_p]
+libllama.llama_vocab_nl.restype = ctypes.c_int
 
-def llama_token_sep(model: llama_model) -> int:
-    """Get the sentence separator token ID. Returns -1 if not found."""
-    return libllama.llama_token_sep(model)
+def llama_vocab_nl(vocab: llama_vocab) -> int:
+    """Get the newline token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_nl(vocab)
 
-libllama.llama_token_nl.argtypes = [llama_model_p]
-libllama.llama_token_nl.restype = ctypes.c_int
+libllama.llama_vocab_pad.argtypes = [llama_vocab_p]
+libllama.llama_vocab_pad.restype = ctypes.c_int
 
-def llama_token_nl(model: llama_model) -> int:
-    """Get the newline token ID. Returns -1 if not found."""
-    return libllama.llama_token_nl(model)
+def llama_vocab_pad(vocab: llama_vocab) -> int:
+    """Get the padding token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_pad(vocab)
 
-libllama.llama_token_pad.argtypes = [llama_model_p]
-libllama.llama_token_pad.restype = ctypes.c_int
-
-def llama_token_pad(model: llama_model) -> int:
-    """Get the padding token ID. Returns -1 if not found."""
-    return libllama.llama_token_pad(model)
-
-libllama.llama_add_bos_token.argtypes = [llama_model_p]
+libllama.llama_add_bos_token.argtypes = [llama_vocab_p]
 libllama.llama_add_bos_token.restype = ctypes.c_bool
 
-def llama_add_bos_token(model: llama_model) -> bool:
+def llama_add_bos_token(vocab: llama_vocab) -> bool:
     """Whether BOS token should be added to tokenizations"""
-    return libllama.llama_add_bos_token(model)
+    return libllama.llama_add_bos_token(vocab)
 
-libllama.llama_add_eos_token.argtypes = [llama_model_p]
+libllama.llama_add_eos_token.argtypes = [llama_vocab_p]
 libllama.llama_add_eos_token.restype = ctypes.c_bool
 
-def llama_add_eos_token(model: llama_model) -> bool:
+def llama_add_eos_token(vocab: llama_vocab) -> bool:
     """Whether EOS token should be added to tokenizations"""
-    return libllama.llama_add_eos_token(model)
+    return libllama.llama_add_eos_token(vocab)
 
-@DEPRECATED(new_func_name="llama_token_fim_pre")
+libllama.llama_vocab_fim_pre.argtypes = [llama_vocab_p]
+libllama.llama_vocab_fim_pre.restype = ctypes.c_int32
+
+def llama_vocab_fim_pre(vocab: llama_vocab) -> int:
+    """Get the infill prefix token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_fim_pre(vocab)
+
+libllama.llama_vocab_fim_suf.argtypes = [llama_vocab_p]
+libllama.llama_vocab_fim_suf.restype = ctypes.c_int32
+
+def llama_vocab_fim_suf(vocab: llama_vocab) -> int:
+    """Get the infill suffix token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_fim_suf(vocab)
+
+libllama.llama_vocab_fim_mid.argtypes = [llama_vocab_p]
+libllama.llama_vocab_fim_mid.restype = ctypes.c_int32
+
+def llama_vocab_fim_mid(vocab: llama_vocab) -> int:
+    """Get the infill middle token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_fim_mid(vocab)
+
+libllama.llama_vocab_fim_pad.argtypes = [llama_vocab_p]
+libllama.llama_vocab_fim_pad.restype = ctypes.c_int32
+
+def llama_vocab_fim_pad(vocab: llama_vocab) -> int:
+    """Get the infill pad token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_fim_pad(vocab)
+
+libllama.llama_vocab_fim_rep.argtypes = [llama_vocab_p]
+libllama.llama_vocab_fim_rep.restype = ctypes.c_int32
+
+def llama_vocab_fim_rep(vocab: llama_vocab) -> int:
+    """Get the infill repo token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_fim_rep(vocab)
+
+libllama.llama_vocab_fim_sep.argtypes = [llama_vocab_p]
+libllama.llama_vocab_fim_sep.restype = ctypes.c_int32
+
+def llama_vocab_fim_sep(vocab: llama_vocab) -> int:
+    """Get the infill separator token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    return libllama.llama_vocab_fim_sep(vocab)
+
+@DEPRECATED(new_func_name="llama_vocab_fim_pre")
 def llama_token_prefix(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_token_fim_mid")
+@DEPRECATED(new_func_name="llama_vocab_fim_mid")
 def llama_token_middle(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_token_fim_suf")
+@DEPRECATED(new_func_name="llama_vocab_fim_suf")
 def llama_token_suffix(*args):
     pass
 
-libllama.llama_token_fim_pre.argtypes = [llama_model_p]
-libllama.llama_token_fim_pre.restype = ctypes.c_int32
+@DEPRECATED(new_func_name='llama_vocab_get_text')
+def llama_token_get_text(*args):
+    pass
 
-def llama_token_fim_pre(model: llama_model) -> int:
-    """Get the infill prefix token ID. Returns -1 if not found."""
-    return libllama.llama_token_fim_pre(model)
+@DEPRECATED(new_func_name='llama_vocab_get_score')
+def llama_token_get_score(*args):
+    pass
 
-libllama.llama_token_fim_suf.argtypes = [llama_model_p]
-libllama.llama_token_fim_suf.restype = ctypes.c_int32
+@DEPRECATED(new_func_name='llama_vocab_get_attr')
+def llama_token_get_attr(*args):
+    pass
 
-def llama_token_fim_suf(model: llama_model) -> int:
-    """Get the infill suffix token ID. Returns -1 if not found."""
-    return libllama.llama_token_fim_suf(model)
+@DEPRECATED(new_func_name='llama_vocab_is_eog')
+def llama_token_is_eog(*args):
+    pass
 
-libllama.llama_token_fim_mid.argtypes = [llama_model_p]
-libllama.llama_token_fim_mid.restype = ctypes.c_int32
+@DEPRECATED(new_func_name='llama_vocab_is_control')
+def llama_token_is_control(*args):
+    pass
 
-def llama_token_fim_mid(model: llama_model) -> int:
-    """Get the infill middle token ID. Returns -1 if not found."""
-    return libllama.llama_token_fim_mid(model)
+@DEPRECATED(new_func_name='llama_vocab_bos')
+def llama_token_bos(*args):
+    pass
 
-libllama.llama_token_fim_pad.argtypes = [llama_model_p]
-libllama.llama_token_fim_pad.restype = ctypes.c_int32
+@DEPRECATED(new_func_name='llama_vocab_eos')
+def llama_token_eos(*args):
+    pass
 
-def llama_token_fim_pad(model: llama_model) -> int:
-    """Get the infill pad token ID. Returns -1 if not found."""
-    return libllama.llama_token_fim_pad(model)
+@DEPRECATED(new_func_name='llama_vocab_eot')
+def llama_token_eot(*args):
+    pass
 
-libllama.llama_token_fim_rep.argtypes = [llama_model_p]
-libllama.llama_token_fim_rep.restype = ctypes.c_int32
+@DEPRECATED(new_func_name='llama_vocab_bos')
+def llama_token_cls(*args):
+    pass
 
-def llama_token_fim_rep(model: llama_model) -> int:
-    """Get the infill repo token ID. Returns -1 if not found."""
-    return libllama.llama_token_fim_rep(model)
+@DEPRECATED(new_func_name='llama_vocab_sep')
+def llama_token_sep(*args):
+    pass
 
-libllama.llama_token_fim_sep.argtypes = [llama_model_p]
-libllama.llama_token_fim_sep.restype = ctypes.c_int32
+@DEPRECATED(new_func_name='llama_vocab_nl')
+def llama_token_nl(*args):
+    pass
 
-def llama_token_fim_sep(model: llama_model) -> int:
-    """Get the infill separator token ID. Returns -1 if not found."""
-    return libllama.llama_token_fim_sep(model)
+@DEPRECATED(new_func_name='llama_vocab_pad')
+def llama_token_pad(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_get_add_bos')
+def llama_add_bos_token(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_get_add_eos')
+def llama_add_eos_token(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_fim_pre')
+def llama_token_fim_pre(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_fim_suf')
+def llama_token_fim_suf(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_fim_mid')
+def llama_token_fim_mid(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_fim_pad')
+def llama_token_fim_pad(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_fim_rep')
+def llama_token_fim_rep(*args):
+    pass
+
+@DEPRECATED(new_func_name='llama_vocab_fim_sep')
+def llama_token_fim_sep(*args):
+    pass
 
 #
 # Tokenization
 #
 
-libllama.llama_tokenize.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
+libllama.llama_tokenize.argtypes = [llama_vocab_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
 libllama.llama_tokenize.restype = ctypes.c_int
 
-def llama_tokenize(model: llama_model, text: bytes, text_len: int, tokens: ptr[ctypes.c_int32], n_tokens_max: int, add_special: bool, parse_special: bool) -> int:
+def llama_tokenize(vocab: llama_vocab, text: bytes, text_len: int, tokens: ptr[ctypes.c_int32], n_tokens_max: int, add_special: bool, parse_special: bool) -> int:
     """
     Convert the provided text into tokens
 
-    - model:
-        The llama_model to use.
+    - vocab:
+        The llama_vocab to use.
     - text:
         The text to convert (as bytes)
     - text_len:
@@ -1500,24 +1665,24 @@ def llama_tokenize(model: llama_model, text: bytes, text_len: int, tokens: ptr[c
     a negative number on failure - the number of tokens that would have been
     returned.
     """
-    return libllama.llama_tokenize(model, text, text_len, tokens, n_tokens_max, add_special, parse_special)
+    return libllama.llama_tokenize(vocab, text, text_len, tokens, n_tokens_max, add_special, parse_special)
 
-libllama.llama_token_to_piece.argtypes = [llama_model_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
+libllama.llama_token_to_piece.argtypes = [llama_vocab_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
 libllama.llama_token_to_piece.restype = ctypes.c_int
 
-def llama_token_to_piece(model: llama_model, token: int, buf: ctypes.c_char_p, length: int, lstrip: int, special: bool) -> int:
+def llama_token_to_piece(vocab: llama_vocab, token: int, buf: ctypes.c_char_p, length: int, lstrip: int, special: bool) -> int:
     """Convert a single token to a piece of text"""
-    return libllama.llama_token_to_piece(model, token, buf, length, lstrip, special)
+    return libllama.llama_token_to_piece(vocab, token, buf, length, lstrip, special)
 
-libllama.llama_detokenize.argtypes = [llama_model_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
+libllama.llama_detokenize.argtypes = [llama_vocab_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_bool, ctypes.c_bool]
 libllama.llama_detokenize.restype = ctypes.c_int
 
-def llama_detokenize(model: llama_model, tokens: ptr[ctypes.c_int32], n_tokens: int, text: ctypes.c_char_p, text_len_max: int, remove_special: bool, unparse_special: bool) -> int:
+def llama_detokenize(vocab: llama_vocab, tokens: ptr[ctypes.c_int32], n_tokens: int, text: ctypes.c_char_p, text_len_max: int, remove_special: bool, unparse_special: bool) -> int:
     """
     Convert the provided tokens into text
 
-    - model:
-        The llama_model to use.
+    - vocab:
+        The llama_vocab to use.
     - tokens:
         The tokens to convert.
     - n_tokens:
@@ -1535,17 +1700,17 @@ def llama_detokenize(model: llama_model, tokens: ptr[ctypes.c_int32], n_tokens: 
     Returns a negative number on failure - the number of chars/bytes that would
     have been returned.
     """
-    return libllama.llama_detokenize(model, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
+    return libllama.llama_detokenize(vocab, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
 
 #
 # Chat templating
 #
 
-libllama.llama_chat_apply_template.argtypes = [llama_model_p, ctypes.c_char_p, llama_chat_message_p, size_t, ctypes.c_bool, ctypes.c_char_p, ctypes.c_int32]
+libllama.llama_chat_apply_template.argtypes = [ctypes.c_char_p, llama_chat_message_p, size_t, ctypes.c_bool, ctypes.c_char_p, ctypes.c_int32]
 libllama.llama_chat_apply_template.restype = ctypes.c_int32
 
-def llama_chat_apply_template(model: ptr[llama_model], tmpl: ptr[ctypes.c_char], chat: ptr[llama_chat_message], n_msg: int, add_ass: bool, buf: ptr[ctypes.c_char], length: int):
-    return libllama.llama_chat_apply_template(model, tmpl, chat, n_msg, add_ass, buf, length)
+def llama_chat_apply_template(tmpl: ptr[ctypes.c_char], chat: ptr[llama_chat_message], n_msg: int, add_ass: bool, buf: ptr[ctypes.c_char], length: int):
+    return libllama.llama_chat_apply_template(tmpl, chat, n_msg, add_ass, buf, length)
 
 libllama.llama_chat_builtin_templates.argtypes = [ctypes.POINTER(ctypes.c_char_p), size_t]
 libllama.llama_chat_builtin_templates.restype = ctypes.c_int32
@@ -1756,12 +1921,12 @@ def llama_sampler_init_mirostat_v2(seed: int, tau: float, eta: float) -> llama_s
     """Initialize a Mirostat v2 sampler"""
     return libllama.llama_sampler_init_mirostat_v2(seed, tau, eta)
 
-libllama.llama_sampler_init_grammar.argtypes = [llama_model_p, ctypes.c_char_p, ctypes.c_char_p]
+libllama.llama_sampler_init_grammar.argtypes = [llama_vocab_p, ctypes.c_char_p, ctypes.c_char_p]
 libllama.llama_sampler_init_grammar.restype = llama_sampler_p
 
-def llama_sampler_init_grammar(model: llama_model, grammar_str: str, grammar_root: str) -> llama_sampler:
+def llama_sampler_init_grammar(vocab: llama_vocab, grammar_str: str, grammar_root: str) -> llama_sampler:
     """Initialize a grammar sampler"""
-    return libllama.llama_sampler_init_grammar(model, grammar_str.encode('utf-8'), grammar_root.encode('utf-8'))
+    return libllama.llama_sampler_init_grammar(vocab, grammar_str.encode('utf-8'), grammar_root.encode('utf-8'))
 
 libllama.llama_sampler_init_penalties.argtypes = [ctypes.c_int32, ctypes.c_float, ctypes.c_float, ctypes.c_float]
 libllama.llama_sampler_init_penalties.restype = llama_sampler_p
@@ -1770,12 +1935,12 @@ def llama_sampler_init_penalties(penalty_last_n: int, penalty_repeat: float, pen
     """Initialize a penalties sampler"""
     return libllama.llama_sampler_init_penalties(penalty_last_n, penalty_repeat, penalty_freq, penalty_present)
 
-libllama.llama_sampler_init_dry.argtypes = [llama_model_p, ctypes.c_float, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
+libllama.llama_sampler_init_dry.argtypes = [llama_vocab_p, ctypes.c_int32, ctypes.c_float, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
 libllama.llama_sampler_init_dry.restype = llama_sampler_p
 
-def llama_sampler_init_dry(model: llama_model, dry_multiplier: float, dry_base: float, dry_allowed_length: int, dry_penalty_last_n: int, seq_breakers: ptr[ctypes.c_char_p], num_breakers: int) -> llama_sampler:
+def llama_sampler_init_dry(vocab: llama_vocab, n_ctx_train: int, dry_multiplier: float, dry_base: float, dry_allowed_length: int, dry_penalty_last_n: int, seq_breakers: ptr[ctypes.c_char_p], num_breakers: int) -> llama_sampler:
     """Initialize a DRY sampler"""
-    return libllama.llama_sampler_init_dry(model, dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, seq_breakers, num_breakers)
+    return libllama.llama_sampler_init_dry(vocab, n_ctx_train, dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, seq_breakers, num_breakers)
 
 libllama.llama_sampler_init_logit_bias.argtypes = [ctypes.c_int, ctypes.c_int, llama_logit_bias_p]
 libllama.llama_sampler_init_logit_bias.restype = llama_sampler_p
@@ -1784,16 +1949,16 @@ def llama_sampler_init_logit_bias(n_vocab: int, n_logit_bias: int, logit_bias: p
     """Initialize a logit bias sampler"""
     return libllama.llama_sampler_init_logit_bias(n_vocab, n_logit_bias, logit_bias)
 
-libllama.llama_sampler_init_infill.argtypes = [llama_model_p]
+libllama.llama_sampler_init_infill.argtypes = [llama_vocab_p]
 libllama.llama_sampler_init_infill.restype = llama_sampler_p
 
-def llama_sampler_init_infill(model: llama_model) -> llama_sampler:
+def llama_sampler_init_infill(vocab: llama_vocab) -> llama_sampler:
     """
     Initialize an infill sampler
     
     This sampler is meant to be used for fill-in-the-middle infilling. It's supposed to be used after top_k + top_p sampling
     """
-    return libllama.llama_sampler_init_infill(model)
+    return libllama.llama_sampler_init_infill(vocab)
 
 libllama.llama_sampler_get_seed.argtypes = [llama_sampler_p]
 libllama.llama_sampler_get_seed.restype = ctypes.c_int
@@ -1952,7 +2117,7 @@ class _internals:
     """The maximum supported length of a single token's text, in bytes"""
 
     class LogitBiasArray:
-        """Type hint for `ctypes.Array[llama_logit_bias]` of arbitrary length"""
+        """Type hint for a `ctypes.Array[llama_logit_bias]` of arbitrary length"""
 
     def decode_pp(
         ctx: ptr[llama_context],

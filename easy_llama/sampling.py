@@ -8,7 +8,7 @@ import ctypes
 
 from typing    import Optional
 from .libllama import _internals
-from .utils    import null_ptr_check, print_info
+from .utils    import null_ptr_check, print_info, ez_encode
 
 from . import libllama as lib
 
@@ -202,7 +202,7 @@ class SamplerParams:
             _model = llama._model.model
             null_ptr_check(_model, 'llama._model.model', 'SamplerParams.__init__')
             seq_breakers = dry_sequence_breakers
-            seq_breakers_bytes = [s.encode() for s in seq_breakers]
+            seq_breakers_bytes = [ez_encode(s) for s in seq_breakers]
             arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_dry(
