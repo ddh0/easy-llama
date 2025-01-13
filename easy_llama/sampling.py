@@ -15,7 +15,7 @@ from . import libllama as lib
 HIGH_TEMP = 10_000.0
 
 class Llama: # can't import the real Llama - would be circular
-    "Type hint denoting a `llama.Llama` instance"
+    """Type hint denoting a `llama.Llama` instance"""
 
 def _get_random_seed() -> int:
     # uint32_t

@@ -24,6 +24,12 @@ def KeyboardInterruptHandler():
 
 class Thread:
 
+    valid_system_roles = ['system', 'developer'         ]
+    valid_user_roles   = ['user',   'human'             ]
+    valid_bot_roles    = ['bot',    'assistant', 'model']
+
+    all_valid_roles = valid_system_roles + valid_user_roles + valid_bot_roles
+
     def __init__(
         self,
         llama: _llama.Llama,
@@ -74,12 +80,21 @@ class Thread:
         )
     
     def get_input_ids(self, role: Optional[str] = 'bot') -> list[int]:
+        """
+        Get a list of token IDs in this thread, to be used for inference
+
+        - role:
+            The role for which inference will be performed (usually 'bot'). Can be 'system',
+            'user', 'bot', or None. If None, no role prefix will be appended (this is useful 
+            when you just want to get all the tokens in this Thread but are not going to do
+            inference).
+        """
         input_ids = []
         if len(self.messages) > 0:
-            # the first message requires `add_special=True` in order to set
+            # the prefix of the first message requires `add_special=True` in order to set
             # the BOS token correctly
             first_msg = self.messages[0]
-            if first_msg['role'].lower() == 'system':
+            if first_msg['role'].lower() in Thread.valid_system_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.system_prefix()),
                     add_special=True,
@@ -95,7 +110,7 @@ class Thread:
                     add_special=False,
                     parse_special=True
                 ))
-            elif first_msg['role'].lower() == 'user':
+            elif first_msg['role'].lower() in Thread.valid_user_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.user_prefix()),
                     add_special=True,
@@ -111,7 +126,7 @@ class Thread:
                     add_special=False,
                     parse_special=True
                 ))
-            elif first_msg['role'].lower() == 'bot':
+            elif first_msg['role'].lower() in Thread.valid_bot_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.bot_prefix()),
                     add_special=True,
@@ -129,19 +144,17 @@ class Thread:
                 ))
             else:
                 raise ValueError(
-                    f'Thread.get_input_ids: first message has invalid role '
-                    f'{role!r}'
+                    f'Thread.get_input_ids: first message has invalid role {role!r}'
                 )
             # all the other messages are treated the same
             i = 0
             for msg in self.messages[1:]:
                 i += 1
-                if msg['role'].lower() == 'system':
+                if msg['role'].lower() in Thread.valid_system_roles:
                     raise ValueError(
-                        f'Thread.get_input_ids: multiple system messages are '
-                        f'not supported'
+                        f'Thread.get_input_ids: multiple system messages are not supported'
                     )
-                elif msg['role'].lower() == 'user':
+                elif msg['role'].lower() in Thread.valid_user_roles:
                     input_ids.extend(self.llama.tokenize(
                         text_bytes=ez_encode(self.prompt_format.user_prefix()),
                         add_special=False,
@@ -157,7 +170,7 @@ class Thread:
                         add_special=False,
                         parse_special=True
                     ))
-                elif msg['role'].lower() == 'bot':
+                elif msg['role'].lower() in Thread.valid_bot_roles:
                     input_ids.extend(self.llama.tokenize(
                         text_bytes=ez_encode(self.prompt_format.bot_prefix()),
                         add_special=False,
@@ -175,24 +188,23 @@ class Thread:
                     ))
                 else:
                     raise ValueError(
-                        f'Thread.get_input_ids: message {i} has invalid role '
-                        f'{role!r}'
+                        f'Thread.get_input_ids: message {i} has invalid role {role!r}'
                     )
         if role is not None:
             # append the role prefix tokens to the end
             # (if role is None, no prefix is appended)
-            if role.lower() == 'system':
+            if role.lower() in Thread.valid_system_roles:
                 raise ValueError(
                     f'Thread.get_input_ids: multiple system messages are not '
                     f'supported'
                 )
-            elif role.lower() == 'user':
+            elif role.lower() in Thread.valid_user_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.user_prefix()),
                     add_special=False,
                     parse_special=True
                 ))
-            elif role.lower() == 'bot':
+            elif role.lower() in Thread.valid_bot_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.bot_prefix()),
                     add_special=False,
@@ -240,28 +252,26 @@ class Thread:
         """Return this thread's message history as a string"""
         result_str = ''
         for msg in self.messages:
-            if msg['role'].lower() == 'system':
+            if msg['role'].lower() in Thread.valid_system_roles:
                 result_str += ''.join([
                     self.prompt_format.system_prefix(),
                     msg['content'],
                     self.prompt_format.system_suffix()
                 ])
-            elif msg['role'].lower() == 'user':
+            elif msg['role'].lower() in Thread.valid_user_roles:
                 result_str += ''.join([
                     self.prompt_format.user_prefix(),
                     msg['content'],
                     self.prompt_format.user_suffix()
                 ])
-            elif msg['role'].lower() == 'bot':
+            elif msg['role'].lower() in Thread.valid_bot_roles:
                 result_str += ''.join([
                     self.prompt_format.bot_prefix(),
                     msg['content'],
                     self.prompt_format.bot_suffix()
                 ])
             else:
-                raise ValueError(
-                    f"Thread.as_string: invalid message role {msg['role']!r}"
-                )
+                raise ValueError(f"Thread.as_string: invalid message role {msg['role']!r}")
         return result_str
     
     def add_message(self, role: str, content: str) -> None:
@@ -272,9 +282,7 @@ class Thread:
         elif role.lower() == 'bot':
             self.messages.append({'role': 'bot', 'content': content})
         else:
-            raise ValueError(
-                f'Thread.add_message: invalid role {role!r}'
-            )
+            raise ValueError(f'Thread.add_message: invalid role {role!r}')
     
     def warmup(self) -> None:
         input_ids = self.get_input_ids()
@@ -282,10 +290,9 @@ class Thread:
             _llama.print_info_if_verbose(
                 'Thread.warmup: processing thread content with model ...'
             )
-            self.llama.generate(
-                input_tokens=input_ids,
-                n_predict=0
-            )
+            self.llama.generate(input_tokens=input_ids, n_predict=0)
+        # if the above condition is not True, the thread is already in the cache, so
+        # nothing needs to be done
         _llama.print_info_if_verbose('Thread.warmup: done')
     
     def interact(self, stream: bool = True) -> None:
@@ -346,11 +353,8 @@ class Thread:
                            'in the form of a single paragraph.'
             }
         ]
-        input_ids = self.get_input_ids()
-        output_ids = self.llama.generate(
-            input_tokens=input_ids,
-            n_predict=300
-        )
+        input_ids = self.get_input_ids() # uses the above messages
+        output_ids = self.llama.generate(input_tokens=input_ids, n_predict=300)
         summary = self.llama.detokenize(output_ids, special=False)
         self.messages = orig_thread_messages.copy()
         return ez_decode(summary)

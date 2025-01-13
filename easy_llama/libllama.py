@@ -602,13 +602,6 @@ def llama_init_from_model(model: llama_model, params: llama_context_params) -> p
     """Create a new llama context with a loaded model"""
     return libllama.llama_init_from_model(model, ctypes.byref(params))
 
-libllama.llama_model_free.argtypes = [llama_context_p]
-libllama.llama_model_free.restype = None
-
-def llama_model_free(ctx: llama_context) -> None:
-    """Frees all allocated memory"""
-    libllama.llama_model_free(ctx)
-
 libllama.llama_free.argtypes = [llama_context_p]
 libllama.llama_free.restype = None
 
@@ -844,7 +837,7 @@ def llama_model_size(model: llama_model) -> int:
 libllama.llama_model_chat_template.argtypes = [llama_model_p]
 libllama.llama_model_chat_template.restype = ctypes.c_char_p
 
-def llama_model_chat_template(model: ptr[llama_model]):
+def llama_model_chat_template(model: ptr[llama_model]) -> ctypes.c_char_p:
     """Get the built-in chat template for this model. Returns NULL if not available."""
     return libllama.llama_model_chat_template(model)
 
@@ -929,12 +922,12 @@ def llama_adapter_lora_init(model: llama_model, path_lora: str) -> ptr[llama_ada
     """Initialize a LoRA adapter"""
     return libllama.llama_adapter_lora_init(model, path_lora.encode('utf-8'))
 
-libllama.llama_adapter_lora_set.argtypes = [llama_context_p, llama_adapter_lora_p, ctypes.c_float]
-libllama.llama_adapter_lora_set.restype = ctypes.c_int
+libllama.llama_set_adapter_lora.argtypes = [llama_context_p, llama_adapter_lora_p, ctypes.c_float]
+libllama.llama_set_adapter_lora.restype = ctypes.c_int
 
 def llama_adapter_lora_set(ctx: llama_context, adapter: llama_adapter_lora, scale: float) -> int:
     """Set a LoRA adapter for a context"""
-    return libllama.llama_adapter_lora_set(ctx, adapter, scale)
+    return libllama.llama_set_adapter_lora(ctx, adapter, scale)
 
 libllama.llama_rm_adapter_lora.argtypes = [llama_context_p, llama_adapter_lora_p]
 libllama.llama_rm_adapter_lora.restype = ctypes.c_int
@@ -943,12 +936,12 @@ def llama_rm_adapter_lora(ctx: llama_context, adapter: llama_adapter_lora) -> in
     """Remove a LoRA adapter from a context"""
     return libllama.llama_rm_adapter_lora(ctx, adapter)
 
-libllama.llama_adapter_lora_clear.argtypes = [llama_context_p]
-libllama.llama_adapter_lora_clear.restype = None
+libllama.llama_clear_adapter_lora.argtypes = [llama_context_p]
+libllama.llama_clear_adapter_lora.restype = None
 
-def llama_adapter_lora_clear(ctx: llama_context) -> None:
+def llama_clear_adapter_lora(ctx: llama_context) -> None:
     """Clear all LoRA adapters from a context"""
-    libllama.llama_adapter_lora_clear(ctx)
+    libllama.llama_clear_adapter_lora(ctx)
 
 libllama.llama_adapter_lora_free.argtypes = [llama_adapter_lora_p]
 libllama.llama_adapter_lora_free.restype = None
@@ -977,21 +970,20 @@ def llama_lora_adapter_clear(*args):
 def llama_lora_adapter_free(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_apply_adapter_cvec')
-def llama_control_vector_apply(*args):
-    pass
-
 #
 # Control vector
 #
 
-libllama.llama_control_vector_apply.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-libllama.llama_control_vector_apply.restype = ctypes.c_int
+libllama.llama_apply_adapter_cvec.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+libllama.llama_apply_adapter_cvec.restype = ctypes.c_int
 
-# // TODO: rename to llama_adapter_cvec_apply
-def llama_control_vector_apply(ctx: llama_context, data: ctypes.c_void_p, len: int, n_embd: int, il_start: int, il_end: int) -> int:
+def llama_apply_adapter_cvec(ctx: llama_context, data: ctypes.c_void_p, len: int, n_embd: int, il_start: int, il_end: int) -> int:
     """Apply a control vector to a context"""
-    return libllama.llama_control_vector_apply(ctx, data, len, n_embd, il_start, il_end)
+    return libllama.llama_adapter_cvec_apply(ctx, data, len, n_embd, il_start, il_end)
+
+@DEPRECATED(new_func_name='llama_apply_adapter_cvec')
+def llama_control_vector_apply(*args):
+    pass
 
 #
 # KV cache
@@ -1486,19 +1478,19 @@ def llama_vocab_pad(vocab: llama_vocab) -> int:
     """Get the padding token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
     return libllama.llama_vocab_pad(vocab)
 
-libllama.llama_add_bos_token.argtypes = [llama_vocab_p]
-libllama.llama_add_bos_token.restype = ctypes.c_bool
+libllama.llama_vocab_get_add_bos.argtypes = [llama_vocab_p]
+libllama.llama_vocab_get_add_bos.restype = ctypes.c_bool
 
-def llama_add_bos_token(vocab: llama_vocab) -> bool:
+def llama_vocab_get_add_bos(vocab: llama_vocab) -> bool:
     """Whether BOS token should be added to tokenizations"""
-    return libllama.llama_add_bos_token(vocab)
+    return libllama.llama_vocab_get_add_bos(vocab)
 
-libllama.llama_add_eos_token.argtypes = [llama_vocab_p]
-libllama.llama_add_eos_token.restype = ctypes.c_bool
+libllama.llama_vocab_get_add_eos.argtypes = [llama_vocab_p]
+libllama.llama_vocab_get_add_eos.restype = ctypes.c_bool
 
-def llama_add_eos_token(vocab: llama_vocab) -> bool:
+def llama_vocab_get_add_eos(vocab: llama_vocab) -> bool:
     """Whether EOS token should be added to tokenizations"""
-    return libllama.llama_add_eos_token(vocab)
+    return libllama.llama_vocab_get_add_eos(vocab)
 
 libllama.llama_vocab_fim_pre.argtypes = [llama_vocab_p]
 libllama.llama_vocab_fim_pre.restype = ctypes.c_int32
@@ -2181,7 +2173,7 @@ class _internals:
         return llama_sampler_sample(_internals.greedy_sampler, ctx, -1)
 
     def tokenize(
-        model: ptr[llama_model],
+        vocab: ptr[llama_vocab],
         text_bytes: bytes,
         n_tokens_max: int,
         add_special: bool,
@@ -2192,6 +2184,8 @@ class _internals:
 
         Convert the provided UTF-8 encoded text into tokens
 
+        - vocab:
+            A pointer to a llama_vocab to use for tokenization
         - text_bytes:
             The text to be tokenized
         - n_tokens_max:
@@ -2209,7 +2203,7 @@ class _internals:
         # because it could potentially be quite large - each token takes 4 bytes
         tokens_buf = (ctypes.c_int32 * n_tokens_max)()
         n_tokens = llama_tokenize(
-            model=model,
+            vocab=vocab,
             text=text_bytes,
             text_len=len(text_bytes),
             tokens=tokens_buf,
@@ -2230,16 +2224,14 @@ class _internals:
     # it is only 256 bytes, so OK to keep in memory
     detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
 
-    def token_to_piece(
-        model: ptr[llama_model], token: int, special: bool
-    ) -> bytes:
+    def token_to_piece(vocab: ptr[llama_vocab], token: int, special: bool) -> bytes:
         """
         ### INTERNAL
 
         Convert token ID to text bytes
         """
         n_bytes = llama_token_to_piece(
-            model=model,
+            vocab=vocab,
             token=token,
             buf=_internals.detok_buffer,
             length=_internals.MAX_TOKEN_LENGTH,
@@ -2258,7 +2250,7 @@ class _internals:
         return _internals.detok_buffer.raw[:n_bytes]
 
     def detokenize(
-        model: ptr[llama_model],
+        vocab: ptr[llama_vocab],
         tokens: Iterable[int],
         special: bool
     ) -> bytes:
@@ -2274,7 +2266,7 @@ class _internals:
         detok_bytes = b""
         for token in tokens:
             n_bytes = llama_token_to_piece(
-                model=model,
+                vocab=vocab,
                 token=token,
                 buf=_internals.detok_buffer,
                 length=_internals.MAX_TOKEN_LENGTH,
@@ -2291,7 +2283,7 @@ class _internals:
         return detok_bytes
 
     def get_length(
-        model: ptr[llama_model],
+        vocab: ptr[llama_vocab],
         text_bytes: bytes,
         add_special: bool,
         parse_special: bool,
@@ -2302,7 +2294,7 @@ class _internals:
         Return the length of a given text, as measured in tokens
         """
         return -llama_tokenize(
-            model=model,
+            vocab=vocab,
             text=text_bytes,
             text_len=len(text_bytes),
             tokens=NULL,
@@ -2348,7 +2340,7 @@ def main():
     model_params.n_gpu_layers = MAX_OFFLOAD_LAYERS
     model_params.use_mmap = True
 
-    model = llama_load_model_from_file(test_model_path, model_params)
+    model = llama_model_load_from_file(test_model_path, model_params)
 
     ctx_params = llama_context_default_params()
     ctx_params.n_ctx = 8192
@@ -2358,25 +2350,26 @@ def main():
     ctx_params.offload_kqv = True
     ctx_params.flash_attn = True
 
-    ctx = llama_new_context_with_model(model, ctx_params)
+    ctx = llama_init_from_model(model, ctx_params)
 
     llama_set_n_threads(ctx, ctx_params.n_threads, ctx_params.n_threads_batch)
 
     logit_biases = {67722: -100.00, 55152: -100.00}
     logit_bias_arr = _internals.get_logit_bias_array(logit_biases)
 
-    smpl = llama_sampler_chain_init(llama_sampler_chain_default_params())
+    sparams = llama_sampler_chain_default_params()
 
-    llama_sampler_chain_add(
-        smpl, llama_sampler_init_logit_bias(
-            n_vocab=llama_n_vocab(model),
-            n_logit_bias=len(logit_biases),
-            logit_bias=logit_bias_arr
-        )
-    )
-    llama_sampler_chain_add(
-        smpl, llama_sampler_init_greedy()
-    )
+    smpl = llama_sampler_chain_init(sparams)
+
+    vocab = llama_model_get_vocab(model)
+
+    llama_sampler_chain_add(smpl, llama_sampler_init_logit_bias(
+        n_vocab=llama_vocab_n_tokens(vocab),
+        n_logit_bias=len(logit_biases),
+        logit_bias=logit_bias_arr
+    ))
+
+    llama_sampler_chain_add(smpl, llama_sampler_init_greedy())
 
     def sample_logit_bias(ctx: ptr[llama_context]) -> int:
         id = llama_sampler_sample(smpl, ctx, -1)

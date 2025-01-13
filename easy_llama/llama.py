@@ -536,7 +536,7 @@ class _LlamaModel:
         # load model
         
         with suppress_output(disable=get_verbose()):
-            self.model = lib.llama_load_model_from_file(path_model, self.params)
+            self.model = lib.llama_model_load_from_file(path_model, self.params)
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
     
     def __del__(self):
@@ -545,7 +545,7 @@ class _LlamaModel:
     def free(self):
         if self.model is not None:
             with suppress_output(disable=get_verbose()):
-                lib.llama_free_model(self.model)
+                lib.llama_model_free(self.model)
             self.model = None
 
 
@@ -673,7 +673,7 @@ class _LlamaCtx:
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
 
         with suppress_output(disable=get_verbose()):
-            self.ctx = lib.llama_new_context_with_model(model.model, self.params)
+            self.ctx = lib.llama_init_from_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
     
     def __del__(self):
@@ -851,16 +851,17 @@ class Llama:
                 use_mmap=use_mmap,
                 use_mlock=use_mlock
             )
+        
+        self._vocab = lib.llama_model_get_vocab(self._model.model)
+        """A pointer to this model's `llama_vocab`"""
+        null_ptr_check(self._vocab, 'self._vocab', 'Llama.__init__')
 
-        n_ctx_train = lib.llama_n_ctx_train(self._model.model)
+        n_ctx_train = lib.llama_model_n_ctx_train(self._model.model)
 
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
         if n_ctx <= 0:
-            print_info_if_verbose(
-                f'n_ctx value {n_ctx}; using n_ctx_train value '
-                f'{n_ctx_train}'
-            )
+            print_info_if_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
             _n_ctx = int(n_ctx_train)
         else:
             _n_ctx = int(n_ctx)
@@ -954,7 +955,7 @@ class Llama:
         self._n_embd                = self.n_embd()
         self._n_layer               = self.n_layer()
         self._n_head                = self.n_head() # attn heads, not KV
-        self._pooling_type          = self.pooling_type()
+        self._ctx_pooling_type      = self.ctx_pooling_type()
         self._vocab_type            = self.vocab_type()
         self._rope_type             = self.rope_type()
         self._rope_freq_scale_train = self.rope_freq_scale_train()
@@ -966,7 +967,6 @@ class Llama:
         self._token_bos             = self.token_bos()
         self._token_eos             = self.token_eos()
         self._token_eot             = self.token_eot()
-        self._token_cls             = self.token_cls()
         self._token_sep             = self.token_sep()
         self._token_nl              = self.token_nl()
         self._token_pad             = self.token_pad()
@@ -1007,11 +1007,12 @@ class Llama:
     
     def _validate_model_state(self) -> None:
         """
-        Ensure `llama_model` and `llama_context` are not NULL and validate
+        Ensure `llama_model`, `llama_vocab` and `llama_context` are not NULL and validate
         `Llama.pos`
         """
-        null_ptr_check(self._model.model, 'self._model.model', 'Thread.__init__')
-        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Thread.__init__')
+        null_ptr_check(self._model.model, 'self._model.model', '_validate_model_state')
+        null_ptr_check(self._vocab,       'self._vocab',       '_validate_model_state')
+        null_ptr_check(self._ctx.ctx,     'self._ctx.ctx',     '_validate_model_state')
         def _fail(txt: str):
             print_error(f'Llama: validation failed: {txt}')
             raise RuntimeError(f'Llama: validation failed: {txt}')
@@ -1067,53 +1068,59 @@ class Llama:
 
     def n_vocab(self) -> int:
         """Get the vocab size"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.n_vocab")
-        return lib.llama_n_vocab(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.n_vocab")
+        return lib.llama_vocab_n_tokens(self._vocab)
 
     def n_ctx_train(self) -> int:
         """Get the trained context length"""
         null_ptr_check(self._model.model, 'self._model.model', 'Llama.n_ctx_train')
-        return lib.llama_n_ctx_train(self._model.model)
+        return lib.llama_model_n_ctx_train(self._model.model)
 
     def n_embd(self) -> int:
         """Get the embedding size"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_embd")
-        return lib.llama_n_embd(self._model.model)
+        return lib.llama_model_n_embd(self._model.model)
 
     def n_layer(self) -> int:
         """Get the number of layers"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_layer")
-        return lib.llama_n_layer(self._model.model)
+        return lib.llama_model_n_layer(self._model.model)
 
     def n_head(self) -> int:
         """Get the number of attention heads"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_head")
-        return lib.llama_n_head(self._model.model)
+        return lib.llama_model_n_head(self._model.model)
 
-    def pooling_type(self) -> int:
-        """Get the pooling type"""
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.pooling_type")
+    def ctx_pooling_type(self) -> int:
+        """Get the pooling type used by the context"""
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.ctx_pooling_type")
         return lib.llama_pooling_type(self._ctx.ctx)
 
     def vocab_type(self) -> int:
         """Get the vocab type"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.vocab_type")
-        return lib.llama_vocab_type(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.vocab_type")
+        return lib.llama_vocab_type(self._vocab)
 
     def rope_type(self) -> int:
         """Get the RoPE type"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.rope_type")
-        return lib.llama_rope_type(self._model.model)
+        return lib.llama_model_rope_type(self._model.model)
 
     def rope_freq_scale_train(self) -> float:
         """Get the trained RoPE frequency scale"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.rope_freq_scale_train")
-        return lib.llama_rope_freq_scale_train(self._model.model)
+        return lib.llama_model_rope_freq_scale_train(self._model.model)
 
     def model_size(self) -> int:
         """Get the total size of the model in bytes"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.model_size")
         return lib.llama_model_size(self._model.model)
+    
+    def chat_template(self) -> str:
+        """Get the model's built-in chat template string. Returns None if not available."""
+        # TODO: almost certainly does not work yet
+        null_ptr_check(self._model.model, "self._model.model", "Llama.chat_template")
+        return lib.llama_model_chat_template(self._model.model)
 
     def model_n_params(self) -> int:
         """Get the total number of parameters in the model"""
@@ -1201,93 +1208,88 @@ class Llama:
 
     def token_get_score(self, token: int) -> float:
         """Get the score of a token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_get_score")
-        return lib.llama_token_get_score(self._model.model, token)
+        null_ptr_check(self._vocab, "self._vocabl", "Llama.token_get_score")
+        return lib.llama_vocab_get_score(self._vocab, token)
 
     def token_is_eog(self, token: int) -> bool:
         """If the token is marked as EOG (End-Of-Generation)"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_is_eog")
-        return lib.llama_token_is_eog(self._model.model, token)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_is_eog")
+        return lib.llama_vocab_is_eog(self._vocab, token)
 
     def token_is_control(self, token: int) -> bool:
         """If the token is marked as a control token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_is_control")
-        return lib.llama_token_is_control(self._model.model, token)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_is_control")
+        return lib.llama_vocab_is_control(self._vocab, token)
 
     def token_bos(self) -> int:
         """Get the BOS (Beginning-Of-Sequence) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_bos")
-        return lib.llama_token_bos(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_bos")
+        return lib.llama_vocab_bos(self._vocab)
 
     def token_eos(self) -> int:
         """Get the EOS (End-Of-Sequence) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_eos")
-        return lib.llama_token_eos(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_eos")
+        return lib.llama_vocab_eos(self._vocab)
 
     def token_eot(self) -> int:
         """Get the EOT (End-Of-Turn) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_eot")
-        return lib.llama_token_eot(self._model.model)
-
-    def token_cls(self) -> int:
-        """Get the CLS (Classification) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_cls")
-        return lib.llama_token_cls(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_eot")
+        return lib.llama_vocab_eot(self._vocab)
 
     def token_sep(self) -> int:
         """Get the SEP (Separator) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_sep")
-        return lib.llama_token_sep(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_sep")
+        return lib.llama_vocab_sep(self._vocab)
 
     def token_nl(self) -> int:
         """Get the NL (Newline) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_nl")
-        return lib.llama_token_nl(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_nl")
+        return lib.llama_vocab_nl(self._vocab)
 
     def token_pad(self) -> int:
         """Get the PAD (Padding) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_pad")
-        return lib.llama_token_pad(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_pad")
+        return lib.llama_vocab_pad(self._vocab)
 
     def add_bos_token(self) -> bool:
         """If the model is configured to add a BOS token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.add_bos_token")
-        return lib.llama_add_bos_token(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.add_bos_token")
+        return lib.llama_vocab_get_add_bos(self._vocab)
 
     def add_eos_token(self) -> bool:
         """If the model is configured to add an EOS token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.add_eos_token")
-        return lib.llama_add_eos_token(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.add_eos_token")
+        return lib.llama_vocab_get_add_eos(self._vocab)
 
     def token_fim_pre(self) -> int:
         """Get the FIM PRE (Fill-In-Middle Prefix) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_pre")
-        return lib.llama_token_fim_pre(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_pre")
+        return lib.llama_vocab_fim_pre(self._vocab)
 
     def token_fim_suf(self) -> int:
         """Get the FIM SUF (Fill-In-Middle Suffix) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_suf")
-        return lib.llama_token_fim_suf(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_suf")
+        return lib.llama_vocab_fim_suf(self._vocab)
 
     def token_fim_mid(self) -> int:
         """Get the FIM MID (Fill-In-Middle Middle) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_mid")
-        return lib.llama_token_fim_mid(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_mid")
+        return lib.llama_vocab_fim_mid(self._vocab)
 
     def token_fim_pad(self) -> int:
         """Get the FIM PAD (Fill-In-Middle Padding) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_pad")
-        return lib.llama_token_fim_pad(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_pad")
+        return lib.llama_vocab_fim_pad(self._vocab)
 
     def token_fim_rep(self) -> int:
         """Get the FIM REP (Fill-In-Middle Repository) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_rep")
-        return lib.llama_token_fim_rep(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_rep")
+        return lib.llama_vocab_fim_rep(self._vocab)
 
     def token_fim_sep(self) -> int:
         """Get the FIM SEP (Fill-In-Middle Separator) token"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.token_fim_sep")
-        return lib.llama_token_fim_sep(self._model.model)
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_sep")
+        return lib.llama_vocab_fim_sep(self._vocab)
     
     def tokenize(
         self,
@@ -1307,15 +1309,15 @@ class Llama:
             not exposed and treated as plaintext. Does not insert a leading
             space.
         """
-        null_ptr_check(self._model.model, 'self._model.model', 'Llama.tokenize')
+        null_ptr_check(self._vocab, 'self._vocab', 'Llama.tokenize')
         n_tokens = _internals.get_length(
-            model=self._model.model,
+            vocab=self._vocab,
             text_bytes=text_bytes,
             add_special=add_special,
             parse_special=parse_special
         )
         return _internals.tokenize(
-            model=self._model.model,
+            vocab=self._vocab,
             text_bytes=text_bytes,
             n_tokens_max=n_tokens,
             add_special=add_special,
@@ -1329,9 +1331,9 @@ class Llama:
         - special:
             If True, special tokens are rendered in the output
         """
-        null_ptr_check(self._model.model, 'self._model.model', 'Llama.token_to_piece')
+        null_ptr_check(self._vocab, 'self._vocab', 'Llama.token_to_piece')
         return _internals.token_to_piece(
-            model=self._model.model,
+            vocab=self._vocab,
             token=token,
             special=special
         )
@@ -1347,9 +1349,9 @@ class Llama:
         - special:
             If True, special tokens are rendered in the output
         """
-        null_ptr_check(self._model.model, 'self._model.model', 'Llama.detokenize')
+        null_ptr_check(self._vocab, 'self._vocab', 'Llama.detokenize')
         return _internals.detokenize(
-            model=self._model.model,
+            vocab=self._vocab,
             tokens=tokens,
             special=special
         )
@@ -1363,9 +1365,9 @@ class Llama:
         """
         Return the length of a given text as measured in tokens
         """
-        null_ptr_check(self._model.model, 'self._model.model', 'Llama.get_length')
+        null_ptr_check(self._vocab, 'self._vocab', 'Llama.get_length')
         return _internals.get_length(
-            model=self._model.model,
+            vocab=self._vocab,
             text_bytes=text_bytes,
             add_special=add_special,
             parse_special=parse_special
@@ -1463,7 +1465,6 @@ class Llama:
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
-
                 self._stopwatch.start_tg()
                 with self._lock:
                     _internals.decode_tg(self._ctx.ctx, self.pos, batch[0])
@@ -1862,8 +1863,8 @@ def main() -> int:
 
     txt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWho was Albert Einstein?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
     txt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    tokens_a = TestLlama.tokenize(txt_a.encode(), add_special=True, parse_special=True)
-    tokens_b = TestLlama.tokenize(txt_b.encode(), add_special=True, parse_special=True)
+    tokens_a = TestLlama.tokenize(ez_encode(txt_a), add_special=True, parse_special=True)
+    tokens_b = TestLlama.tokenize(ez_encode(txt_b), add_special=True, parse_special=True)
 
     temp = 0.0
     while temp <= 5.0:
