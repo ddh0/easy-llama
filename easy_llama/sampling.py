@@ -78,8 +78,6 @@ class SamplerParams:
     #
     #       - note that "logit-bias", "top-k (k=128)", "penalties", and "dry"
     #         are always applied
-
-    # TODO: support grammar
     
     def __init__( 
         #
@@ -505,286 +503,185 @@ class SamplerPreset:
             f")"
         )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # TODO: what to do with these presets? presets need llama.Llama param.
+class Presets:
+    """This class contains several ready-made `SamplerPreset` objects that can be used to
+    control text generation."""
     
-    # # most likely token is always chosen
-    # GreedyDecoding = SamplerParams(
+    Greedy = SamplerPreset(
+        seed = 1,
+        top_k = 1,
+        temp = 0.0
+    )
+    """The most likely token is always chosen"""
 
-    #     top_k = 1,
-    #     top_p = None,
-    #     min_p = None,
-    #     temp = 0.0
-    # )
+    Default = SamplerPreset()
+    """The default llama.cpp sampling"""
 
-    # DefaultSampling = SamplerParams()
+    Neutral = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.0,
+        temp = 1.0
+    )
+    """All samplers neutralized"""
 
-    # # llama.cpp defaults
-    # LlamaCPPSampling = SamplerParams(
-    #     top_k = 40,
-    #     top_p = 0.9,
-    #     min_p = 0.1,
-    #     temp = 0.8
-    # )
+    TikToken = SamplerPreset(
+        temp = 0.65
+    )
+    """For models with large vocabular, which may tend to run hot"""
 
-    # # unmodified probability distribution (i.e. what the model actually thinks)
-    # NoSampling = SimpleSampling = Neutralized = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = None,
-    #     temp = None
-    # )
+    MinPCool = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.1,
+        temp = 1.0
+    )
+    """Use min-p as the only active sampler (less random)"""
 
-    # # reflects old llama.cpp defaults
-    # ClassicSampling = SamplerParams(
-    #     min_p = None,
-    #     repeat_penalty = 1.1
-    # )
+    MinPWarm = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.05,
+        temp = 1.0
+    )
+    """Use min-p as the only active sampler (more random)"""
 
-    # # halfway between DefaultSampling and NoSampling
-    # SemiSampling = SamplerParams(
-    #     top_k = 80,
-    #     top_p = 0.975,
-    #     min_p = 0.025,
-    #     temp = 0.9
-    # )
+    ContrastiveSearchCool = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.0,
+        temp = 0.4,
+        presence_penalty = 0.6,
+    )
+    """Constrastive Search as described in https://arxiv.org/abs/2210.14140 (less random)"""
 
-    # # for models with large vocabulary, which tend to run hot
-    # TikTokenSampling = SamplerParams(
-    #     temp = 0.65
-    # )
+    ContrastiveSearchWarm = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.0,
+        temp = 0.8,
+        presence_penalty = 0.6
+    )
+    """Constrastive Search as described in https://arxiv.org/abs/2210.14140 (more random)"""
 
-    # # use min_p as the only active sampler (more permissive)
-    # LowMinPSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.01,
-    #     temp = None
-    # )
+    Cool = SamplerPreset(
+        temp = 0.6
+    )
+    """Decreased temperature (less random)"""
 
-    # # use min_p as the only active sampler (moderate)
-    # MinPSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.075,
-    #     temp = None
-    # )
+    Warm = SamplerPreset(
+        temp = 1.05
+    )
+    """Increased temperature (more random)"""
 
-    # # use min_p as the only active sampler (more restrictive)
-    # StrictMinPSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.2,
-    #     temp = None
-    # )
+    NucleusSamplingCool = SamplerPreset(
+        top_k = -1,
+        top_p = 0.25,
+        min_p = 0.0,
+        temp = 1.0
+    )
+    """Nucleus sampling as described in https://arxiv.org/abs/1904.09751 (less random)"""
 
-    # # use min_p as the only sampler (almost completely incoherent)
-    # VeryLowMinPOnlySampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.01,
-    #     temp = MAX_TEMP
-    # )
+    NucleusSamplingWarm = SamplerPreset(
+        top_k = -1,
+        top_p = 0.9,
+        min_p = 0.0,
+        temp = 1.0
+    )
+    """Nucleus sampling as described in https://arxiv.org/abs/1904.09751 (more random)"""
 
-    # # use min_p as the only sampler (like a very drunk person)
-    # LowMinPOnlySampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.025,
-    #     temp = MAX_TEMP
-    # )
+    #
+    # Samplers below this line are for specific models / model families
+    #
 
-    # # use min_p as the only sampler (like a slightly drunk person)
-    # MinPOnlySampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.05,
-    #     temp = MAX_TEMP
-    # )
+    MidnightMiqu = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.12,
+        temp = 1.0,
+        repeat_penalty = 1.05
+    )
+    """[sophosympatheia/Midnight-Miqu-70B-v1.5](https://huggingface.co/sophosympatheia/Midnight-Miqu-70B-v1.5)"""
 
-    # # use min_p as the only sampler (coherent)
-    # StrictMinPOnlySampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.1,
-    #     temp = MAX_TEMP
-    # )
+    Llama3 = SamplerPreset(
+        top_k = -1,
+        top_p = 0.9,
+        min_p = 0.0,
+        temp = 0.6
+    )
+    """[meta-llama/Meta-Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct/)"""
 
-    # # use min_p as the only sampler (strictly coherent)
-    # VeryStrictMinPOnlySampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.2,
-    #     temp = MAX_TEMP
-    # )
+    Llama3Classic = SamplerPreset(
+        top_k = 40,
+        top_p = 0.95,
+        min_p = 0.05,
+        temp = 0.65
+    )
+    """Unofficial preset based on the developer's personal preference"""
 
-    # # https://arxiv.org/abs/2210.14140
-    # ContrastiveSearch = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = None,
-    #     temp = 0.0,
-    #     presence_penalty = 0.6,
-    # )
+    Llama3Cool = SamplerPreset(
+        top_k = -1,
+        top_p = 0.9,
+        min_p = 0.0,
+        temp = 0.45
+    )
+    """Llama3 preset with reduced temperature (less random)"""
 
-    # # https://arxiv.org/abs/2210.14140
-    # WarmContrastiveSearch = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = None,
-    #     temp = 0.0,
-    #     presence_penalty = 1.0
-    # )
+    Llama3Warm = SamplerPreset(
+        top_k = -1,
+        top_p = 0.9,
+        min_p = 0.0,
+        temp = 0.9
+    )
+    """Llama3 preset with increased temperature (more random)"""
 
-    # # outputs completely random tokens from vocab (useless)
-    # RandomSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = None,
-    #     temp = MAX_TEMP
-    # )
+    MistralNemo = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.0,
+        temp = 0.3
+    )
+    """[mistralai/Mistral-Nemo-Instruct-2407](https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407)"""
 
-    # # default sampling with reduced temperature
-    # LowTempSampling = SamplerParams(
-    #     temp = 0.4
-    # )
+    Qwen2_5Official = SamplerPreset(
+        top_k = 20,
+        top_p = 0.8,
+        min_p = 0.0,
+        temp = 0.7,
+        repeat_penalty = 1.05
+    )
+    """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
+    (official, but not recommended)"""
 
-    # # default sampling with increased temperature
-    # HighTempSampling = SamplerParams(
-    #     temp = 1.1
-    # )
+    Qwen2_5Recommended = SamplerPreset(
+        top_k = -1,
+        top_p = 0.9,
+        min_p = 0.1,
+        temp = 0.8
+    )
+    """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
+    (unofficial, but recommended)"""
 
-    # # https://arxiv.org/abs/1904.09751
-    # LowTopPSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.98,
-    #     min_p = None,
-    #     temp = None
-    # )
-
-    # # https://arxiv.org/abs/1904.09751
-    # TopPSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.9,
-    #     min_p = None,
-    #     temp = None
-    # )
-
-    # # https://arxiv.org/abs/1904.09751
-    # StrictTopPSampling = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.7,
-    #     min_p = None,
-    #     temp = None
-    # )
-
-    # # good starting point for RP / chat models
-    # RoleplayChat = SamplerParams(
-    #     max_len_tokens=1024,
-    #     top_k=None,
-    #     top_p=None,
-    #     min_p=0.04,
-    #     temp=1.0
-    # )
-
-    # #
-    # # Samplers below this line are for specific models / model families
-    # #
-
-    # # https://huggingface.co/sophosympatheia/Midnight-Miqu-70B-v1.5
-    # MidnightMiqu = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = 0.12,
-    #     temp = 1.0,
-    #     repeat_penalty = 1.05
-    # )
-
-    # # https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct/blob/main/generation_config.json
-    # Llama3 = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.9,
-    #     min_p = None,
-    #     temp = 0.6
-    # )
-
-    # # unofficial, old personal preference
-    # Llama3Classic = SamplerParams(
-    #     top_k = 40,
-    #     top_p = 0.95,
-    #     min_p = 0.05,
-    #     temp = 0.65
-    # )
-
-    # # Llama3 with reduced temperature
-    # Llama3Strict = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.9,
-    #     min_p = None,
-    #     temp = 0.45
-    # )
-
-    # # Llama3 but more creative, good for chatting
-    # Llama3Creative = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.9,
-    #     min_p = None,
-    #     temp = 1.0
-    # )
-
-    # # Not an official preset, but recommended based on my own testing
-    # MistralNemo = SamplerParams(
-    #     top_k = None,
-    #     top_p = None,
-    #     min_p = None,
-    #     temp = 0.3
-    # )
-
-    # # https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/blob/main/generation_config.json
-    # # weird preset...
-    # Qwen2_5Official = SamplerParams(
-    #     top_k = 20,
-    #     top_p = 0.8,
-    #     min_p = None,
-    #     temp = 0.7,
-    #     repeat_penalty = 1.05
-    # )
-
-    # # actual good settings
-    # Qwen2_5Recommended = SamplerParams(
-    #     top_k = None,
-    #     top_p = 0.9,
-    #     min_p = 0.1,
-    #     temp = 0.7,
-    #     repeat_penalty = None
-    # )
-
-    # # unofficial, personal favorite
-    # Cydonia = SamplerParams(
-    #     top_k=None,
-    #     top_p=None,
-    #     min_p=0.03,
-    #     temp=1.0,
-    #     logit_bias={
-    #         1869: -1.0, # "..."
-    #         4618: -1.0, # " ..."
-    #         6202: -1.0, # " Oh"
-    #         6923: -1.0, # "Oh"
-    #     }
-    # )
+    Cydonia = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.03,
+        temp = 1.0,
+        logit_bias = {
+            1869: -1.0, # "..."
+            4618: -1.0, # " ..."
+            6202: -1.0, # " Oh"
+            6923: -1.0, # "Oh"
+        }
+    )
+    """[TheDrummer/Cydonia-22B-v1.2](https://huggingface.co/TheDrummer/Cydonia-22B-v1.2)
+    (unofficial, but recommended)"""
+    
+    Evathene = SamplerPreset(
+        top_k = -1,
+        top_p = 0.98,
+        min_p = 0.0,
+        temp = 1.0
+    )
+    """[sophosympatheia/Evathene-v1.3](https://huggingface.co/sophosympatheia/Evathene-v1.3)
+    (unofficial, but recommended)"""
