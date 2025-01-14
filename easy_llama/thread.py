@@ -2,6 +2,8 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
+"""This file provides functionality for multi-turn conversations with Llama models."""
+
 import sys
 import contextlib
 
@@ -10,7 +12,7 @@ from .utils    import (
 )
 from typing    import Optional
 from .formats  import PromptFormat
-from .sampling import SamplerParams
+from .sampling import SamplerParams, SamplerPreset
 
 from . import llama as _llama
 
@@ -24,9 +26,9 @@ def KeyboardInterruptHandler():
 
 class Thread:
 
-    valid_system_roles = ['system', 'developer'         ]
-    valid_user_roles   = ['user',   'human'             ]
-    valid_bot_roles    = ['bot',    'assistant', 'model']
+    valid_system_roles = ['system', 'developer'                         ]
+    valid_user_roles   = ['user',   'human'                             ]
+    valid_bot_roles    = ['bot',    'assistant', 'model', 'gpt', 'llama']
 
     all_valid_roles = valid_system_roles + valid_user_roles + valid_bot_roles
 
@@ -34,24 +36,22 @@ class Thread:
         self,
         llama: _llama.Llama,
         prompt_format: PromptFormat,
-        sampler_params: Optional[SamplerParams] = None,
+        sampler_preset: Optional[SamplerPreset] = None,
         messages: Optional[list[dict[str, str]]] = None
     ) -> None:
         
         assert_type(llama, _llama.Llama, 'llama', 'Thread.__init__')
         assert_type(prompt_format, PromptFormat, 'prompt_format', 'Thread.__init__')
-
-        if sampler_params is None:
-            _params: SamplerParams = llama._default_sampler_params
-        else:
-            assert_type(sampler_params, SamplerParams, 'sampler_params', 'Thread.__init__')
-            _params = sampler_params
         
         llama._validate_model_state()
 
         self.llama = llama
         self.prompt_format = prompt_format
-        self.sampler_params = _params
+
+        if sampler_preset is None:
+            self.sampler_params = llama._default_sampler_params
+        else:
+            self.sampler_params = llama.sampler_params_from_preset(sampler_preset)
 
         if messages is None:
             self.messages: list[dict[str, str]] = []
@@ -68,27 +68,35 @@ class Thread:
         
         # save the original messages for self.reset()
         self._orig_messages = self.messages.copy()
+
+        # save the sampler_preset param for repr
+        self._sampler_preset = sampler_preset
     
     def __repr__(self) -> str:
         return (
             f"Thread("
             f"llama={self.llama!r}, "
             f"prompt_format={self.prompt_format!r}, "
-            f"sampler_params={self.sampler_params!r}, "
+            f"sampler_preset={self._sampler_preset!r}, "
             f"messages={self.messages!r}"
             f")"
         )
     
     def get_input_ids(self, role: Optional[str] = 'bot') -> list[int]:
-        """
-        Get a list of token IDs in this thread, to be used for inference
+        """Get a list of token IDs in this thread, to be used for inference
 
         - role:
             The role for which inference will be performed (usually 'bot'). Can be 'system',
             'user', 'bot', or None. If None, no role prefix will be appended (this is useful 
             when you just want to get all the tokens in this Thread but are not going to do
-            inference).
-        """
+            inference)."""
+        
+        if role is None and len(self.messages) == 0:
+            if self.llama.add_bos_token():
+                return [self.llama.token_bos()]
+            else:
+                return []
+        
         input_ids = []
         if len(self.messages) > 0:
             # the prefix of the first message requires `add_special=True` in order to set
@@ -275,11 +283,17 @@ class Thread:
         return result_str
     
     def add_message(self, role: str, content: str) -> None:
-        if role.lower() == 'system':
+        """Append a message to `Thread.messages` with the specified role and content
+
+        - role:
+            The role of the message, for example 'system', 'user', or 'bot'.
+        - content:
+            The text content of the message."""
+        if role.lower() in Thread.valid_system_roles:
             self.messages.append({'role': 'system', 'content': content})
-        elif role.lower() == 'user':
+        elif role.lower() in Thread.valid_user_roles:
             self.messages.append({'role': 'user', 'content': content})
-        elif role.lower() == 'bot':
+        elif role.lower() in Thread.valid_bot_roles:
             self.messages.append({'role': 'bot', 'content': content})
         else:
             raise ValueError(f'Thread.add_message: invalid role {role!r}')
@@ -296,6 +310,7 @@ class Thread:
         _llama.print_info_if_verbose('Thread.warmup: done')
     
     def interact(self, stream: bool = True) -> None:
+        """Start an interactive terminal-based chat using this thread"""
         R = Colors.RESET
         B = Colors.BLUE
         G = Colors.GREEN
@@ -304,31 +319,31 @@ class Thread:
             while True:
                 user_input = input(f'{R}  > {G}')
                 print(R, end='\n', flush=True)
+
                 if stream:
-                    self.messages.append({
-                        'role': 'user',
-                        'content': user_input
-                    })
+                    self.messages.append({'role': 'user', 'content': user_input})
                     input_ids = self.get_input_ids()
+
                     tok_gen = self.llama.stream(
                         input_tokens=input_ids,
                         n_predict=-1,
                         stop_tokens=self.llama.eog_tokens,
                         sampler_params=self.sampler_params
                     )
+
                     response = b''
                     for tok in tok_gen:
                         tok_bytes = self.llama.token_to_piece(tok, special=False)
                         response += tok_bytes
                         tok_txt = ez_decode(tok_bytes)
                         print(f'{B}{tok_txt}{R}', end='', flush=True)
-                    self.messages.append({
-                        'role': 'bot',
-                        'content': ez_decode(response)
-                    })
+                    
+                    self.messages.append({'role': 'bot', 'content': ez_decode(response)})
+
                     print()
                     if not _llama.get_verbose():
                         print()
+                
                 else:
                     response = self.send(user_input)
                     print(f'\n{B}{response}{R}\n')
@@ -359,10 +374,7 @@ class Thread:
         self.messages = orig_thread_messages.copy()
         return ez_decode(summary)
 
-    def print_stats(
-        self,
-        file: _SupportsWriteAndFlush = sys.stderr,
-    ) -> None:
+    def print_stats(self, file: _SupportsWriteAndFlush = sys.stderr) -> None:
         """Print stats about the context usage in this thread"""
         n_thread_tokens = len(self.get_input_ids(role=None))
         n_msgs = len(self.messages)

@@ -2,6 +2,9 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
+"""This file provides functionality for defining prompt formats, which are used to define how
+the input to a Llama model should be structured."""
+
 from collections.abc import Callable
 
 def _call_or_return(obj: str | Callable[..., str]) -> str:
@@ -11,14 +14,12 @@ def _call_or_return(obj: str | Callable[..., str]) -> str:
         return obj
     else:
         raise TypeError(
-            f'_call_or_return: obj must be a string or a callable that returns '
-            f'a string (got {repr(type(obj).__name__)})'
+            f'_call_or_return: obj must be a string or a callable that returns a string '
+            f'(got {repr(type(obj).__name__)})'
         )
 
 class PromptFormat:
-    """
-    Define a prompt format
-    """
+    """Define a prompt format"""
 
     def __init__(
         self,
@@ -80,6 +81,5 @@ class PromptFormat:
         return _call_or_return(self._bot_suffix)
 
 # TODO
-# def _prompt_format_from_llama_metadata(metadata: dict) -> PromptFormat:
-#     if 'tokenizer.chat_template' in metadata.keys():
-#         pass
+def _prompt_format_from_chat_template(tmpl: str) -> PromptFormat:
+    pass

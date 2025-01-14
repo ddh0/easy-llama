@@ -2,9 +2,9 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-from ._version import __version__
+"""Submodule containing convenience functions used throughout easy_llama"""
 
-"""Submodule containing convenience functions and QuickGGUFReader"""
+from ._version import __version__
 
 import os
 import sys
@@ -14,9 +14,7 @@ import numpy as np
 from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn
 
 class Colors:
-    """
-    ANSI codes to set text foreground color in terminal output
-    """
+    """ANSI codes to set text foreground color in terminal output"""
     RESET   = '\x1b[39m'
     GREEN   = '\x1b[39m\x1b[32m'
     BLUE    = '\x1b[39m\x1b[36m'
@@ -38,13 +36,13 @@ MAGENTA = TIMER_STYLE   = Colors.MAGENTA
 NoneType: type = type(None)
 
 class _ArrayLike(Iterable):
-    "Anything that can be interpreted as a numpy array"
+    """Anything that can be interpreted as a numpy array"""
 
 class _SupportsWriteAndFlush(TextIO):
-    "A file, stream, or buffer that supports writing and flushing"
+    """A file, stream, or buffer that supports writing and flushing"""
 
 class UnreachableException(Exception):
-    "The code has reached an unreachable state"
+    """The code has reached an unreachable state"""
     def __init__(self):
         super().__init__(
             "the code has reached a location that was thought to be "
@@ -58,26 +56,19 @@ class LlamaNullException(Exception):
 T = TypeVar('T')
 
 class ptr(Generic[T]):
-    """
-    Generic type hint representing any ctypes pointer
-    
-    Optionally subscriptable with any type
-    """
-        
+    """Generic type hint representing any ctypes pointer. Optionally subscriptable with any
+    type."""
+
 def softmax(
-    z: _ArrayLike,
-    T: Optional[float] = None,
-    dtype: Optional[np.dtype] = None
+    z: _ArrayLike, T: Optional[float] = None, dtype: Optional[np.dtype] = None
 ) -> np.ndarray:
-    """
-    Compute softmax over values in z, where z is array-like.
+    """Compute softmax over values in z, where z is array-like.
     Also apply temperature `T`, if specified.
 
     Any floating-point value for temperature `T` is valid, including 0.0 and
     negative numbers.
 
-    If `dtype` is not specified, `np.float32` is used if available.
-    """
+    If `dtype` is not specified, `np.float32` is used if available."""
     if dtype is None:
         if hasattr(np, 'float32'):
             _dtype = np.float32
@@ -120,9 +111,8 @@ def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
 def ez_encode(txt: str) -> bytes:
-    """
-    Encode the given text `txt` from string to UTF-8. If strict encoding fails, a warning will
-    be shown and the offending character(s) will be replaced with `?`.
+    """Encode the given text `txt` from string to UTF-8. If strict encoding fails, a warning
+    will be shown and the offending character(s) will be replaced with `?`.
     """
     try:
         return txt.encode('utf-8', errors='strict')
@@ -131,10 +121,8 @@ def ez_encode(txt: str) -> bytes:
         return txt.encode('utf-8', errors='replace')
 
 def ez_decode(txt: bytes) -> str:
-    """
-    Decode the given text `txt` from UTF-8 to string. If strict decoding fails, a warning will
-    be shown and the offending character(s) will be replaced with `�` (U+FFFD).
-    """
+    """Decode the given text `txt` from UTF-8 to string. If strict decoding fails, a warning
+    will be shown and the offending character(s) will be replaced with `�` (U+FFFD)."""
     try:
         return txt.decode('utf-8', errors='strict')
     except UnicodeDecodeError:
@@ -147,6 +135,7 @@ _os = os
 
 @contextlib.contextmanager
 def suppress_output(disable: bool = False):
+    """Suppress stdout and stderr."""
 
     # NOTE: simply changing sys.stdout and sys.stderr does not affect output from llama.cpp.
     #       this method (or similar) is required to suppress all undesired output, for example
@@ -200,8 +189,7 @@ def assert_type(
     code_location: str,
     hint: Optional[str] = None
 ):
-    """
-    Ensure that `obj` is an instance of `expected_type`
+    """Ensure that `obj` is an instance of `expected_type`
 
     If `expected_type` is a tuple, ensure that `obj` is an instance of
     some type in the tuple
@@ -209,8 +197,8 @@ def assert_type(
     Raise `TypeAssertionError` otherwise, using `obj_name` and
     `code_location` to make an informative exception message
 
-    If specified, `hint` is added as a note to the exception
-    """
+    If specified, `hint` is added as a note to the exception."""
+
     if isinstance(obj, expected_type):
         return
     
@@ -220,31 +208,28 @@ def assert_type(
         # represent `int` as 'int' instead of "<class 'int'>"
         expected_type_repr = repr(expected_type.__name__)
         exc = TypeError(
-            f"{code_location}: {obj_name} should be an instance of "
-            f"{expected_type_repr}, not {obj_type_repr}"
+            f"{code_location}: {obj_name} should be an instance of {expected_type_repr}, "
+            f"not {obj_type_repr}"
         )
     else:
         # represent `(int, list)` as "('int', 'list')" instead of
         # "(<class 'int'>, <class 'list'>)"
         expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
         exc = TypeError(
-            f"{code_location}: {obj_name} should be one of "
-            f"{expected_type_repr}, not {obj_type_repr}"
+            f"{code_location}: {obj_name} should be one of {expected_type_repr}, "
+            f"not {obj_type_repr}"
         )
     if isinstance(hint, str):
         exc.add_note(hint)
     raise exc
 
-def assert_only_ints(iterable: Iterable) -> None:
-    """
-    Ensure that the given iterable contains only `int`s
-    """
+def assert_only_ints(iterable: Iterable) -> None | NoReturn:
+    """Ensure that the given iterable contains only `int`s"""
     if any(not isinstance(x, int) for x in iterable):
         raise TypeError(f"assert_only_ints: some item in the given iterable is not an int")
 
 def null_ptr_check(ptr: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
-    """
-    Ensure that the given object `ptr` is not NULL / NULLPTR
+    """Ensure that the given object `ptr` is not NULL / NULLPTR
 
     Raise LlamaNullException on failure
 
@@ -253,7 +238,6 @@ def null_ptr_check(ptr: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
     - ptr_name:
         The name of the object (for error messages)
     - loc_hint:
-        Code location hint used in easy-llama
-    """
+        Code location hint used in easy-llama"""
     if not bool(ptr):
         raise LlamaNullException(f"{loc_hint}: pointer `{ptr_name}` is null")

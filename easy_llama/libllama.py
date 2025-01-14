@@ -2,8 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-"""
-This file provides a Python interface to LLAMA_API ("libllama"), which is
+"""This file provides a Python interface to LLAMA_API ("libllama"), which is
 originally defined in `llama.cpp/include/llama.h`.
 
 This file was last updated to match commit `08f10f69c38288e9e8bb1f933af63a3fc9013d40`.
@@ -15,9 +14,7 @@ Helpful references:
 - `libllama` changelog:
     [llama.cpp/issues/9289](https://github.com/ggerganov/llama.cpp/issues/9289)
 - `llama.h` at master:
-    [llama.cpp/blob/master/include/llama.h](https://github.com/ggerganov/llama.cpp/blob/master/include/llama.h)
-
-"""
+    [llama.cpp/blob/master/include/llama.h](https://github.com/ggerganov/llama.cpp/blob/master/include/llama.h)"""
 
 import sys
 import ctypes
@@ -30,27 +27,23 @@ from .utils  import ptr, print_warning
 faulthandler.enable() # prints more helpful info if python crashes
 
 class LlamaDeprecatedException(Exception):
-    """
-    Exception raised when calling functions marked with DEPRECATED in libllama
-    """
+    """Exception raised when calling functions marked with DEPRECATED in libllama"""
 
 def DEPRECATED(new_func_name: Optional[str] = None):
-    """
-    Decorator for functions that are marked with DEPRECATED in libllama
-    """
+    """Decorator for functions that are marked with DEPRECATED in libllama"""
 
     def decorator(func):
 
         def deprecator(*args, **kwargs):
             if new_func_name is None:
                 raise LlamaDeprecatedException(
-                    f"the function {func.__name__} is marked as deprecated. you "
-                    f"cannot use it."
+                    f"the function {func.__name__} is marked as deprecated. you cannot "
+                    f"use it."
                 )
             else:
                 raise LlamaDeprecatedException(
-                    f"the function {func.__name__} is marked as deprecated. you "
-                    f"cannot use it. use {new_func_name} instead."
+                    f"the function {func.__name__} is marked as deprecated. you cannot "
+                    f"use it. use {new_func_name} instead."
                 )
         
         return deprecator
@@ -344,9 +337,9 @@ class LlamaSplitMode(IntEnum):
 
 class llama_token_data(ctypes.Structure):
     _fields_ = [
-        ("id", ctypes.c_int32),  # token id
-        ("logit", ctypes.c_float),  # log-odds of the token
-        ("p", ctypes.c_float),  # probability of the token
+        ("id", ctypes.c_int32),    # token id
+        ("logit", ctypes.c_float), # log-odds of the token
+        ("p", ctypes.c_float),     # probability of the token
     ]
 
 llama_token_data_p = ctypes.POINTER(llama_token_data)
@@ -551,11 +544,9 @@ libllama.llama_backend_free.argtypes = []
 libllama.llama_backend_free.restype = None
 
 def llama_backend_free() -> None:
-    """
-    Free the llama + ggml backend
+    """Free the llama + ggml backend
     
-    Call once at the end of the program - currently only used for MPI
-    """
+    Call once at the end of the program - currently only used for MPI"""
     global _BACKEND_INIT
     libllama.llama_backend_free()
     _BACKEND_INIT = False
@@ -1211,14 +1202,12 @@ libllama.llama_state_seq_set_data.argtypes = [llama_context_p, ctypes.c_void_p, 
 libllama.llama_state_seq_set_data.restype = ctypes.c_ulong
 
 def llama_state_seq_set_data(ctx: llama_context, src: ctypes.c_void_p, size: int, dest_seq_id: int) -> int:
-    """
-    Copy the sequence data (originally copied with `llama_state_seq_get_data`)
+    """Copy the sequence data (originally copied with `llama_state_seq_get_data`)
     into the specified sequence
     
     Returns:
     - Positive: Ok
-    - Zero: Failed to load
-    """
+    - Zero: Failed to load"""
     return libllama.llama_state_seq_set_data(ctx, src, size, dest_seq_id)
 
 libllama.llama_state_seq_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(ctypes.c_int), ctypes.c_ulong]
@@ -1241,14 +1230,12 @@ libllama.llama_batch_get_one.argtypes = [ctypes.POINTER(llama_token), ctypes.c_i
 libllama.llama_batch_get_one.restype = llama_batch
 
 def llama_batch_get_one(tokens: ptr[llama_token], n_tokens: int) -> llama_batch:
-    """
-    AVOID USING
+    """AVOID USING
 
     This function will be deprecated and removed at some point. Refer to:
     https://github.com/ggerganov/llama.cpp/issues/6475#issuecomment-2040350410
 
-    Return batch for single sequence of tokens
-    """
+    Return batch for single sequence of tokens"""
     print_warning(
         f'you are using libllama.llama_batch_get_one which will be deprecated '
         f'and removed at some point. you should use libllama.llama_batch_init '
@@ -1285,8 +1272,7 @@ libllama.llama_decode.argtypes = [llama_context_p, llama_batch]
 libllama.llama_decode.restype = ctypes.c_int32
 
 def llama_decode(ctx: llama_context, batch: llama_batch) -> int:
-    """
-    Process a batch of tokens with the decoder part of the encoder-decoder model
+    """Process a batch of tokens with the decoder part of the encoder-decoder model
 
     Returns:
     - 0:
@@ -1296,8 +1282,7 @@ def llama_decode(ctx: llama_context, batch: llama_batch) -> int:
         the batch or increase the context)
     - < 0:
         error. the KV cache state is restored to the state before this
-        call
-    """
+        call"""
     return libllama.llama_decode(ctx, batch)
 
 libllama.llama_set_n_threads.argtypes = [llama_context_p, ctypes.c_int, ctypes.c_int]
@@ -1346,23 +1331,19 @@ libllama.llama_synchronize.argtypes = [llama_context_p]
 libllama.llama_synchronize.restype = None
 
 def llama_synchronize(ctx: llama_context) -> None:
-    """
-    Wait until all computations are finished
+    """Wait until all computations are finished
 
-    Not necessary to call explicitly in most cases
-    """
+    Not necessary to call explicitly in most cases"""
     libllama.llama_synchronize(ctx)
 
 libllama.llama_get_logits.argtypes = [llama_context_p]
 libllama.llama_get_logits.restype = ctypes.POINTER(ctypes.c_float)
 
 def llama_get_logits(ctx: llama_context) -> ptr[ctypes.c_float]:
-    """
-    Get the token logits obtained from the last call to llama_decode()
+    """Get the token logits obtained from the last call to llama_decode()
     
     Rows: number of tokens for which llama_batch.logits[i] != 0
-    Cols: n_vocab
-    """
+    Cols: n_vocab"""
     return libllama.llama_get_logits(ctx)
 
 libllama.llama_get_logits_ith.argtypes = [llama_context_p, ctypes.c_int]
@@ -1422,7 +1403,8 @@ libllama.llama_vocab_is_eog.argtypes = [llama_vocab_p, ctypes.c_int]
 libllama.llama_vocab_is_eog.restype = ctypes.c_bool
 
 def llama_vocab_is_eog(vocab: llama_vocab, token: int) -> bool:
-    """Check if the token is supposed to end generation (end-of-generation, eg. EOS, EOT, etc.)"""
+    """Check if the token is supposed to end generation (end-of-generation, eg. EOS,
+    EOT, etc.)"""
     return libllama.llama_vocab_is_eog(vocab, token)
 
 libllama.llama_vocab_is_control.argtypes = [llama_vocab_p, ctypes.c_int]
@@ -1634,8 +1616,7 @@ libllama.llama_tokenize.argtypes = [llama_vocab_p, ctypes.c_char_p, ctypes.c_int
 libllama.llama_tokenize.restype = ctypes.c_int
 
 def llama_tokenize(vocab: llama_vocab, text: bytes, text_len: int, tokens: ptr[ctypes.c_int32], n_tokens_max: int, add_special: bool, parse_special: bool) -> int:
-    """
-    Convert the provided text into tokens
+    """Convert the provided text into tokens
 
     - vocab:
         The llama_vocab to use.
@@ -1655,8 +1636,7 @@ def llama_tokenize(vocab: llama_vocab, text: bytes, text_len: int, tokens: ptr[c
     
     Returns the number of tokens on success, no more than n_tokens_max. Returns
     a negative number on failure - the number of tokens that would have been
-    returned.
-    """
+    returned."""
     return libllama.llama_tokenize(vocab, text, text_len, tokens, n_tokens_max, add_special, parse_special)
 
 libllama.llama_token_to_piece.argtypes = [llama_vocab_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_bool]
@@ -1670,19 +1650,18 @@ libllama.llama_detokenize.argtypes = [llama_vocab_p, ctypes.POINTER(ctypes.c_int
 libllama.llama_detokenize.restype = ctypes.c_int
 
 def llama_detokenize(vocab: llama_vocab, tokens: ptr[ctypes.c_int32], n_tokens: int, text: ctypes.c_char_p, text_len_max: int, remove_special: bool, unparse_special: bool) -> int:
-    """
-    Convert the provided tokens into text
+    """Convert the provided tokens into text
 
     - vocab:
         The llama_vocab to use.
     - tokens:
         The tokens to convert.
     - n_tokens:
-        TODO
+        ???
     - text:
         The char pointer must be large enough to hold the resulting text.
     - text_len_max:
-        TODO
+        ???
     - remove_special:
         Allow to remove BOS and EOS tokens if model is configured to do so.
     - unparse_special:
@@ -1690,8 +1669,7 @@ def llama_detokenize(vocab: llama_vocab, tokens: ptr[ctypes.c_int32], n_tokens: 
     
     Returns the number of chars/bytes on success, no more than text_len_max.
     Returns a negative number on failure - the number of chars/bytes that would
-    have been returned.
-    """
+    have been returned."""
     return libllama.llama_detokenize(vocab, tokens, n_tokens, text, text_len_max, remove_special, unparse_special)
 
 #
@@ -1773,12 +1751,10 @@ libllama.llama_sampler_free.argtypes = [llama_sampler_p]
 libllama.llama_sampler_free.restype = None
 
 def llama_sampler_free(smpl: llama_sampler) -> None:
-    """
-    Free a sampler
+    """Free a sampler
     
     NOTE: Do not free if the sampler has been added to a llama_sampler_chain
-    (via llama_sampler_chain_add)
-    """
+    (via llama_sampler_chain_add)"""
     libllama.llama_sampler_free(smpl)
 
 #
@@ -1796,11 +1772,9 @@ libllama.llama_sampler_chain_add.argtypes = [llama_sampler_p, llama_sampler_p]
 libllama.llama_sampler_chain_add.restype = None
 
 def llama_sampler_chain_add(chain: llama_sampler, smpl: llama_sampler) -> None:
-    """
-    Add a sampler to a sampler chain
+    """Add a sampler to a sampler chain
     
-    Takes ownership of the sampler object and will free it when llama_sampler_free is called
-    """
+    Takes ownership of the sampler object and will free it when llama_sampler_free is called"""
     libllama.llama_sampler_chain_add(chain, smpl)
 
 libllama.llama_sampler_chain_get.argtypes = [llama_sampler_p, ctypes.c_int]
@@ -1821,10 +1795,10 @@ libllama.llama_sampler_chain_remove.argtypes = [llama_sampler_p, ctypes.c_int]
 libllama.llama_sampler_chain_remove.restype = llama_sampler_p
 
 def llama_sampler_chain_remove(chain: llama_sampler, i: int) -> llama_sampler:
-    """
-    Remove a sampler from a sampler chain
+    """Remove a sampler from a sampler chain
     
-    after removing a sampler, the chain will no longer own it, and it will not be freed when the chain is freed
+    After removing a sampler, the chain will no longer own it, and it will not be freed when
+    the chain is freed.
     """
     return libllama.llama_sampler_chain_remove(chain, i)
 
@@ -1878,11 +1852,10 @@ libllama.llama_sampler_init_temp.argtypes = [ctypes.c_float]
 libllama.llama_sampler_init_temp.restype = llama_sampler_p
 
 def llama_sampler_init_temp(t: float) -> llama_sampler:
-    """
-    Initialize a temperature sampler
+    """Initialize a temperature sampler
     
-    When `t` <= 0.0, the maximum logit is kept at it's original value, the rest are set to -inf
-    """
+    When `t` <= 0.0, the maximum logit is kept at it's original value, the rest are set to
+    -inf"""
     return libllama.llama_sampler_init_temp(t)
 
 libllama.llama_sampler_init_temp_ext.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_float]
@@ -1945,29 +1918,24 @@ libllama.llama_sampler_init_infill.argtypes = [llama_vocab_p]
 libllama.llama_sampler_init_infill.restype = llama_sampler_p
 
 def llama_sampler_init_infill(vocab: llama_vocab) -> llama_sampler:
-    """
-    Initialize an infill sampler
+    """Initialize an infill sampler
     
-    This sampler is meant to be used for fill-in-the-middle infilling. It's supposed to be used after top_k + top_p sampling
-    """
+    This sampler is meant to be used for fill-in-the-middle infilling. It's supposed to be used
+    after top_k + top_p sampling"""
     return libllama.llama_sampler_init_infill(vocab)
 
 libllama.llama_sampler_get_seed.argtypes = [llama_sampler_p]
 libllama.llama_sampler_get_seed.restype = ctypes.c_int
 
 def llama_sampler_get_seed(smpl: llama_sampler) -> int:
-    """
-    Get the seed used by the sampler if applicable, LLAMA_DEFAULT_SEED otherwise
-    """
+    """Get the seed used by the sampler if applicable, LLAMA_DEFAULT_SEED otherwise"""
     return libllama.llama_sampler_get_seed(smpl)
 
 libllama.llama_sampler_sample.argtypes = [llama_sampler_p, llama_context_p, ctypes.c_int]
 libllama.llama_sampler_sample.restype = ctypes.c_int
 
 def llama_sampler_sample(smpl: llama_sampler, ctx: llama_context, idx: int) -> int:
-    """
-    Sample and accept a token from the idx-th output of the last evaluation
-    """
+    """Sample and accept a token from the idx-th output of the last evaluation"""
     return libllama.llama_sampler_sample(smpl, ctx, idx)
 
 #
@@ -2042,22 +2010,18 @@ libllama.llama_perf_context.argtypes = [llama_context_p]
 libllama.llama_perf_context.restype = llama_perf_context_data_p
 
 def llama_perf_context(ctx: llama_context) -> llama_perf_context_data:
-    """
-    AVOID USING
+    """AVOID USING
 
-    Get performance data for a context
-    """
+    Get performance data for a context"""
     return libllama.llama_perf_context(ctx)
 
 libllama.llama_perf_context_print.argtypes = [llama_context_p]
 libllama.llama_perf_context_print.restype = ctypes.c_char_p
 
 def llama_perf_context_print(ctx: llama_context) -> None:
-    """
-    AVOID USING
+    """AVOID USING
 
-    Print performance data for a context
-    """
+    Print performance data for a context"""
     results_str = libllama.llama_perf_context_print(ctx)
     print(results_str, file=sys.stderr, flush=True)
 
@@ -2065,11 +2029,9 @@ libllama.llama_perf_context_reset.argtypes = [llama_context_p]
 libllama.llama_perf_context_reset.restype = None
 
 def llama_perf_context_reset(ctx: llama_context) -> None:
-    """
-    AVOID USING
+    """AVOID USING
     
-    Reset performance data for a context
-    """
+    Reset performance data for a context"""
     libllama.llama_perf_context_reset(ctx)
 
 # NOTE: the following work only with samplers constructed via llama_sampler_chain_init
@@ -2117,11 +2079,9 @@ class _internals:
         tokens: list[int],
         n_tokens: int
     ) -> None:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
-        Decode with batch size > 1 (prompt processing)
-        """
+        Decode with batch size > 1 (prompt processing)"""
         batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
         batch.n_tokens = n_tokens
         for i in range(n_tokens):
@@ -2143,11 +2103,9 @@ class _internals:
         pos: int,
         token: int
     ) -> None:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
-        Decode with batch size == 1 (text generation)
-        """
+        Decode with batch size == 1 (text generation)"""
         batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
         batch.n_tokens = 1
         batch.token[0] = token
@@ -2165,11 +2123,9 @@ class _internals:
     greedy_sampler = llama_sampler_init_greedy()
 
     def sample_greedy(ctx: ptr[llama_context]) -> int:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
-        Sample the most likely token
-        """
+        Sample the most likely token"""
         return llama_sampler_sample(_internals.greedy_sampler, ctx, -1)
 
     def tokenize(
@@ -2179,8 +2135,7 @@ class _internals:
         add_special: bool,
         parse_special: bool,
     ) -> list[int]:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
         Convert the provided UTF-8 encoded text into tokens
 
@@ -2197,8 +2152,7 @@ class _internals:
         - parse_special:
             Allow tokenizing special and/or control tokens which otherwise are
             not exposed and treated as plaintext. Does not insert a leading
-            space.
-        """
+            space."""
         # unlike detokenization, this buffer is created and destroyed as needed
         # because it could potentially be quite large - each token takes 4 bytes
         tokens_buf = (ctypes.c_int32 * n_tokens_max)()
@@ -2225,11 +2179,9 @@ class _internals:
     detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
 
     def token_to_piece(vocab: ptr[llama_vocab], token: int, special: bool) -> bytes:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
-        Convert token ID to text bytes
-        """
+        Convert token ID to text bytes"""
         n_bytes = llama_token_to_piece(
             vocab=vocab,
             token=token,
@@ -2254,14 +2206,12 @@ class _internals:
         tokens: Iterable[int],
         special: bool
     ) -> bytes:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
         Convert the provided tokens into UTF-8 encoded text
 
         - special:
-            If True, special tokens are rendered in the output
-        """
+            If True, special tokens are rendered in the output"""
         # this function is just like token_to_piece but in a loop
         detok_bytes = b""
         for token in tokens:
@@ -2275,9 +2225,8 @@ class _internals:
             )
             if n_bytes > _internals.MAX_TOKEN_LENGTH:
                 raise ValueError(
-                    f"detokenize: the token with ID {token} requires a buffer "
-                    f"of size {n_bytes}, but the maximum buffer size is "
-                    f"{_internals.MAX_TOKEN_LENGTH}"
+                    f"detokenize: the token with ID {token} requires a buffer of size "
+                    f"{n_bytes}, but the maximum buffer size is {_internals.MAX_TOKEN_LENGTH}"
                 )
             detok_bytes += _internals.detok_buffer.raw[:n_bytes]
         return detok_bytes
@@ -2288,11 +2237,9 @@ class _internals:
         add_special: bool,
         parse_special: bool,
     ) -> int:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
-        Return the length of a given text, as measured in tokens
-        """
+        Return the length of a given text, as measured in tokens"""
         return -llama_tokenize(
             vocab=vocab,
             text=text_bytes,
@@ -2304,11 +2251,9 @@ class _internals:
         )
     
     def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
-        """
-        ### INTERNAL
+        """### INTERNAL
 
-        Create and return a ctypes array of `llama_logit_bias`
-        """
+        Create and return a ctypes array of `llama_logit_bias`"""
         if len(logit_biases) == 0:
             raise ValueError(f'logit_biases parameter cannot be empty')
         LogitBiasArrayType = llama_logit_bias * len(logit_biases)
@@ -2376,7 +2321,10 @@ def main():
         llama_sampler_accept(smpl, id)
         return id
 
-    tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13, 128009, 128006, 882, 128007, 271, 3923, 374, 55152, 11495, 369, 30, 128009, 128006, 78191, 128007, 271]
+    tokens = [128000, 128006, 9125, 128007, 271, 2675, 527, 264, 11190, 15592, 18328, 13,
+              128009, 128006, 882, 128007, 271, 3923, 374, 55152, 11495, 369, 30, 128009,
+              128006, 78191, 128007, 271]
+    
     ctx_tokens = tokens
     pos = 0
     _internals.decode_pp(ctx, pos, tokens, len(tokens))

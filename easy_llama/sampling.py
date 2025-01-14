@@ -2,6 +2,9 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
+"""This file provides functionality for defining the sampler parameters used to control
+text generation."""
+
 import os
 import sys
 import ctypes
@@ -26,6 +29,15 @@ def _get_random_seed() -> int:
     )
 
 class SamplerParams:
+    """A SamplerParams object is used by a Llama model to define sampling behaviour.
+
+    However, SamplerParams objects also require some information about the Llama model itself,
+    such as n_ctx_train, n_vocab, etc. Therefore Llama models and SamplerParams are tightly
+    coupled.
+
+    A SamplerPreset (which is a separate class) can be used to define sampling parameters
+    without having to specify a Llama object. In turn, the Llama class can use these presets to
+    create the actual SamplerParams object it needs for sampling."""
 
     # NOTE: as of 2025-01-01, the default sampler chain for llama-cli is:
     #
@@ -75,7 +87,7 @@ class SamplerParams:
         #
         self,
         llama: Llama,    # some samplers require info about n_ctx_train, n_vocab, etc.
-        seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use default seed
+        seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use random seed
 
         top_k:              int   = 40,    # <= 0 to use vocab size
         top_p:              float = 0.95,  # 1.0 = disabled
@@ -172,6 +184,9 @@ class SamplerParams:
         #       should have absolutely no effect on the output except under the
         #       strangest and most unlikely circumstances (like when temp > 10.0
         #       and all other samplers are explicitly disabled).
+        #
+        #       If you really need to bypass this, you can construct your own
+        #       llama_sampler_chain manually. But you probably don't need to.
         #
         self._chain_str += 'top-k 128 -> '
         lib.llama_sampler_chain_add(
@@ -392,8 +407,120 @@ class SamplerParams:
         null_ptr_check(self.smpl, 'self.smpl', 'SamplerParams.reset')
         lib.llama_sampler_reset(self.smpl)
 
-# class SamplerPresets:
-#     pass
+class SamplerPreset:
+    """A SamplerPreset object contains all the values necessary to construct a SamplerParams
+    object using a Llama model.
+
+    Llama objects use SamplerParam objects to define the sampling parameters, but these
+    SamplerParam objects also require some information about the Llama model itself, such as
+    n_ctx_train, n_vocab, etc. Therefore Llama models and SamplerParams are tightly coupled.
+
+    A SamplerPreset (this class) can be used to define sampling parameters without having to
+    specify a Llama object. In turn, the Llama class can use these presets to create the actual
+    SamplerParams object it needs for sampling."""
+    
+    def __init__(
+        self,
+        seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use random seed
+
+        top_k:              int   = 40,    # <= 0 to use vocab size
+        top_p:              float = 0.95,  # 1.0 = disabled
+        min_p:              float = 0.05,  # 0.0 = disabled
+        xtc_probability:    float = 0.0,   # 0.0 = disabled
+        xtc_threshold:      float = 0.1,   # > 0.5 disables XTC
+        typical_p:          float = 1.0,   # 1.0 = disabled 
+        temp:               float = 0.8,   # <= 0.0 to sample greedily
+        dynatemp_delta:     float = 0.0,   # 0.0 = disabled
+        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
+        penalty_last_n:     int   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
+        penalty_repeat:     float = 1.0,   # 1.0 = disabled
+        penalty_freq:       float = 0.0,   # 0.0 = disabled
+        penalty_present:    float = 0.0,   # 0.0 = disabled
+        dry_multiplier:     float = 0.0,   # 0.0 = disabled;      DRY repetition penalty for tokens extending repetition:
+        dry_base:           float = 1.75,  # 0.0 = disabled;      multiplier * base ^ (length of sequence before token - allowed length)
+        dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
+        dry_penalty_last_n: int   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
+        mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat v1, 2 = mirostat v2
+        mirostat_tau:       float = 5.0,   # target entropy
+        mirostat_eta:       float = 0.1,   # learning rate
+
+        dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
+
+        # TODO: grammar goes here
+
+        logit_bias: Optional[dict[int, float]] = None
+    ):
+        self.seed  = seed
+
+        self.top_k              = top_k
+        self.top_p              = top_p
+        self.min_p              = min_p
+        self.xtc_probability    = xtc_probability
+        self.xtc_threshold      = xtc_threshold
+        self.typical_p          = typical_p
+        self.temp               = temp
+        self.dynatemp_delta     = dynatemp_delta
+        self.dynatemp_exponent  = dynatemp_exponent
+        self.penalty_last_n     = penalty_last_n
+        self.penalty_repeat     = penalty_repeat
+        self.penalty_freq       = penalty_freq
+        self.penalty_present    = penalty_present
+        self.dry_multiplier     = dry_multiplier
+        self.dry_base           = dry_base
+        self.dry_allowed_length = dry_allowed_length
+        self.dry_penalty_last_n = dry_penalty_last_n
+        self.mirostat           = mirostat
+        self.mirostat_tau       = mirostat_tau
+        self.mirostat_eta       = mirostat_eta
+        
+        self.dry_sequence_breakers = dry_sequence_breakers
+
+        self.logit_bias = logit_bias
+
+    def __repr__(self) -> str:
+        return (
+            f"SamplerPreset("
+            f"seed={self.seed}, "
+            f"top_k={self.top_k}, "
+            f"min_p={self.min_p}, "
+            f"xtc_probability={self.xtc_probability}, "
+            f"xtc_threshold={self.xtc_threshold}, "
+            f"typical_p={self.typical_p}, "
+            f"temp={self.temp}, "
+            f"dynatemp_delta={self.dynatemp_delta}, "
+            f"dynatemp_exponent={self.dynatemp_exponent}, "
+            f"penalty_last_n={self.penalty_last_n}, "
+            f"penalty_repeat={self.penalty_repeat}, "
+            f"penalty_freq={self.penalty_freq}, "
+            f"penalty_present={self.penalty_present}, "
+            f"dry_multiplayer={self.dry_multiplier}, "
+            f"dry_base={self.dry_base}, "
+            f"dry_allowed_length={self.dry_allowed_length}, "
+            f"dry_penalty_last_n={self.dry_penalty_last_n}, "
+            f"mirostat={self.mirostat}, "
+            f"mirostat_tau={self.mirostat_tau}, "
+            f"mirostat_eta={self.mirostat_eta}, "
+            f"dry_sequence_breakers={self.dry_sequence_breakers!r}, "
+            f"logit_bias={self.logit_bias!r}"
+            f")"
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # TODO: what to do with these presets? presets need llama.Llama param.
     

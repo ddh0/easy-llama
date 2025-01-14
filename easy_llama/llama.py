@@ -2,6 +2,8 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
+"""This file provides a high-level Python interface to LLAMA_API ("libllama")."""
+
 from ._version import __version__
 
 import os
@@ -19,7 +21,7 @@ from .utils    import (
 from .libllama import _internals, GGUFValueType
 from typing    import Optional, Iterable
 from io        import BufferedReader
-from .sampling import SamplerParams
+from .sampling import SamplerParams, SamplerPreset
 
 from . import libllama as lib
 
@@ -259,22 +261,17 @@ class _LlamaStopwatch:
         self.n_tg_tokens = 0
 
     def print_stats(self):
-        """
-        Print performance statistics using current stopwatch state
+        """Print performance statistics using current stopwatch state
         
         #### NOTE:
         The `n_tg_tokens` value will be equal to the number of calls to
         llama_decode which have a batch size of 1, which is technically not
-        always equal to the number of tokens generated - it may be off by one.
-        """
+        always equal to the number of tokens generated - it may be off by one."""
 
         print(f"\n", end='', file=sys.stderr, flush=True)
 
         if self.n_pp_tokens + self.n_tg_tokens == 0:
-            print_stopwatch(
-                f'print_stats was called but no tokens were processed or '
-                f'generated'
-            )
+            print_stopwatch(f'print_stats was called but no tokens were processed or generated')
 
         if self.n_pp_tokens > 0:
             pp_elapsed_ns = self.get_elapsed_time_pp()
@@ -282,8 +279,7 @@ class _LlamaStopwatch:
             pp_elapsed_s = pp_elapsed_ns / 1e9
             pp_tps = self.n_pp_tokens / pp_elapsed_s
             print_stopwatch(
-                f'prompt processing: {self.n_pp_tokens:>7} tokens in '
-                f'{pp_elapsed_ms:>13.3f}ms '
+                f'prompt processing: {self.n_pp_tokens:>7} tokens in {pp_elapsed_ms:>13.3f}ms '
                 f'({pp_tps:>10.2f} tok/s)'
             )
 
@@ -293,16 +289,13 @@ class _LlamaStopwatch:
             tg_elapsed_s = tg_elapsed_ns / 1e9
             tg_tps = self.n_tg_tokens / tg_elapsed_s
             print_stopwatch(
-                f'  text generation: {self.n_tg_tokens:>7} tokens in '
-                f'{tg_elapsed_ms:>13.3f}ms '
+                f'  text generation: {self.n_tg_tokens:>7} tokens in {tg_elapsed_ms:>13.3f}ms '
                 f'({tg_tps:>10.2f} tok/s)'
             )
         
         wall_elapsed_ns = self.get_elapsed_wall_time()
         wall_elapsed_ms = wall_elapsed_ns / 1e6
-        print_stopwatch(
-            f"        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms"
-        )
+        print_stopwatch(f"        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms")
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
@@ -467,6 +460,7 @@ class QuickGGUFReader:
 #
 
 class _LlamaModel:
+    """Low-level Python wrapper over `llama_model`"""
 
     def __init__(
         self,
@@ -550,6 +544,7 @@ class _LlamaModel:
 
 
 class _LlamaCtx:
+    """Low-level Python wrapper over `llama_context`"""
 
     def __init__(
         self,
@@ -693,13 +688,10 @@ class InferenceLockException(Exception):
     pass
 
 class _InferenceLock:
-    """
-    A context manager that can be used to prevent a `llama.Llama` instance
-    from accepting more than one generation at a time, which is not
-    supported and can cause a hard crash.
+    """A context manager which is used to prevent a `llama.Llama` instance from accepting
+    more than one generation at a time, which is not supported and can cause a hard crash.
 
-    This is mostly useful in asychronous / multi-threaded contexts
-    """
+    This is mostly useful in asychronous / multi-threaded contexts."""
 
     def __init__(self):
         self._locked = False
@@ -718,17 +710,13 @@ class _InferenceLock:
     
     def acquire(self):
         if self._locked:
-            raise InferenceLockException(
-                'failed to acquire InferenceLock (already locked)'
-            )
+            raise InferenceLockException('failed to acquire InferenceLock (already locked)')
         self._locked = True
         return self
     
     def release(self):
         if not self._locked:
-            raise InferenceLockException(
-                'tried to release InferenceLock that is not acquired'
-            )
+            raise InferenceLockException('tried to release InferenceLock that is not acquired')
         self._locked = False
 
 #
@@ -736,8 +724,7 @@ class _InferenceLock:
 #
 
 class Llama:
-    """
-    Simplified interface for general-purpose Llama model usage
+    """Simplified interface for general-purpose Llama model usage
 
     The `easy_llama.Llama` class provides a high-level Python interface to
     a llama_model and its associated llama_context.
@@ -750,8 +737,7 @@ class Llama:
     >>> out_toks = MyLlama.generate(in_toks, n_predict=16)
     >>> out_txt = MyLlama.detokenize(out_toks, special=True)
     >>> print(out_txt)
-    b" the tree, as the saying goes, and I think that's especially true when"
-    """
+    b" the tree, as the saying goes, and I think that's especially true when\""""
     
     def __init__(
         self,
@@ -769,8 +755,7 @@ class Llama:
         warmup: bool = True,
         verbose: bool = True
     ):
-        """
-        Load a llama model from a file
+        """Load a llama model from a file
 
         - path_model:
             The path to the GGUF model file you wish to load from
@@ -822,8 +807,7 @@ class Llama:
         - verbose:
             Print informational output when loading model as well as at
             runtime. Default is True. If set to False, warnings and errors
-            will still be shown.
-        """
+            will still be shown."""
         if not os.path.exists(path_model):
             raise FileNotFoundError(
                 f"Llama: the given path_model {path_model!r} does not exist"
@@ -960,6 +944,7 @@ class Llama:
         self._rope_type             = self.rope_type()
         self._rope_freq_scale_train = self.rope_freq_scale_train()
         self._model_size            = self.model_size()
+        self._chat_template         = self.chat_template()
         self._model_n_params        = self.model_n_params()
         self._model_has_encoder     = self.model_has_encoder()
         self._model_has_decoder     = self.model_has_decoder()
@@ -980,10 +965,8 @@ class Llama:
         self._token_fim_sep         = self.token_fim_sep()
 
         self.eog_tokens = [i for i in range(self._n_vocab) if self.token_is_eog(i)]
-        """
-        A list of all tokens in the vocab that are marked as EOG
-        (End-Of-Generation)
-        """
+        """A list of all tokens in the vocab that are marked as EOG
+        (End-Of-Generation)"""
 
         # internal use only - the default SamplerParams with this model
         self._default_sampler_params = SamplerParams(self)
@@ -1006,10 +989,8 @@ class Llama:
         # End of Llama.__init__
     
     def _validate_model_state(self) -> None:
-        """
-        Ensure `llama_model`, `llama_vocab` and `llama_context` are not NULL and validate
-        `Llama.pos`
-        """
+        """Ensure `llama_model`, `llama_vocab` and `llama_context` are not NULL and validate
+        `Llama.pos`"""
         null_ptr_check(self._model.model, 'self._model.model', '_validate_model_state')
         null_ptr_check(self._vocab,       'self._vocab',       '_validate_model_state')
         null_ptr_check(self._ctx.ctx,     'self._ctx.ctx',     '_validate_model_state')
@@ -1023,6 +1004,8 @@ class Llama:
                 f'self.pos value {self.pos} is not equal to the length of '
                 f'self.context_tokens {len(self.context_tokens)}'
             )
+        if not hasattr(self, '_default_sampler_params'):
+            self._default_sampler_params = SamplerParams(self)
     
     def __repr__(self) -> str:
         return (
@@ -1297,8 +1280,7 @@ class Llama:
         add_special: bool,
         parse_special: bool,
     ) -> list[int]:
-        """
-        Convert the provided UTF-8 encoded text into tokens
+        """Convert the provided UTF-8 encoded text into tokens
 
         - text_bytes:
             The text to be tokenized
@@ -1307,8 +1289,7 @@ class Llama:
         - parse_special:
             Allow tokenizing special and/or control tokens which otherwise are
             not exposed and treated as plaintext. Does not insert a leading
-            space.
-        """
+            space."""
         null_ptr_check(self._vocab, 'self._vocab', 'Llama.tokenize')
         n_tokens = _internals.get_length(
             vocab=self._vocab,
@@ -1325,12 +1306,10 @@ class Llama:
         )
 
     def token_to_piece(self, token: int, special: bool) -> bytes:
-        """
-        Convert a single token ID into utf-8 bytes
+        """Convert a single token ID into utf-8 bytes
 
         - special:
-            If True, special tokens are rendered in the output
-        """
+            If True, special tokens are rendered in the output"""
         null_ptr_check(self._vocab, 'self._vocab', 'Llama.token_to_piece')
         return _internals.token_to_piece(
             vocab=self._vocab,
@@ -1343,12 +1322,10 @@ class Llama:
         tokens: Iterable[int],
         special: bool
     ) -> bytes:
-        """
-        Convert the provided tokens into UTF-8 encoded text
+        """Convert the provided tokens into UTF-8 encoded text
 
         - special:
-            If True, special tokens are rendered in the output
-        """
+            If True, special tokens are rendered in the output"""
         null_ptr_check(self._vocab, 'self._vocab', 'Llama.detokenize')
         return _internals.detokenize(
             vocab=self._vocab,
@@ -1362,9 +1339,7 @@ class Llama:
         add_special: bool,
         parse_special: bool,
     ) -> int:
-        """
-        Return the length of a given text as measured in tokens
-        """
+        """Return the length of a given text as measured in tokens"""
         null_ptr_check(self._vocab, 'self._vocab', 'Llama.get_length')
         return _internals.get_length(
             vocab=self._vocab,
@@ -1374,15 +1349,13 @@ class Llama:
         )
 
     def _first_valid_pos(self, tokens: Iterable[int]) -> int:
-        """
-        Given a list of tokens, and using `Llama.context_tokens`, find the first
+        """Given a list of tokens, and using `Llama.context_tokens`, find the first
         valid `Llama.pos`
 
         In other words, return length of the longest common prefix between the
         two iterables of tokens
 
-        Returns 0 if none of the tokens match, 1 if one token matches, etc.
-        """
+        Returns 0 if none of the tokens match, 1 if one token matches, etc."""
         i = 0
         for c, t in zip(self.context_tokens, tokens):
             if c == t:
@@ -1394,17 +1367,15 @@ class Llama:
     def generate_single(
         self,
         input_tokens: Iterable[int],
-        sampler_params: Optional[SamplerParams] = None,
+        sampler_preset: Optional[SamplerPreset] = None,
     ) -> int:
-        """
-        Generate a single token
+        """Generate a single token
 
         - input_tokens:
             The tokens to evaluate
-        - sampler:
-            The `SamplerParams` object to use for sampling. If not specified,
-            use the model's default sampler parameters
-        """
+        - sampler_preset:
+            The `SamplerPreset` object to use for sampling. If not specified,
+            use the model's default sampler parameters"""
 
         self._stopwatch.reset()
         self._stopwatch.start_wall_time()
@@ -1433,10 +1404,13 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
-        sampler = sampler_params if sampler_params is not None else self._default_sampler_params
+        if sampler_preset is None:
+            sampler_params = self._default_sampler_params
+        else:
+            sampler_params = self.sampler_params_from_preset(sampler_preset)
 
         if verbose:
-            sampler.print_chain()
+            sampler_params.print_chain()
         
         print_info_if_verbose(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
@@ -1484,17 +1458,16 @@ class Llama:
         self._stopwatch.stop_wall_time()
         if verbose:
             self._stopwatch.print_stats()
-        return self.sample(sampler)
+        return self.sample(sampler_params)
 
     def generate(
         self,
         input_tokens: Iterable[int],
         n_predict: int,
         stop_tokens: Optional[Iterable[int]] = None,
-        sampler_params: Optional[SamplerParams] = None
+        sampler_preset: Optional[SamplerPreset] = None
     ) -> list[int]:
-        """
-        Generate one or more tokens and return them all at once
+        """Generate one or more tokens and return them all at once
 
         - input_tokens:
             The tokens to evaluate
@@ -1508,10 +1481,9 @@ class Llama:
             the stop token will be included in the output. If this parameter is
             None, all built-in stop tokens for the model will be used. Pass an
             empty list `[]` to ignore all stop tokens.
-        - sampler_params:
-            The `SamplerParams` object to use for sampling. If not specified,
-            use the default sampler parameters
-        """
+        - sampler_preset:
+            The `SamplerPreset` object to use for sampling. If not specified,
+            use the model's default sampler parameters"""
 
         self._stopwatch.reset()
         self._stopwatch.start_wall_time()
@@ -1533,7 +1505,11 @@ class Llama:
             )
         
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
-        sampler = sampler_params if sampler_params is not None else self._default_sampler_params
+
+        if sampler_preset is None:
+            sampler_params = self._default_sampler_params
+        else:
+            sampler_params = self.sampler_params_from_preset(sampler_preset)
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self._first_valid_pos(input_tokens)
@@ -1547,7 +1523,7 @@ class Llama:
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         if verbose:
-            sampler.print_chain()
+            sampler_params.print_chain()
 
         print_info_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
@@ -1604,7 +1580,7 @@ class Llama:
             self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
-            id = self.sample(sampler)
+            id = self.sample(sampler_params)
             self.context_tokens.append(id)
             output_tokens.append(id)
             n_predicted += 1
@@ -1625,10 +1601,9 @@ class Llama:
         input_tokens: Iterable[int],
         n_predict: int,
         stop_tokens: Optional[Iterable[int]] = None,
-        sampler_params: Optional[SamplerParams] = None
+        sampler_preset: Optional[SamplerPreset] = None
     ) -> Iterable[int]:
-        """
-        Return a Generator which yields one or more tokens
+        """Return a Generator which yields one or more tokens
 
         - input_tokens:
             The tokens to evaluate
@@ -1640,10 +1615,9 @@ class Llama:
             the stop token will be included in the output. If this parameter is
             None, all built-in stop tokens for the model will be used. Pass an
             empty list `[]` to ignore all stop tokens.
-        - sampler_params:
-            The `SamplerParams` object to use for sampling. If not specified,
-            use the default sampler parameters
-        """
+        - sampler_preset:
+            The `SamplerPreset` object to use for sampling. If not specified,
+            use the model's default sampler parameters"""
 
         self._stopwatch.reset()
         self._stopwatch.start_wall_time()
@@ -1665,7 +1639,11 @@ class Llama:
                 )
         
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
-        sampler = sampler_params if sampler_params is not None else self._default_sampler_params
+
+        if sampler_preset is None:
+            sampler_params = self._default_sampler_params
+        else:
+            sampler_params = self.sampler_params_from_preset(sampler_preset)
         
         # find how many tokens in the input are already in the KV cache
         self.pos = self._first_valid_pos(input_tokens)
@@ -1679,7 +1657,7 @@ class Llama:
         n_cache_hit_tokens = n_tokens - n_actual_input_tokens
 
         if verbose:
-            sampler.print_chain()
+            sampler_params.print_chain()
 
         print_info_if_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
@@ -1734,7 +1712,7 @@ class Llama:
             self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
 
-            id = self.sample(sampler)
+            id = self.sample(sampler_params)
             self.context_tokens.append(id)
             yield id
             n_predicted += 1
@@ -1757,15 +1735,46 @@ class Llama:
         #lib.llama_sampler_accept(_internals.greedy_sampler, id)
         return id
     
+    def sampler_params_from_preset(self, sampler_preset: SamplerPreset) -> SamplerParams:
+        """Create and return a new `SamplerParams` object using the provided `SamplerPreset`
+
+        - sampler_preset:
+            The `sampling.SamplerPreset` object which defines the sampler parameter values to
+            use"""
+        return SamplerParams(
+            llama=self,
+            seed=sampler_preset.seed,
+            top_k=sampler_preset.top_k,
+            top_p=sampler_preset.top_p,
+            min_p=sampler_preset.min_p,
+            xtc_probability=sampler_preset.xtc_probability,
+            xtc_threshold=sampler_preset.xtc_threshold,
+            typical_p=sampler_preset.typical_p,
+            temp=sampler_preset.temp,
+            dynatemp_delta=sampler_preset.dynatemp_delta,
+            dynatemp_exponent=sampler_preset.dynatemp_exponent,
+            penalty_last_n=sampler_preset.penalty_last_n,
+            penalty_repeat=sampler_preset.penalty_repeat,
+            penalty_freq=sampler_preset.penalty_freq,
+            penalty_present=sampler_preset.penalty_present,
+            dry_multiplier=sampler_preset.dry_multiplier,
+            dry_base=sampler_preset.dry_base,
+            dry_allowed_length=sampler_preset.dry_allowed_length,
+            dry_penalty_last_n=sampler_preset.dry_penalty_last_n,
+            mirostat=sampler_preset.mirostat,
+            mirostat_tau=sampler_preset.mirostat_tau,
+            mirostat_eta=sampler_preset.mirostat_eta,
+            dry_sequence_breakers=sampler_preset.dry_sequence_breakers,
+            logit_bias=sampler_preset.logit_bias
+        )
+
     def sample(self, params: Optional[SamplerParams] = None) -> int:
-        """
-        Sample a token using the current context
+        """Sample a token using the current context
 
         - params:
             The `sampling.SamplerParams` object which defines the sampling
             parameters to use. If this parameter is None, the default sampler
-            paramater values will be used.
-        """
+            paramater values will be used."""
         params = params if params is not None else self._default_sampler_params
         id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
         # llama_sampler_sample internally calls llama_sampler_accept.
@@ -1774,25 +1783,21 @@ class Llama:
         return id
     
     def get_logits(self) -> np.ndarray:
-        """
-        Return the raw logits for the last token in the context
+        """Return the raw logits for the last token in the context
 
-        The returned array has shape `(n_vocab)`.
-        """
+        The returned array has shape `(n_vocab)`."""
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.logits')
         raw_logits = lib.llama_get_logits_ith(self._ctx.ctx, -1)
         return np.ctypeslib.as_array(raw_logits, shape=(1, self._n_vocab))[0]
 
     def get_scores(self, temp: Optional[float] = None) -> np.ndarray:
-        """
-        Return the softmaxed logits for the last token in the context.
+        """Return the softmaxed logits for the last token in the context.
         Optionally apply temperature `temp` if specified.
 
         Any floating-point value for temperature `temp` is valid, including 0.0
         and negative numbers.
 
-        The returned array has shape `(n_vocab)`.
-        """
+        The returned array has shape `(n_vocab)`."""
         logits = self.get_logits()
         return softmax(logits, T=temp)
     
@@ -1800,11 +1805,9 @@ class Llama:
             self,
             tokens: Iterable[int],
         ) -> list[tuple[int, bytes]]:
-        """
-        Given some tokens, return a list of tuples where the first item in the
+        """Given some tokens, return a list of tuples where the first item in the
         tuple is the token ID and the second item is the corresponding UTF-8
-        text bytes.
-        """
+        text bytes."""
         return list(
             zip(
                 tokens,
@@ -1817,8 +1820,7 @@ class Llama:
             tokens: Iterable[int],
             file: _SupportsWriteAndFlush = sys.stderr
         ) -> None:
-        """
-        Given some tokens, print a mapping of each token ID to the
+        """Given some tokens, print a mapping of each token ID to the
         corresponding UTF-8 text bytes
 
         This is meant to be equivalent to `llama.cpp/llama-tokenize`
@@ -1826,8 +1828,7 @@ class Llama:
         - tokens:
             The tokens to print a mapping for
         - file:
-            The file or stream to which the mapping will be printed
-        """
+            The file or stream to which the mapping will be printed"""
         token_mapping = self.get_tokenization_mapping(tokens)
         for id, txt in token_mapping:
             print(f"{id:>7} -> {str(txt)}", file=file)
