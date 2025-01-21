@@ -48,10 +48,7 @@ class Thread:
         self.llama = llama
         self.prompt_format = prompt_format
 
-        if sampler_preset is None:
-            self.sampler_params = llama._default_sampler_params
-        else:
-            self.sampler_params = llama.sampler_params_from_preset(sampler_preset)
+        self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
 
         if messages is None:
             self.messages: list[dict[str, str]] = []
@@ -235,9 +232,7 @@ class Thread:
         return input_ids
     
     def send(self, content: str) -> str:
-        """
-        Send a message in this thread and return the generated response
-        """
+        """Send a message in this thread and return the generated response"""
         self.messages.append({
             'role': 'user',
             'content': content
@@ -246,10 +241,9 @@ class Thread:
             input_tokens=self.get_input_ids(role='bot'),
             n_predict=-1,
             stop_tokens=self.llama.eog_tokens,
-            sampler_params=self.sampler_params
+            sampler_preset=self.sampler_preset
         )
-        response_bytes = self.llama.detokenize(response_toks, special=False)
-        response_txt = ez_decode(response_bytes)
+        response_txt = self.llama.detokenize(response_toks, special=False)
         self.messages.append({
             'role': 'bot',
             'content': response_txt
@@ -328,17 +322,39 @@ class Thread:
                         input_tokens=input_ids,
                         n_predict=-1,
                         stop_tokens=self.llama.eog_tokens,
-                        sampler_params=self.sampler_params
+                        sampler_preset=self.sampler_preset
                     )
 
-                    response = b''
-                    for tok in tok_gen:
-                        tok_bytes = self.llama.token_to_piece(tok, special=False)
-                        response += tok_bytes
-                        tok_txt = ez_decode(tok_bytes)
-                        print(f'{B}{tok_txt}{R}', end='', flush=True)
+                    response_toks = []
+                    detok_bytes_buffer = b''
                     
-                    self.messages.append({'role': 'bot', 'content': ez_decode(response)})
+                    for tok in tok_gen:
+                        response_toks.append(tok)
+                        #
+                        # detok_byte_buffer holds any incomplete UTF-8 characters until they
+                        # are completed by future tokens
+                        # 
+                        # for example, emojis are often split between two tokens, with one or
+                        # both of those tokens not being valid UTF-8 on its own
+                        #
+                        detok_bytes_buffer += self.llama.token_to_piece(tok, special=False)
+                        try:
+                            detok_txt = detok_bytes_buffer.decode('utf-8', errors='strict')
+                        except UnicodeDecodeError:
+                            pass # try again on next token
+                        else:
+                            detok_bytes_buffer = b''
+                            print(f'{B}{detok_txt}{R}', end='', flush=True)
+                    
+                    # print any leftover bytes (though ideally there should be none)
+                    if detok_bytes_buffer != b'':
+                        leftover_txt = ez_decode(detok_bytes_buffer)
+                        print(f'{B}{leftover_txt}{R}', end='', flush=True)
+                    
+                    self.messages.append({
+                        'role': 'bot',
+                        'content': self.llama.detokenize(response_toks, special=False)
+                    })
 
                     print()
                     if not _llama.get_verbose():
@@ -372,7 +388,7 @@ class Thread:
         output_ids = self.llama.generate(input_tokens=input_ids, n_predict=300)
         summary = self.llama.detokenize(output_ids, special=False)
         self.messages = orig_thread_messages.copy()
-        return ez_decode(summary)
+        return summary
 
     def print_stats(self, file: _SupportsWriteAndFlush = sys.stderr) -> None:
         """Print stats about the context usage in this thread"""

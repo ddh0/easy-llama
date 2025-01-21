@@ -22,7 +22,7 @@ import faulthandler
 
 from enum   import IntEnum
 from typing import Optional, Iterable
-from .utils import ptr, print_warning
+from .utils import ptr, print_warning, ez_decode
 
 faulthandler.enable() # prints more helpful info if python crashes
 
@@ -2205,10 +2205,10 @@ class _internals:
         vocab: ptr[llama_vocab],
         tokens: Iterable[int],
         special: bool
-    ) -> bytes:
+    ) -> str:
         """### INTERNAL
 
-        Convert the provided tokens into UTF-8 encoded text
+        Convert the provided tokens into a string
 
         - special:
             If True, special tokens are rendered in the output"""
@@ -2229,7 +2229,7 @@ class _internals:
                     f"{n_bytes}, but the maximum buffer size is {_internals.MAX_TOKEN_LENGTH}"
                 )
             detok_bytes += _internals.detok_buffer.raw[:n_bytes]
-        return detok_bytes
+        return ez_decode(detok_bytes)
 
     def get_length(
         vocab: ptr[llama_vocab],

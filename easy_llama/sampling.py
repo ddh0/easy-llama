@@ -547,7 +547,7 @@ class Presets:
         top_p = 1.0,
         min_p = 0.0,
         temp = 0.4,
-        presence_penalty = 0.6,
+        penalty_present = 0.6,
     )
     """Constrastive Search as described in https://arxiv.org/abs/2210.14140 (less random)"""
 
@@ -556,7 +556,7 @@ class Presets:
         top_p = 1.0,
         min_p = 0.0,
         temp = 0.8,
-        presence_penalty = 0.6
+        penalty_present = 0.6
     )
     """Constrastive Search as described in https://arxiv.org/abs/2210.14140 (more random)"""
 
@@ -595,7 +595,7 @@ class Presets:
         top_p = 1.0,
         min_p = 0.12,
         temp = 1.0,
-        repeat_penalty = 1.05
+        penalty_repeat = 1.05
     )
     """[sophosympatheia/Midnight-Miqu-70B-v1.5](https://huggingface.co/sophosympatheia/Midnight-Miqu-70B-v1.5)"""
 
@@ -644,7 +644,7 @@ class Presets:
         top_p = 0.8,
         min_p = 0.0,
         temp = 0.7,
-        repeat_penalty = 1.05
+        penalty_repeat = 1.05
     )
     """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
     (official, but not recommended)"""

@@ -983,9 +983,11 @@ class Llama:
         null_ptr_check(self._model.model, 'self._model.model', '_validate_model_state')
         null_ptr_check(self._vocab,       'self._vocab',       '_validate_model_state')
         null_ptr_check(self._ctx.ctx,     'self._ctx.ctx',     '_validate_model_state')
+
         def _fail(txt: str):
             print_error(f'Llama: validation failed: {txt}')
             raise RuntimeError(f'Llama: validation failed: {txt}')
+        
         if self.pos < 0:
             _fail(f'self.pos value {self.pos} is negative')
         if self.pos != len(self.context_tokens):
@@ -1323,7 +1325,7 @@ class Llama:
         self,
         tokens: Iterable[int],
         special: bool
-    ) -> bytes:
+    ) -> str:
         """Convert the provided tokens into UTF-8 encoded text
 
         - special:
@@ -1824,8 +1826,9 @@ class Llama:
         - file:
             The file or stream to which the mapping will be printed"""
         token_mapping = self.get_tokenization_mapping(tokens)
-        for id, txt in token_mapping:
-            print(f"{id:>7} -> {str(txt)}", file=file)
+        for id, bytes in token_mapping:
+            print(f"{id:>7} -> {repr(bytes)} ({bytes.hex(':')})", file=file)
+            #print(f"{id:>7} -> {str(txt)}", file=file)
         print(f"Total number of tokens: {len(token_mapping)}", file=file, flush=True)
 
     def reset(self) -> None:
