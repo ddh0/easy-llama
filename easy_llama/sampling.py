@@ -22,11 +22,7 @@ class Llama: # can't import the real Llama - would be circular
 
 def _get_random_seed() -> int:
     # uint32_t
-    return int.from_bytes(
-        bytes=os.urandom(4),
-        byteorder=sys.byteorder,
-        signed=False
-    )
+    return int.from_bytes(bytes=os.urandom(4), byteorder=sys.byteorder, signed=False)
 
 class SamplerParams:
     """A SamplerParams object is used by a Llama model to define sampling behaviour.

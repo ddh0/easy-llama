@@ -12,7 +12,7 @@ from .utils    import (
 )
 from typing    import Optional
 from .formats  import PromptFormat
-from .sampling import SamplerParams, SamplerPreset
+from .sampling import SamplerPreset
 
 from . import llama as _llama
 

@@ -12,7 +12,7 @@ import time
 import struct
 import ctypes
 
-import numpy    as np
+import numpy as np
 
 from .utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
@@ -68,30 +68,22 @@ def _init_backend_if_needed(verbose: bool = True) -> None:
     if lib._BACKEND_INIT is True:
         return
     
-    print_info_if_verbose(
-        f'easy_llama package version: {__version__}'
-    )
+    print_info_if_verbose(f'easy_llama package version: {__version__}')
     
     global _cpu_count
     _cpu_count = int(os.cpu_count())
     
     # most cases
     if sys.byteorder == 'little':
-        print_info_if_verbose(
-            "host is little-endian"
-        )
+        print_info_if_verbose("host is little-endian")
     # rare
     elif sys.byteorder == 'big':
-        print_warning(
-            "host is big-endian, please ensure your GGUF file is also "
-            "big-endian"
-        )
-    # extremely rare
+        print_warning("host is big-endian, please ensure your GGUF file is also big-endian")
+    # extremely rare, maybe impossible?
     else:
         print_error(
-            f"unexpected value for sys.byteorder: {sys.byteorder!r}; "
-            f"expected 'little' for little-endian host or 'big' for "
-            f"big-endian host"
+            f"unexpected value for sys.byteorder: {sys.byteorder!r}; expected 'little' for "
+            f"little-endian host or 'big' for big-endian host"
         )
     
     # actually load the backend
@@ -118,9 +110,7 @@ def _calculate_rope_freq_base(
         n_ctx_load: int,
         rope_freq_base_train: Optional[float]
     ) -> float:
-    """
-    Returns the rope_freq_base value at which a model should be loaded
-    """
+    """Returns the rope_freq_base value at which a model should be loaded"""
 
     # n_ctx does not exceed n_ctx_train - simply return native value
 
@@ -341,10 +331,7 @@ class QuickGGUFReader:
         )[0]
 
     @staticmethod
-    def get_single(
-            value_type: GGUFValueType,
-            file: BufferedReader
-        ) -> str | int | float | bool:
+    def get_single(value_type: GGUFValueType, file: BufferedReader) -> str | int | float | bool:
         """Read a single value from an open file"""
         if value_type == GGUFValueType.STRING:
             string_length = QuickGGUFReader.unpack(
@@ -367,14 +354,12 @@ class QuickGGUFReader:
     
     @staticmethod
     def load_metadata(
-            path_model: os.PathLike[str] | str
-        ) -> dict[str, str | int | float | bool | list]:
-        """
-        Given a path to a GGUF file, peek at its header for metadata
+        path_model: os.PathLike[str] | str
+    ) -> dict[str, str | int | float | bool | list]:
+        """Given a path to a GGUF file, peek at its header for metadata
 
         Return a dictionary where all keys are strings, and values can be
-        strings, ints, floats, bools, or lists
-        """
+        strings, ints, floats, bools, or lists"""
 
         metadata: dict[str, str | int | float | bool | list] = {}
         with open(path_model, "rb") as file:
@@ -485,9 +470,7 @@ class _LlamaModel:
         self.params = lib.llama_model_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaModel.__init__")
         if devices is not None:
-            self.params.devices = (
-                ctypes.c_void_p * (len(devices) + 1)
-            )(*devices, None)
+            self.params.devices = (ctypes.c_void_p * (len(devices) + 1))(*devices, None)
         if n_gpu_layers is not None:
             self.params.n_gpu_layers = (
                 n_gpu_layers
@@ -497,9 +480,7 @@ class _LlamaModel:
         if main_gpu is not None:
             self.params.main_gpu = main_gpu
         if tensor_split is not None:
-            self.params.tensor_split = (
-                ctypes.c_float * len(tensor_split)
-            )(*tensor_split)
+            self.params.tensor_split = (ctypes.c_float * len(tensor_split))(*tensor_split)
         if rpc_servers is not None:
             self.params.rpc_servers = rpc_servers.encode('utf-8')
         if progress_callback is not None:
@@ -522,9 +503,9 @@ class _LlamaModel:
         # refuse to load files with incorrect extension
         if not path_model.lower().endswith('.gguf'):
             raise ValueError(
-                f"_LlamaModel.__init__: the given path_model {path_model!r} "
-                f"does not end in '.gguf'. easy-llama refuses to load from "
-                f"files that do not have the correct file extension."
+                f"_LlamaModel.__init__: the given path_model {path_model!r} does not end "
+                f"in '.gguf'. easy-llama refuses to load from files that do not have the "
+                f"correct file extension."
             )
         
         # load model
@@ -636,20 +617,15 @@ class _LlamaCtx:
                 f'supported, program may fail'
             )
         if _k not in _SUPPORTED_KV_TYPES:
-            print_warning(
-                f'type_k value {_k} is unsupported; program may fail'
-            )
+            print_warning(f'type_k value {_k} is unsupported; program may fail')
         if _v not in _SUPPORTED_KV_TYPES:
-            print_warning(
-                f'type_v value {_v} is unsupported; program may fail'
-            )
+            print_warning(f'type_v value {_v} is unsupported; program may fail')
         if (not flash_attn) and (_v not in [
-            lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16,
+            lib.GGMLType.GGML_TYPE_F32,
+            lib.GGMLType.GGML_TYPE_F16,
             lib.GGMLType.GGML_TYPE_BF16
         ]):
-            print_warning(
-                f'V cache quantization requires flash_attn; program may fail'
-            )
+            print_warning(f'V cache quantization requires flash_attn; program may fail')
         if logits_all is not None:
             self.params.logits_all = logits_all
         if embeddings is not None:
@@ -666,7 +642,6 @@ class _LlamaCtx:
             self.params.abort_callback_data = abort_callback_data
         
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
-
         with suppress_output(disable=get_verbose()):
             self.ctx = lib.llama_init_from_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
@@ -808,6 +783,7 @@ class Llama:
             Print informational output when loading model as well as at
             runtime. Default is True. If set to False, warnings and errors
             will still be shown."""
+        
         if not os.path.exists(path_model):
             raise FileNotFoundError(
                 f"Llama: the given path_model {path_model!r} does not exist"
@@ -828,13 +804,12 @@ class Llama:
         # Load model from file
         #
 
-        with suppress_output(disable=get_verbose()):
-            self._model = _LlamaModel(
-                path_model=path_model,
-                n_gpu_layers=n_gpu_layers,
-                use_mmap=use_mmap,
-                use_mlock=use_mlock
-            )
+        self._model = _LlamaModel(
+            path_model=path_model,
+            n_gpu_layers=n_gpu_layers,
+            use_mmap=use_mmap,
+            use_mlock=use_mlock
+        )
         
         self._vocab = lib.llama_model_get_vocab(self._model.model)
         """A pointer to this model's `llama_vocab`"""
@@ -877,19 +852,18 @@ class Llama:
         # New context with model
         #
         
-        with suppress_output(disable=get_verbose()):
-            self._ctx = _LlamaCtx(
-                model=self._model,
-                n_ctx=_n_ctx,
-                n_batch=n_batch,
-                n_threads=_get_optimal_n_threads(),
-                n_threads_batch=_get_optimal_n_threads_batch(),
-                rope_freq_base=_rope_freq_base,
-                type_k=type_k,
-                type_v=type_v,
-                offload_kqv=offload_kqv,
-                flash_attn=flash_attn
-            )
+        self._ctx = _LlamaCtx(
+            model=self._model,
+            n_ctx=_n_ctx,
+            n_batch=n_batch,
+            n_threads=_get_optimal_n_threads(),
+            n_threads_batch=_get_optimal_n_threads_batch(),
+            rope_freq_base=_rope_freq_base,
+            type_k=type_k,
+            type_v=type_v,
+            offload_kqv=offload_kqv,
+            flash_attn=flash_attn
+        )
 
         #
         # Display warnings about n_ctx if necessary
@@ -927,7 +901,7 @@ class Llama:
         self._stopwatch = _LlamaStopwatch()
 
         #
-        # Store immutable Llama metadata as attributes for faster access
+        # Store Llama metadata as attributes for faster access internally
         #
 
         self._n_ctx                 = self.n_ctx()
@@ -939,16 +913,16 @@ class Llama:
         self._n_embd                = self.n_embd()
         self._n_layer               = self.n_layer()
         self._n_head                = self.n_head() # attn heads, not KV
-        self._ctx_pooling_type      = self.ctx_pooling_type()
+        self._pooling_type          = self.pooling_type()
         self._vocab_type            = self.vocab_type()
         self._rope_type             = self.rope_type()
         self._rope_freq_scale_train = self.rope_freq_scale_train()
-        self._model_size            = self.model_size()
+        self._model_size_bytes      = self.model_size_bytes()
         self._chat_template         = self.chat_template()
-        self._model_n_params        = self.model_n_params()
-        self._model_has_encoder     = self.model_has_encoder()
-        self._model_has_decoder     = self.model_has_decoder()
-        self._model_is_recurrent    = self.model_is_recurrent()
+        self._n_params              = self.n_params()
+        self._has_encoder           = self.has_encoder()
+        self._has_decoder           = self.has_decoder()
+        self._is_recurrent          = self.is_recurrent()
         self._token_bos             = self.token_bos()
         self._token_eos             = self.token_eos()
         self._token_eot             = self.token_eot()
@@ -980,10 +954,25 @@ class Llama:
         self._lock = _InferenceLock()
 
         if warmup:
-            # warm up the model with an empty run
-            print_info_if_verbose('warming up the model with an empty run ...')
+            #
+            # The llama.cpp warmup calls `llama_decode` with a dummy batch of only 1 token.
+            #
+            # Here, we are warming up the model by calling `llama_decode` with a dummy batch
+            # which has `n_batch` tokens.
+            #
+            # The reason for doing this is that, when using llama.cpp, the model might often
+            # be very large compared to the host's VRAM or even system RAM. In this case,
+            # decoding small batches might work fine, but the program may crash or be killed
+            # by OOM when decoding large batches.
+            #
+            # By decoding a full batch right after the model loads, we prevent unexpected
+            # crashes or OOMs later on during execution, by "stress-testing" with a full batch.
+            #
+            # This adds a few seconds to the Llama load time.
+            # 
+            print_info_if_verbose('warming up the model with an empty run ... please wait ...')
             with self._lock:
-                _internals.decode_tg(self._ctx.ctx, 0, 0)
+                _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
             print_info_if_verbose('model is warm')
 
         # End of Llama.__init__
@@ -1005,6 +994,7 @@ class Llama:
                 f'self.context_tokens {len(self.context_tokens)}'
             )
         if not hasattr(self, '_default_sampler_params'):
+            # re-create the default sampler params if they are missing
             self._default_sampler_params = SamplerParams(self)
     
     def __repr__(self) -> str:
@@ -1074,9 +1064,9 @@ class Llama:
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_head")
         return lib.llama_model_n_head(self._model.model)
 
-    def ctx_pooling_type(self) -> int:
+    def pooling_type(self) -> int:
         """Get the pooling type used by the context"""
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.ctx_pooling_type")
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.pooling_type")
         return lib.llama_pooling_type(self._ctx.ctx)
 
     def vocab_type(self) -> int:
@@ -1094,9 +1084,9 @@ class Llama:
         null_ptr_check(self._model.model, "self._model.model", "Llama.rope_freq_scale_train")
         return lib.llama_model_rope_freq_scale_train(self._model.model)
 
-    def model_size(self) -> int:
+    def model_size_bytes(self) -> int:
         """Get the total size of the model in bytes"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.model_size")
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_size_bytes")
         return lib.llama_model_size(self._model.model)
     
     def chat_template(self) -> str:
@@ -1105,25 +1095,29 @@ class Llama:
         null_ptr_check(self._model.model, "self._model.model", "Llama.chat_template")
         return lib.llama_model_chat_template(self._model.model)
 
-    def model_n_params(self) -> int:
+    def n_params(self) -> int:
         """Get the total number of parameters in the model"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.model_n_params")
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_params")
         return lib.llama_model_n_params(self._model.model)
 
-    def model_has_encoder(self) -> bool:
+    def has_encoder(self) -> bool:
         """If the model has an encoder"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.model_has_encoder")
+        null_ptr_check(self._model.model, "self._model.model", "Llama.has_encoder")
         return lib.llama_model_has_encoder(self._model.model)
 
-    def model_has_decoder(self) -> bool:
+    def has_decoder(self) -> bool:
         """If the model has a decoder"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.model_has_decoder")
+        null_ptr_check(self._model.model, "self._model.model", "Llama.has_decoder")
         return lib.llama_model_has_decoder(self._model.model)
 
-    def model_is_recurrent(self) -> bool:
+    def is_recurrent(self) -> bool:
         """If the model is recurrent"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.model_is_recurrent")
+        null_ptr_check(self._model.model, "self._model.model", "Llama.is_recurrent")
         return lib.llama_model_is_recurrent(self._model.model)
+    
+    #
+    # KV cache management methods
+    #
 
     def kv_cache_clear(self) -> None:
         """Clear the KV cache"""
@@ -1135,9 +1129,7 @@ class Llama:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_rm")
         return lib.llama_kv_cache_seq_rm(self._ctx.ctx, seq_id, p0, p1)
 
-    def kv_cache_seq_cp(
-        self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int
-    ) -> None:
+    def kv_cache_seq_cp(self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
         """Copy tokens between sequences in the KV cache"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_cp")
         lib.llama_kv_cache_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
@@ -1147,9 +1139,7 @@ class Llama:
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep")
         lib.llama_kv_cache_seq_keep(self._ctx.ctx, seq_id)
 
-    def kv_cache_seq_add(
-        self, seq_id: int, p0: int, p1: int, delta: int
-    ) -> None:
+    def kv_cache_seq_add(self, seq_id: int, p0: int, p1: int, delta: int) -> None:
         """Add relative position "delta" to the tokens"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_add")
         lib.llama_kv_cache_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
@@ -1205,34 +1195,40 @@ class Llama:
         return lib.llama_vocab_is_control(self._vocab, token)
 
     def token_bos(self) -> int:
-        """Get the BOS (Beginning-Of-Sequence) token"""
+        """Get the BOS (Beginning-Of-Sequence) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_bos")
-        return lib.llama_vocab_bos(self._vocab)
+        id = lib.llama_vocab_bos(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_eos(self) -> int:
-        """Get the EOS (End-Of-Sequence) token"""
+        """Get the EOS (End-Of-Sequence) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_eos")
-        return lib.llama_vocab_eos(self._vocab)
+        id = lib.llama_vocab_eos(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_eot(self) -> int:
-        """Get the EOT (End-Of-Turn) token"""
+        """Get the EOT (End-Of-Turn) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_eot")
-        return lib.llama_vocab_eot(self._vocab)
+        id = lib.llama_vocab_eot(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_sep(self) -> int:
-        """Get the SEP (Separator) token"""
+        """Get the SEP (Separator) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_sep")
-        return lib.llama_vocab_sep(self._vocab)
+        id = lib.llama_vocab_sep(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_nl(self) -> int:
-        """Get the NL (Newline) token"""
+        """Get the NL (Newline) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_nl")
-        return lib.llama_vocab_nl(self._vocab)
+        id = lib.llama_vocab_nl(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_pad(self) -> int:
-        """Get the PAD (Padding) token"""
+        """Get the PAD (Padding) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_pad")
-        return lib.llama_vocab_pad(self._vocab)
+        id = lib.llama_vocab_pad(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def add_bos_token(self) -> bool:
         """If the model is configured to add a BOS token"""
@@ -1245,34 +1241,40 @@ class Llama:
         return lib.llama_vocab_get_add_eos(self._vocab)
 
     def token_fim_pre(self) -> int:
-        """Get the FIM PRE (Fill-In-Middle Prefix) token"""
+        """Get the FIM PRE (Fill-In-Middle Prefix) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_pre")
-        return lib.llama_vocab_fim_pre(self._vocab)
+        id = lib.llama_vocab_fim_pre(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_fim_suf(self) -> int:
-        """Get the FIM SUF (Fill-In-Middle Suffix) token"""
+        """Get the FIM SUF (Fill-In-Middle Suffix) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_suf")
-        return lib.llama_vocab_fim_suf(self._vocab)
+        id = lib.llama_vocab_fim_suf(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_fim_mid(self) -> int:
-        """Get the FIM MID (Fill-In-Middle Middle) token"""
+        """Get the FIM MID (Fill-In-Middle Middle) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_mid")
-        return lib.llama_vocab_fim_mid(self._vocab)
+        id = lib.llama_vocab_fim_mid(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_fim_pad(self) -> int:
-        """Get the FIM PAD (Fill-In-Middle Padding) token"""
+        """Get the FIM PAD (Fill-In-Middle Padding) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_pad")
-        return lib.llama_vocab_fim_pad(self._vocab)
+        id = lib.llama_vocab_fim_pad(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_fim_rep(self) -> int:
-        """Get the FIM REP (Fill-In-Middle Repository) token"""
+        """Get the FIM REP (Fill-In-Middle Repository) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_rep")
-        return lib.llama_vocab_fim_rep(self._vocab)
+        id = lib.llama_vocab_fim_rep(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
 
     def token_fim_sep(self) -> int:
-        """Get the FIM SEP (Fill-In-Middle Separator) token"""
+        """Get the FIM SEP (Fill-In-Middle Separator) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_sep")
-        return lib.llama_vocab_fim_sep(self._vocab)
+        id = lib.llama_vocab_fim_sep(self._vocab)
+        return id if id != lib.LLAMA_TOKEN_NULL else None
     
     def tokenize(
         self,
@@ -1801,19 +1803,11 @@ class Llama:
         logits = self.get_logits()
         return softmax(logits, T=temp)
     
-    def get_tokenization_mapping(
-            self,
-            tokens: Iterable[int],
-        ) -> list[tuple[int, bytes]]:
+    def get_tokenization_mapping(self, tokens: Iterable[int]) -> list[tuple[int, bytes]]:
         """Given some tokens, return a list of tuples where the first item in the
         tuple is the token ID and the second item is the corresponding UTF-8
         text bytes."""
-        return list(
-            zip(
-                tokens,
-                [self.token_to_piece(id, special=True) for id in tokens]
-            )
-        )
+        return list(zip(tokens, [self.token_to_piece(id, special=True) for id in tokens]))
     
     def print_tokenization_mapping(
             self,
@@ -1832,10 +1826,7 @@ class Llama:
         token_mapping = self.get_tokenization_mapping(tokens)
         for id, txt in token_mapping:
             print(f"{id:>7} -> {str(txt)}", file=file)
-        print(
-            f"Total number of tokens: {len(token_mapping)}", file=file,
-            flush=True
-        )
+        print(f"Total number of tokens: {len(token_mapping)}", file=file, flush=True)
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""
@@ -1845,7 +1836,7 @@ class Llama:
         print_info_if_verbose('model was reset')
 
 #
-# End of functions / Begin test
+# End of module / Begin test
 #
 
 def main() -> int:

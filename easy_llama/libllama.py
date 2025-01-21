@@ -20,9 +20,9 @@ import sys
 import ctypes
 import faulthandler
 
-from enum    import IntEnum
-from typing  import Optional, Iterable
-from .utils  import ptr, print_warning
+from enum   import IntEnum
+from typing import Optional, Iterable
+from .utils import ptr, print_warning
 
 faulthandler.enable() # prints more helpful info if python crashes
 
