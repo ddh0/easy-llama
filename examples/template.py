@@ -36,6 +36,8 @@ sampler_preset = ez.sampling.SamplerPreset(
 
 Thread = ez.Thread(Llama, prompt_format, sampler_preset)
 
+#Thread.interact(stream=True)
+
 WebUI = ez.WebUI(Thread)
 
 WebUI.start(host='X.X.X.X', port=8080, ssl=True)

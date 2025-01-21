@@ -247,7 +247,7 @@ class SamplerParams:
 
         # IF MIROSTAT v1:
 
-        if mirostat == 1:
+        elif mirostat == 1:
             # ... -> temp(-ext) -> mirostat-v1
             if dynatemp_delta != 0.0:
                 # dynamic temperature AKA entropy sampling

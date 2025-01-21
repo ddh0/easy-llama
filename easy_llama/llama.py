@@ -1387,9 +1387,7 @@ class Llama:
         n_tokens = len(input_tokens)
 
         if n_tokens == 0:
-            raise ValueError(
-                f'Llama.generate_single: input_tokens cannot be empty'
-            )
+            raise ValueError(f'Llama.generate_single: input_tokens cannot be empty')
         
         if n_tokens + 1 > self._n_ctx:
             raise ExceededContextLengthException(
@@ -1554,9 +1552,7 @@ class Llama:
             if n_batch_tokens > 1:
                 self._stopwatch.start_pp()
                 with self._lock:
-                    _internals.decode_pp(
-                        self._ctx.ctx, self.pos, batch, n_batch_tokens
-                    )
+                    _internals.decode_pp(self._ctx.ctx, self.pos, batch, n_batch_tokens)
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
@@ -1567,8 +1563,7 @@ class Llama:
                 self._stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
-                    f'Llama.generate: unexpected n_batch_tokens value '
-                    f'{n_batch_tokens}'
+                    f'Llama.generate: unexpected n_batch_tokens value {n_batch_tokens}'
                 )
             
             # update the Llama position and context
@@ -1819,7 +1814,7 @@ class Llama:
         """Given some tokens, print a mapping of each token ID to the
         corresponding UTF-8 text bytes
 
-        This is meant to be equivalent to `llama.cpp/llama-tokenize`
+        This is meant to be roughly equivalent to `llama.cpp/llama-tokenize`
 
         - tokens:
             The tokens to print a mapping for

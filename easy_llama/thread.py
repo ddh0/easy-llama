@@ -106,7 +106,7 @@ class Thread:
                     parse_special=True
                 ))
                 input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.system_prompt()),
+                    text_bytes=ez_encode(first_msg['content']),
                     add_special=False,
                     parse_special=False
                 ))
@@ -200,8 +200,7 @@ class Thread:
             # (if role is None, no prefix is appended)
             if role.lower() in Thread.valid_system_roles:
                 raise ValueError(
-                    f'Thread.get_input_ids: multiple system messages are not '
-                    f'supported'
+                    f'Thread.get_input_ids: multiple system messages are not supported'
                 )
             elif role.lower() in Thread.valid_user_roles:
                 input_ids.extend(self.llama.tokenize(

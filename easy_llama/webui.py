@@ -157,11 +157,10 @@ def decode_transfer(text: str) -> str:
 
 def assert_max_length(text: str) -> None:
     """Fail if the given text exceeds the allowed input length"""
-    if len(text) > MAX_LENGTH_INPUT:
-        raise AssertionError(
-            f'length of input exceeds maximum allowed length of '
-            f'{MAX_LENGTH_INPUT:,} characters'
-        )
+    assert len(text) > MAX_LENGTH_INPUT, (
+        f'length of input exceeds maximum allowed length of '
+        f'{MAX_LENGTH_INPUT:,} characters'
+    )
 
 
 class WebUI:
