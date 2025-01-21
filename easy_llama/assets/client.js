@@ -51,15 +51,15 @@ function fixBase64Padding(base64) {
 }
 
 
-function encode(text) {
-    // utf-8 str -> utf-8 bytes -> base64 str
+function encode_transfer(text) {
+    // utf-8 str -> base64 str
     let bytes = GlobalEncoder.encode(text);
     return bytesToBase64(bytes);
 }
 
 
-function decode(base64) {
-    // base64 str -> utf-8 bytes -> utf-8 str
+function decode_transfer(base64) {
+    // base64 str -> utf-8 str
     let bytes = base64ToBytes(base64);
     return GlobalDecoder.decode(bytes);
 }
@@ -264,7 +264,7 @@ function streamToMessage(reader, targetMessage, prefix) {
                 // Decode any remaining base64 data
                 if (accumulatedBase64.length > 0) {
                     try {
-                        accumulatedText += decode(
+                        accumulatedText += decode_transfer(
                             fixBase64Padding(accumulatedBase64)
                         );
                     } catch (error) {
@@ -290,7 +290,7 @@ function streamToMessage(reader, targetMessage, prefix) {
             for (const base64Chunk of chunks) {
                 if (base64Chunk) {
                     try {
-                        decoded_chunk = decode(fixBase64Padding(base64Chunk));
+                        decoded_chunk = decode_transfer(fixBase64Padding(base64Chunk));
                         //console.log(
                         //    "single base64chunk",
                         //    base64Chunk,
@@ -371,7 +371,7 @@ function submitForm(event) {
 
     fetch('/submit', {
         method: 'POST',
-        body: encode(prompt)
+        body: encode_transfer(prompt)
     })
     .then(response => {
         updatePlaceholderText();
@@ -400,7 +400,7 @@ function updatePlaceholderText() {
     return fetch('/get_context_string')
         .then(response => response.json())
         .then(data => {
-            inputBox.placeholder = decode(data.text);
+            inputBox.placeholder = decode_transfer(data.text);
         })
         .catch(error => {
             handleError('updatePlaceholderText: ' + error.message);
@@ -479,7 +479,7 @@ function newBotMessage() {
                 return;
             }
 
-            encodedPrefix = encode(v);
+            encodedPrefix = encode_transfer(v);
             accumulatedText = v;
 
             botMessage = createMessage('bot', v);
@@ -574,8 +574,8 @@ function populateConversation() {
             const msg = data[msgKey];
             let keys = Object.keys(msg);
 
-            let role = decode(keys[0]);
-            let content = decode(msg[keys[0]]);
+            let role = decode_transfer(keys[0]);
+            let content = decode_transfer(msg[keys[0]]);
 
             //console.log('i:', i, 'role:', role, 'content:', content);
 
@@ -640,7 +640,7 @@ function generateSummary() {
             }
         })
         .then(data => {
-            let summary = decode(data); // Use the text data
+            let summary = decode_transfer(data); // Use the text data
             console.log('summary:', summary);
             alert(summary);
             setIsGeneratingState(false);

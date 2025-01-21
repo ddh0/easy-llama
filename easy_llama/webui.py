@@ -10,7 +10,7 @@ import json
 import base64
 
 from .thread import Thread
-from .utils import print_info, assert_type, Colors
+from .utils import print_info, assert_type, Colors, ez_encode, ez_decode
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -143,19 +143,17 @@ def newline() -> None:
     """Print a newline to stderr"""
     print('', end='\n', file=sys.stderr, flush=True)
 
-def encode(text: str | bytes) -> str:
-    """ utf-8 str -> bytes -> ascii base64 """
-    if not isinstance(text, bytes):
-        data = text.encode('utf-8')
-    else:
-        data = text
-    encoded = base64.b64encode(data).decode('utf-8')
-    #print(f"sending encoded: {encoded!r}")
+def encode_transfer(text: str) -> str:
+    """Encode the outgoing string into a Base64 string"""
+    encoded = base64.b64encode(text.encode('utf-8', errors='strict')).decode('utf-8')
+    print(f"sending encoded: {encoded!r}")
     return encoded
 
-def decode(text: str) -> str:
-    """ ascii base64 -> bytes -> utf-8 str """
-    return base64.b64decode(text).decode('utf-8')
+def decode_transfer(text: str) -> str:
+    """Decode the incoming Base64 string into a regular string"""
+    decoded = base64.b64decode(text).decode('utf-8', errors='strict')
+    print(f"recieved decoded: {decoded!r}")
+    return decoded
 
 def assert_max_length(text: str) -> None:
     """Fail if the given text exceeds the allowed input length"""
@@ -260,7 +258,7 @@ class WebUI:
 
             i = 0
             for msg in self.thread.messages:
-                msgs_dict[i] = { encode(msg['role']) : encode(msg['content']) }
+                msgs_dict[i] = { encode_transfer(msg['role']) : encode_transfer(msg['content']) }
                 i += 1
             
             json_convo = json.dumps(msgs_dict)
@@ -278,7 +276,7 @@ class WebUI:
         @self.app.route('/submit', methods=['POST'])
         def submit():
             self.log('hit submit endpoint')
-            prompt = decode(request.data)
+            prompt = decode_transfer(request.data)
 
             if prompt in ['', None]:
                 self.log('do not submit empty prompt')
@@ -295,9 +293,12 @@ class WebUI:
                     input_tokens=input_ids,
                     n_predict=-1,
                     stop_tokens=self.thread.llama.eog_tokens,
-                    sampler_params=self.thread.sampler_params
+                    sampler_preset=self.thread.sampler_preset
                 )
-                response = ''
+
+                response_toks = []
+                detok_bytes_buffer = b''
+                response_txt = ''
 
                 for token in token_generator:
                     if self._cancel_flag:
@@ -306,32 +307,47 @@ class WebUI:
                         self._cancel_flag = False
                         return '', 418  # I'm a teapot
 
-                    tok_bytes = self.thread.llama.token_to_piece(
-                        token=token,
-                        special=False
-                    )
-                    tok_text = tok_bytes.decode(errors='ignore')
-                    response += tok_text
+                    response_toks.append(token)
+                    detok_bytes_buffer += self.thread.llama.token_to_piece(token, special=False)
+                    try:
+                        detok_txt = detok_bytes_buffer.decode('utf-8', errors='strict')
+                    except UnicodeDecodeError:
+                        pass  # try again on next token
+                    else:
+                        detok_bytes_buffer = b''
+                        response_txt += detok_txt
+                        print(
+                            f'{BLUE}{detok_txt}{RESET}',
+                            end='',
+                            flush=True,
+                            file=sys.stderr
+                        )
+                        yield encode_transfer(detok_txt) + '\n'  # delimiter between tokens
+
+                # print any leftover bytes (though ideally there should be none)
+                if detok_bytes_buffer != b'':
+                    leftover_txt = ez_decode(detok_bytes_buffer)
+                    response_txt += leftover_txt
                     print(
-                        f'{BLUE}{tok_text}{RESET}',
+                        f'{BLUE}{leftover_txt}{RESET}',
                         end='',
                         flush=True,
                         file=sys.stderr
                     )
-                    yield encode(tok_bytes) + '\n' # delimiter between tokens
+                    yield encode_transfer(leftover_txt) + '\n'  # delimiter between tokens
 
                 self._cancel_flag = False
                 newline()
                 self.thread.messages.append({
                     'role': 'bot',
-                    'content': response
+                    'content': response_txt
                 })
 
             if prompt not in ['', None]:
                 return Response(generate(), mimetype='text/plain')
 
             return '', 200
-        
+
 
         @self.app.route('/reset', methods=['POST'])
         def reset():
@@ -344,7 +360,7 @@ class WebUI:
         def get_context_string():
 
             json_content = json.dumps(
-                { 'text' : encode(self._get_context_string()) }
+                { 'text' : encode_transfer(self._get_context_string()) }
             )
 
             return json_content, 200, {'ContentType': 'application/json'}
@@ -366,7 +382,7 @@ class WebUI:
         @self.app.route('/trigger', methods=['POST'])
         def trigger():
             self.log('hit trigger endpoint')
-            prompt = decode(request.data)
+            prompt = decode_transfer(request.data)
 
             if prompt not in ['', None]:
                 self.log(f'trigger with prompt: {prompt!r}')
@@ -385,9 +401,12 @@ class WebUI:
                     input_tokens=input_ids,
                     n_predict=-1,
                     stop_tokens=self.thread.llama.eog_tokens,
-                    sampler_params=self.thread.sampler_params
+                    sampler_preset=self.thread.sampler_preset
                 )
-                response = ''
+
+                response_toks = []
+                detok_bytes_buffer = b''
+                response_txt = ''
 
                 for token in token_generator:
                     if self._cancel_flag:
@@ -396,20 +415,31 @@ class WebUI:
                         self._cancel_flag = False  # reset flag
                         return '', 418  # I'm a teapot
 
-                    tok_bytes = self.thread.llama.token_to_piece(
-                        token=token,
-                        special=False
-                    )
-                    tok_text = tok_bytes.decode(errors='ignore')
-                    response += tok_text
-                    print(f'{BLUE}{tok_text}{RESET}', end='', flush=True)
-                    yield encode(tok_bytes) + '\n' # delimiter between tokens
+                    response_toks.append(token)
+                    detok_bytes_buffer += self.thread.llama.token_to_piece(token, special=False)
+
+                    try:
+                        detok_txt = detok_bytes_buffer.decode('utf-8', errors='strict')
+                    except UnicodeDecodeError:
+                        pass  # try again on next token
+                    else:
+                        detok_bytes_buffer = b''
+                        response_txt += detok_txt
+                        print(f'{BLUE}{detok_txt}{RESET}', end='', flush=True)
+                        yield encode_transfer(detok_txt) + '\n'  # delimiter between tokens
+
+                # print any leftover bytes (though ideally there should be none)
+                if detok_bytes_buffer != b'':
+                    leftover_txt = ez_decode(detok_bytes_buffer)
+                    response_txt += leftover_txt
+                    print(f'{BLUE}{leftover_txt}{RESET}', end='', flush=True)
+                    yield encode_transfer(leftover_txt) + '\n'  # delimiter between tokens
 
                 self._cancel_flag = False
                 print('', file=sys.stderr)
                 self.thread.messages.append({
                     'role': 'bot',
-                    'content': prompt + response
+                    'content': prompt + response_txt
                 })
 
             return Response(generate(), mimetype='text/plain')
@@ -418,7 +448,7 @@ class WebUI:
         @self.app.route('/summarize', methods=['GET'])
         def summarize():
             summary = self.thread.summarize()
-            response = encode(summary)
+            response = encode_transfer(summary)
             self.log(f"generated summary: {BLUE}{summary!r}{RESET}")
             return response, 200, {'ContentType': 'text/plain'}
         
@@ -426,12 +456,14 @@ class WebUI:
         @self.app.route('/settings', methods=['GET'])
         def settings():
             # TODO: update this to work with SamplerParams
+            raise NotImplementedError
             return render_template('settings.html')
 
 
         @self.app.route('/update_sampler', methods=['POST'])
         def update_sampler():
             # TODO: update this to work with SamplerParams
+            raise NotImplementedError
             data = request.get_json()
             self.thread.sampler.max_len_tokens = data.get('max_len_tokens', self.thread.sampler.max_len_tokens)
             self.thread.sampler.top_k = data.get('top_k', self.thread.sampler.top_k)
@@ -447,6 +479,7 @@ class WebUI:
         @self.app.route('/get_sampler', methods=['GET'])
         def get_sampler():
             # TODO: update this to work with SamplerParams
+            raise NotImplementedError
             sampler_settings = {
                 'max_len_tokens': self.thread.sampler.max_len_tokens,
                 'top_k': self.thread.sampler.top_k,
