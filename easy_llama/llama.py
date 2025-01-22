@@ -1310,7 +1310,7 @@ class Llama:
         )
 
     def token_to_piece(self, token: int, special: bool) -> bytes:
-        """Convert a single token ID into utf-8 bytes
+        """Convert a single token ID into UTF-8 bytes
 
         - special:
             If True, special tokens are rendered in the output"""
@@ -1435,9 +1435,7 @@ class Llama:
             if n_batch_tokens > 1:
                 self._stopwatch.start_pp()
                 with self._lock:
-                    _internals.decode_pp(
-                        self._ctx.ctx, self.pos, batch, n_batch_tokens
-                    )
+                    _internals.decode_pp(self._ctx.ctx, self.pos, batch, n_batch_tokens)
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
@@ -1681,9 +1679,7 @@ class Llama:
             if n_batch_tokens > 1:
                 self._stopwatch.start_pp()
                 with self._lock:
-                    _internals.decode_pp(
-                        self._ctx.ctx, self.pos, batch, n_batch_tokens
-                    )
+                    _internals.decode_pp(self._ctx.ctx, self.pos, batch, n_batch_tokens)
                 self._stopwatch.stop_pp()
                 self._stopwatch.increment_pp_tokens(n_batch_tokens)
             elif n_batch_tokens == 1:
@@ -1694,8 +1690,7 @@ class Llama:
                 self._stopwatch.increment_tg_tokens(1)
             else:
                 raise RuntimeError(
-                    f'Llama.stream: unexpected n_batch_tokens value '
-                    f'{n_batch_tokens}'
+                    f'Llama.stream: unexpected n_batch_tokens value {n_batch_tokens}'
                 )
             
             # update the Llama position and context
@@ -1775,6 +1770,7 @@ class Llama:
             parameters to use. If this parameter is None, the default sampler
             paramater values will be used."""
         params = params if params is not None else self._default_sampler_params
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.sample')
         id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
         # llama_sampler_sample internally calls llama_sampler_accept.
         # uncomment the next line if this changes
@@ -1832,59 +1828,3 @@ class Llama:
         self.pos = 0
         self.context_tokens = []
         print_info_if_verbose('model was reset')
-
-#
-# End of module / Begin test
-#
-
-def main() -> int:
-
-    #test_model_path = "/Users/dylan/Documents/AI/models/Llama-3.2-1B-Instruct-q8_0-q8_0.gguf"
-    test_model_path = '/Users/dylan/Documents/AI/models/Meta-Llama-3.1-8B-Instruct-q8_0-q6_K.gguf'
-
-    TestLlama = Llama(
-        path_model=test_model_path,
-        n_gpu_layers=-1,
-        use_mmap=True,
-        use_mlock=False,
-        offload_kqv=True,
-        flash_attn=True
-    )
-
-    txt_a = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWho was Albert Einstein?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    txt_b = "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is Einstein's full name?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    tokens_a = TestLlama.tokenize(ez_encode(txt_a), add_special=True, parse_special=True)
-    tokens_b = TestLlama.tokenize(ez_encode(txt_b), add_special=True, parse_special=True)
-
-    temp = 0.0
-    while temp <= 5.0:
-        #  67722 -> 'Albert'
-        #  55152 -> ' Einstein'
-        #  17971 -> ' Albert'
-        sampler_params = SamplerParams(
-            TestLlama,
-            seed=42,
-            top_k=0,
-            top_p=1.0,
-            min_p=0.0,
-            temp=temp,
-            logit_bias={
-                67722: -100.0,
-                55152: -100.0,
-                17971: -100.0,
-            }
-        )
-        print('-' * 80)
-        print(f'using temp = {temp}:')
-        tok_gen = TestLlama.stream(tokens_a, n_predict=128, sampler_params=sampler_params)
-        for tok in tok_gen:
-            txt = TestLlama.token_to_piece(tok, special=True)
-            print(txt.decode(errors='ignore'), end='', file=sys.stderr, flush=True)
-        
-        temp += 0.1
-
-    return 0
-
-
-if __name__ == '__main__':
-    exit(main())

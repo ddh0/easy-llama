@@ -163,13 +163,11 @@ class SamplerParams:
         if logit_bias is not None:
             self._chain_str += 'logit bias -> '
             logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
-            lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_logit_bias(
-                    n_vocab=llama._n_vocab,
-                    n_logit_bias=len(logit_bias),
-                    logit_bias=logit_bias_arr
-                )
-            )
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_logit_bias(
+                n_vocab=llama._n_vocab,
+                n_logit_bias=len(logit_bias),
+                logit_bias=logit_bias_arr
+            ))
         
         # Top-K (where k == 128)
         #
@@ -183,24 +181,18 @@ class SamplerParams:
         #       llama_sampler_chain manually. But you probably don't need to.
         #
         self._chain_str += 'top-k 128 -> '
-        lib.llama_sampler_chain_add(
-            smpl, lib.llama_sampler_init_top_k(
-                k=128
-            )
-        )
+        lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=128))
 
         # Penalties
         
         if any([penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]):
             self._chain_str += 'penalties -> '
-            lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_penalties(
-                    penalty_last_n=penalty_last_n if penalty_last_n > 0 else llama._n_ctx,
-                    penalty_repeat=penalty_repeat,
-                    penalty_freq=penalty_freq,
-                    penalty_present=penalty_present
-                )
-            )
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_penalties(
+                penalty_last_n=penalty_last_n if penalty_last_n > 0 else llama._n_ctx,
+                penalty_repeat=penalty_repeat,
+                penalty_freq=penalty_freq,
+                penalty_present=penalty_present
+            ))
         
         # DRY
         
@@ -213,17 +205,15 @@ class SamplerParams:
             seq_breakers = dry_sequence_breakers
             seq_breakers_bytes = [ez_encode(s) for s in seq_breakers]
             arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
-            lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_dry(
-                    model=_model,
-                    dry_multiplier=dry_multiplier,
-                    dry_base=dry_base,
-                    dry_allowed_length=dry_allowed_length,
-                    dry_penalty_last_n=dry_penalty_last_n,
-                    seq_breakers=arr,
-                    num_breakers=len(seq_breakers)
-                )
-            )
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dry(
+                model=_model,
+                dry_multiplier=dry_multiplier,
+                dry_base=dry_base,
+                dry_allowed_length=dry_allowed_length,
+                dry_penalty_last_n=dry_penalty_last_n,
+                seq_breakers=arr,
+                num_breakers=len(seq_breakers)
+            ))
         
         # XTC
         
@@ -309,9 +299,7 @@ class SamplerParams:
             # ... -> top-k -> typical -> top-p -> min-p -> temp(-ext) -> dist
             if top_k > 0:
                 self._chain_str += 'top-k -> '
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_top_k(k=top_k)
-                )
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
             if typical_p != 1.0:
                 self._chain_str += 'typical -> '
                 lib.llama_sampler_chain_add(
@@ -340,14 +328,10 @@ class SamplerParams:
             else:
                 # standard temperature
                 self._chain_str += 'temp -> '
-                lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_temp(t=temp)
-                )
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
             self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_dist(
-                    seed=seed if seed > 0 else _get_random_seed()
-                )
+                smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
             )
 
         else:
@@ -524,7 +508,7 @@ class Presets:
     TikToken = SamplerPreset(
         temp = 0.65
     )
-    """For models with large vocabular, which may tend to run hot"""
+    """For models with large vocabulary, which may tend to run hot"""
 
     MinPCool = SamplerPreset(
         top_k = -1,
