@@ -23,7 +23,7 @@ from . import utils
 
 # shortcuts, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
 
-from .sampling import SamplerParams
+from .sampling import SamplerParams, SamplerPresets
 from .formats  import PromptFormat
 from .thread   import Thread
 from .llama    import Llama

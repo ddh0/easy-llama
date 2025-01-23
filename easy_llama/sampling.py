@@ -483,7 +483,7 @@ class SamplerPreset:
             f")"
         )
 
-class Presets:
+class SamplerPresets:
     """This class contains several ready-made `SamplerPreset` objects that can be used to
     control text generation."""
     
