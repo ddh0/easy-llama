@@ -6,16 +6,24 @@
 the input to a Llama model should be structured."""
 
 from collections.abc import Callable
+from typing          import Optional
+from datetime        import datetime
 
 def _call_or_return(obj: str | Callable[..., str]) -> str:
     if callable(obj):
-        return obj()
+        ret = obj()
+        if not isinstance(ret, str):
+            raise TypeError(
+                f'_call_or_return: obj must be a string or a callable that returns a string '
+                f'(the callable returned {repr(type(ret))})'
+            )
+        return ret
     elif isinstance(obj, str):
         return obj
     else:
         raise TypeError(
             f'_call_or_return: obj must be a string or a callable that returns a string '
-            f'(got {repr(type(obj).__name__)})'
+            f'(the object\'s type was {repr(type(obj))})'
         )
 
 class PromptFormat:
@@ -80,6 +88,52 @@ class PromptFormat:
         """Get the bot message suffix"""
         return _call_or_return(self._bot_suffix)
 
-# TODO
-def _prompt_format_from_chat_template(tmpl: str) -> PromptFormat:
-    pass
+def _llama3_today_date() -> str:
+    return datetime.today().strftime('%d %B %Y')
+
+def BlankFormat() -> PromptFormat:
+    return PromptFormat(
+        system_prefix='',
+        system_prompt='',
+        system_suffix='',
+        user_prefix='',
+        user_suffix='',
+        bot_prefix='',
+        bot_suffix=''
+    )
+
+def AlpacaFormat() -> PromptFormat:
+    return PromptFormat(
+        system_prefix='',
+        system_prompt='',
+        system_suffix='',
+        user_prefix='',
+        user_suffix='',
+        bot_prefix='',
+        bot_suffix=''
+    )
+
+def Llama3Format(system_prompt: Optional[str] = None) -> PromptFormat:
+    return PromptFormat(
+        system_prefix='<|start_header_id|>system<|end_header_id|>\n\n',
+        system_prompt=system_prompt if system_prompt is not None else f"""Cutting Knowledge Date: December 2023
+Today Date: {_llama3_today_date()}
+
+You are a helpful assistant""",
+        system_suffix='<|eot_id|>',
+        user_prefix='<|start_header_id|>user<|end_header_id|>\n\n',
+        user_suffix='<|eot_id|>',
+        bot_prefix='<|start_header_id|>assistant<|end_header_id|>\n\n',
+        bot_suffix='<|eot_id|>'
+    )
+
+def ChatMLFormat(system_prompt: Optional[str] = None) -> PromptFormat:
+    return PromptFormat(
+        system_prefix='<|im_start|>system\n',
+        system_prompt=system_prompt if system_prompt is not None else '',
+        system_suffix='<|im_end|>\n',
+        user_prefix='<|im_start|>user\n',
+        user_suffix='<|im_end|>\n',
+        bot_prefix='<|im_start|>assistant\n',
+        bot_suffix='<|im_end|>\n'
+    )
