@@ -2109,9 +2109,7 @@ class _internals:
         ret = llama_decode(ctx, batch)
         llama_batch_free(batch)
         if ret != 0:
-            raise RuntimeError(
-                f'decode_pp: llama_decode failed with status code {ret}'
-            )
+            raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
 
     def decode_tg(
         ctx: ptr[llama_context],
@@ -2131,9 +2129,7 @@ class _internals:
         ret = llama_decode(ctx, batch)
         llama_batch_free(batch)
         if ret != 0:
-            raise RuntimeError(
-                f'decode_tg: llama_decode failed with status code {ret}'
-            )
+            raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
 
     greedy_sampler = llama_sampler_init_greedy()
 

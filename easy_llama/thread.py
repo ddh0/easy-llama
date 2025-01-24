@@ -330,7 +330,7 @@ class Thread:
                     for tok in tok_gen:
                         response_toks.append(tok)
                         #
-                        # detok_byte_buffer holds any incomplete UTF-8 characters until they
+                        # detok_bytes_buffer holds any incomplete UTF-8 characters until they
                         # are completed by future tokens
                         # 
                         # for example, emojis are often split between two tokens, with one or

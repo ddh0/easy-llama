@@ -189,13 +189,12 @@ def assert_type(
     code_location: str,
     hint: Optional[str] = None
 ):
-    """Ensure that `obj` is an instance of `expected_type`
+    """Ensure that `obj` is an instance of `expected_type`.
 
-    If `expected_type` is a tuple, ensure that `obj` is an instance of
-    some type in the tuple
+    If `expected_type` is a tuple, ensure that `obj` is an instance of some type in the tuple.
 
-    Raise `TypeAssertionError` otherwise, using `obj_name` and
-    `code_location` to make an informative exception message
+    Raise `TypeError` otherwise, using `obj_name` and `code_location` to make an informative
+    exception message.
 
     If specified, `hint` is added as a note to the exception."""
 

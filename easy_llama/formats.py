@@ -15,7 +15,7 @@ def _call_or_return(obj: str | Callable[..., str]) -> str:
         if not isinstance(ret, str):
             raise TypeError(
                 f'_call_or_return: obj must be a string or a callable that returns a string '
-                f'(the callable returned {repr(type(ret))})'
+                f'(the callable returned type {repr(type(ret))})'
             )
         return ret
     elif isinstance(obj, str):
@@ -105,12 +105,12 @@ def BlankFormat() -> PromptFormat:
 def AlpacaFormat() -> PromptFormat:
     return PromptFormat(
         system_prefix='',
-        system_prompt='',
-        system_suffix='',
-        user_prefix='',
-        user_suffix='',
-        bot_prefix='',
-        bot_suffix=''
+        system_prompt="Below is an instruction that describes a task. Write a response that appropriately completes the request.",
+        system_suffix='\n\n',
+        user_prefix='### Instruction:\n',
+        user_suffix='\n\n',
+        bot_prefix='### Response:\n',
+        bot_suffix='\n\n'
     )
 
 def Llama3Format(system_prompt: Optional[str] = None) -> PromptFormat:

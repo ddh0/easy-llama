@@ -386,7 +386,7 @@ class WebUI:
             if prompt not in ['', None]:
                 self.log(f'trigger with prompt: {prompt!r}')
                 prompt_tokens = self.thread.llama.tokenize(
-                    text_bytes=prompt,
+                    text_bytes=ez_encode(prompt),
                     add_special=False,
                     parse_special=False
                 )

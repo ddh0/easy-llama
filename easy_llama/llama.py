@@ -970,7 +970,7 @@ class Llama:
             #
             # This adds a few seconds to the Llama load time.
             # 
-            print_info_if_verbose('warming up the model with an empty run ... please wait ...')
+            print_info_if_verbose('warming up the model ... please wait ...')
             with self._lock:
                 _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
             print_info_if_verbose('model is warm')
@@ -1467,7 +1467,7 @@ class Llama:
         stop_tokens: Optional[Iterable[int]] = None,
         sampler_preset: Optional[SamplerPreset] = None
     ) -> list[int]:
-        """Generate one or more tokens and return them all at once
+        """Generate new tokens and return them all at once
 
         - input_tokens:
             The tokens to evaluate
@@ -1499,10 +1499,7 @@ class Llama:
                 f'{self._n_ctx} (got {n_tokens})'
             )
         if (n_predict > 0) and (n_tokens + n_predict > self._n_ctx):
-            print_warning(
-                f'Llama.generate: n_tokens + n_predict exceeds context '
-                f'length '
-            )
+            print_warning(f'Llama.generate: n_tokens + n_predict exceeds context length')
         
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
 
@@ -1600,7 +1597,7 @@ class Llama:
         stop_tokens: Optional[Iterable[int]] = None,
         sampler_preset: Optional[SamplerPreset] = None
     ) -> Iterable[int]:
-        """Return a Generator which yields one or more tokens
+        """Return a Generator which yields tokens as they are generated
 
         - input_tokens:
             The tokens to evaluate
@@ -1631,9 +1628,7 @@ class Llama:
             )
         if n_predict > 0:
             if n_tokens + n_predict > self._n_ctx:
-                print_warning(
-                    f'Llama.stream: n_tokens + n_predict exceeds context length'
-                )
+                print_warning(f'Llama.stream: n_tokens + n_predict exceeds context length')
         
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
 
