@@ -54,7 +54,7 @@ def DEPRECATED(new_func_name: Optional[str] = None):
 # Import shared library
 #
 
-#libllama = ctypes.CDLL('/Users/dylan/Documents/AI/easy-llama/easy_llama/libllama.dylib')
+#libllama = ctypes.CDLL('/home/dylan/Documents/AI/llama.cpp/build/src/libllama.so')
 libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
 
 #
@@ -601,12 +601,12 @@ def llama_model_free(model: llama_model) -> None:
     """Free a model"""
     libllama.llama_model_free(model)
 
-libllama.llama_init_from_model.argtypes = [llama_model_p, llama_context_params_p]
+libllama.llama_init_from_model.argtypes = [llama_model_p, llama_context_params]
 libllama.llama_init_from_model.restype = llama_context_p
 
 def llama_init_from_model(model: llama_model, params: llama_context_params) -> ptr[llama_context]:
     """Create a new llama context with a loaded model"""
-    return libllama.llama_init_from_model(model, ctypes.byref(params))
+    return libllama.llama_init_from_model(model, params)
 
 libllama.llama_free.argtypes = [llama_context_p]
 libllama.llama_free.restype = None

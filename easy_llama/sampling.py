@@ -200,13 +200,13 @@ class SamplerParams:
             self._chain_str += 'DRY -> '
             # dry == D.R.Y. ("Don't Repeat Yourself")
             # ref: https://github.com/oobabooga/text-generation-webui/pull/5677
-            _model = llama._model.model
-            null_ptr_check(_model, 'llama._model.model', 'SamplerParams.__init__')
+            null_ptr_check(llama._vocab, 'llama._vocab', 'SamplerParams.__init__')
             seq_breakers = dry_sequence_breakers
             seq_breakers_bytes = [ez_encode(s) for s in seq_breakers]
             arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dry(
-                model=_model,
+                vocab=llama._vocab,
+                n_ctx_train=llama._n_ctx_train,
                 dry_multiplier=dry_multiplier,
                 dry_base=dry_base,
                 dry_allowed_length=dry_allowed_length,
