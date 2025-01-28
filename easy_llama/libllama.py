@@ -20,6 +20,8 @@ import sys
 import ctypes
 import faulthandler
 
+import numpy as np
+
 from enum   import IntEnum
 from typing import Optional, Iterable
 from .utils import ptr, print_warning, ez_decode
@@ -2092,7 +2094,7 @@ class _internals:
         ctx: ptr[llama_context],
         pos: int,
         tokens: list[int],
-        n_tokens: int
+        n_tokens: int,
     ) -> None:
         """### INTERNAL
 
@@ -2130,6 +2132,64 @@ class _internals:
         llama_batch_free(batch)
         if ret != 0:
             raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
+        
+    def decode_pp_with_logits(
+        ctx: ptr[llama_context],
+        pos: int,
+        tokens: list[int],
+        n_tokens: int,
+        n_vocab: int
+    ) -> np.ndarray:
+        """### INTERNAL
+
+        Decode with batch size > 1 (prompt processing).
+        
+        Return logits for all tokens in the batch."""
+        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
+        batch.n_tokens = n_tokens
+        for i in range(n_tokens):
+            batch.token[i] = tokens[i]
+            batch.pos[i] = pos + i
+            batch.seq_id[i][0] = 0
+            batch.n_seq_id[i] = 1
+            batch.logits[i] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(
+                f'decode_pp_with_logits: llama_decode failed with status code {ret}'
+            )
+        ctypes_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(n_tokens, n_vocab))
+        return logits
+
+    def decode_tg_with_logits(
+        ctx: ptr[llama_context],
+        pos: int,
+        token: int,
+        n_vocab: int
+    ) -> np.ndarray:
+        """### INTERNAL
+
+        Decode with batch size == 1 (text generation).
+        
+        Return the logits for the predicted token."""
+        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
+        batch.n_tokens = 1
+        batch.token[0] = token
+        batch.pos[0] = pos
+        batch.seq_id[0][0] = 0
+        batch.n_seq_id[0] = 1
+        batch.logits[0] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(
+                f'decode_tg_with_logits: llama_decode failed with status code {ret}'
+            )
+        ctypes_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(1, n_vocab))[0]
+        return logits
 
     greedy_sampler = llama_sampler_init_greedy()
 

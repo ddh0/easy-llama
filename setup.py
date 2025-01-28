@@ -40,7 +40,7 @@ setup(
         'Framework :: Flask',
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
-        'License :: Public Domain',  
+        'License :: OSI Approved :: MIT License',  
         'Operating System :: POSIX :: Linux',
         'Natural Language :: English',
         'Programming Language :: Python :: Implementation :: CPython',

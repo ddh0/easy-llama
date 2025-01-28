@@ -725,6 +725,7 @@ class Llama:
         rope_freq_base: float = 0.0,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
+        logits_all: bool = False,
         offload_kqv: bool = False,
         flash_attn: bool = False,
         warmup: bool = True,
@@ -1323,7 +1324,7 @@ class Llama:
 
     def detokenize(
         self,
-        tokens: Iterable[int],
+        tokens: list[int],
         special: bool
     ) -> str:
         """Convert the provided tokens into UTF-8 encoded text
@@ -1352,7 +1353,7 @@ class Llama:
             parse_special=parse_special
         )
 
-    def _first_valid_pos(self, tokens: Iterable[int]) -> int:
+    def _first_valid_pos(self, tokens: list[int]) -> int:
         """Given a list of tokens, and using `Llama.context_tokens`, find the first
         valid `Llama.pos`
 
@@ -1367,10 +1368,183 @@ class Llama:
             else:
                 break
         return i
+    
+    @staticmethod
+    def split_tokens_into_batches(tokens: list[int], n_batch: int) -> list[list[int]]:
+        # split the input into batches of tokens
+        batch_splits = range(0, len(tokens), n_batch)
+        batches: list[list[int]] = []
+        for i in batch_splits:
+            batch_tokens = tokens[i : i + n_batch]
+            if len(batch_tokens) > 0:
+                batches.append(batch_tokens)
+        return batches
+    
+    def set_context(self, input_tokens: list[int]) -> list[int]:
+        """Prepare the KV cache for the next llama_decode, by finding the longest prefix match
+        from the tokens in the cache and the tokens you provide here.
+
+        Returns `list[int]`: the tokens from `input_tokens` which still need to be processed"""
+        n_input_tokens = len(input_tokens)
+
+        if n_input_tokens == 0:
+            raise ValueError(f'Llama.set_context: input_tokens cannot be empty')
+        
+        if n_input_tokens + 1 > self._n_ctx:
+            raise ExceededContextLengthException(
+                f'Llama.set_context: input is too large for context length '
+                f'{self._n_ctx} (got {n_input_tokens})'
+            )
+        
+        # find how many tokens in the input are already in the KV cache
+        self.pos = self._first_valid_pos(input_tokens)
+
+        # remove all tokens in the KV cache that are past that point
+        self.kv_cache_seq_rm(0, self.pos, -1)
+
+        # tokens returned to caller for processing
+        actual_input_tokens = input_tokens[self.pos:]
+
+        # tokens already in the KV cache
+        self.context_tokens = input_tokens[:self.pos]
+
+        return actual_input_tokens
+    
+    def _process_batch(
+        self,
+        batch_tokens: list[int],
+        logits_all: bool = False
+    ) -> Optional[np.ndarray]:
+        """Process a batch of one or more tokens. If `logits_all` is True, return the logits
+        for all tokens in the batch. Otherwise, return None."""
+
+        n_batch_tokens = len(batch_tokens)
+        
+        if n_batch_tokens > 1: # prompt processing
+
+            if logits_all:
+
+                self._stopwatch.start_pp()
+                with self._lock:
+                    batch_logits = _internals.decode_pp_with_logits(
+                        self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens, self._n_vocab
+                    )
+                self._stopwatch.stop_pp()
+                batch_logits: np.ndarray
+            
+            else:
+
+                self._stopwatch.start_pp()
+                with self._lock:
+                    _internals.decode_pp(self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens)
+                self._stopwatch.stop_pp()
+                batch_logits = None
+            
+            self._stopwatch.increment_pp_tokens(n_batch_tokens)
+        
+        elif n_batch_tokens == 1: # text generation
+
+            if logits_all:
+
+                self._stopwatch.start_tg()
+                with self._lock:
+                    batch_logits = _internals.decode_tg_with_logits(
+                        self._ctx.ctx, self.pos, batch_tokens[0], self._n_vocab
+                    )
+                self._stopwatch.stop_tg()
+                batch_logits: np.ndarray
+            
+            else:
+
+                self._stopwatch.start_tg()
+                with self._lock:
+                    _internals.decode_tg(self._ctx.ctx, self.pos, batch_tokens[0])
+                self._stopwatch.stop_tg()
+                batch_logits = None
+            self._stopwatch.increment_tg_tokens(1)
+        
+        else:
+            raise RuntimeError(
+                f'Llama._process_batch: unexpected n_batch_tokens value {n_batch_tokens}'
+            )
+        
+        # update the Llama position and context
+        self.pos += n_batch_tokens
+        self.context_tokens.extend(batch_tokens)
+
+        return batch_logits
+
+    def eval(
+        self,
+        input_tokens: list[int],
+        logits_all: bool = False
+    ) -> np.ndarray:
+        """Evaluate the given tokens and update the model state.
+        
+        If `logits_all` is True, return the logits for all `input_tokens` in addition to the
+        logits for the predicted next token. Otherwise, only return the logits for the predicted
+        next token."""
+
+        self._stopwatch.reset()
+        self._stopwatch.start_wall_time()
+
+        n_input_tokens = len(input_tokens)
+
+        if logits_all:
+            if self._first_valid_pos(input_tokens) > 0:
+                print_warning(
+                    f'Llama.eval: the KV cache will be cleared in order to compute the logits '
+                    f'for all tokens in the input'
+                )
+            
+            print_info_if_verbose(f'Llama.eval: {n_input_tokens} tokens to eval ...')
+
+            self.reset()
+            actual_input_tokens = input_tokens
+        else:
+            actual_input_tokens = self.set_context(input_tokens)
+
+            n_actual_input_tokens = len(actual_input_tokens)
+            n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
+
+            print_info_if_verbose(
+                f'Llama.eval: {n_cache_hit_tokens} tokens in cache, '
+                f'{n_actual_input_tokens} tokens to eval ...'
+            )
+
+        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
+
+        # process each batch one-by-one
+        if logits_all:
+            # record logits for each batch
+            all_logits = []
+            for batch in batches:
+                batch_logits = self._process_batch(batch, logits_all=True)
+                all_logits.append(batch_logits)
+            # also include the inferred next logits
+            all_logits.append(self.get_logits())
+            final_logits = np.concatenate(all_logits, axis=0)
+        else:
+            # don't care about input logits, only the inferred next logits
+            for batch in batches:
+                self._process_batch(batch, logits_all=False)
+            final_logits = self.get_logits()
+
+        self._stopwatch.stop_wall_time()
+
+        if get_verbose():
+            self._stopwatch.print_stats()
+
+        print_info(
+            f'DEBUG: {np.shape(final_logits)=}\n'
+            f'{np.size(final_logits)=}'
+        )
+
+        return final_logits
 
     def generate_single(
         self,
-        input_tokens: Iterable[int],
+        input_tokens: list[int],
         sampler_preset: Optional[SamplerPreset] = None,
     ) -> int:
         """Generate a single token
@@ -1384,48 +1558,27 @@ class Llama:
         self._stopwatch.reset()
         self._stopwatch.start_wall_time()
 
-        n_tokens = len(input_tokens)
+        n_input_tokens = len(input_tokens)
 
-        if n_tokens == 0:
-            raise ValueError(f'Llama.generate_single: input_tokens cannot be empty')
-        
-        if n_tokens + 1 > self._n_ctx:
-            raise ExceededContextLengthException(
-                f'Llama.generate_single: input is too large for context length '
-                f'{self._n_ctx} (got {n_tokens})'
-            )
-        
-        # find how many tokens in the input are already in the KV cache
-        self.pos = self._first_valid_pos(input_tokens)
-
-        # remove all tokens that are past that point
-        self.kv_cache_seq_rm(0, self.pos, -1)
-        actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
-        self.context_tokens = input_tokens[:self.pos] # tokens already processed
+        actual_input_tokens = self.set_context(input_tokens)
 
         n_actual_input_tokens = len(actual_input_tokens)
-        n_cache_hit_tokens = n_tokens - n_actual_input_tokens
+        n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
+
+        print_info_if_verbose(
+            f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_actual_input_tokens} tokens to eval ...'
+        )
 
         if sampler_preset is None:
             sampler_params = self._default_sampler_params
         else:
             sampler_params = self.sampler_params_from_preset(sampler_preset)
 
-        if verbose:
+        if get_verbose():
             sampler_params.print_chain()
-        
-        print_info_if_verbose(
-            f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
-        )
 
-        # split the input into batches of tokens
-        batch_splits = range(0, n_actual_input_tokens, self._n_batch)
-        batches = []
-        for i in batch_splits:
-            batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            if len(batch_tokens) > 0:
-                batches.append(batch_tokens)
+        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
         for batch in batches:
@@ -1456,15 +1609,15 @@ class Llama:
         
         # sample and return
         self._stopwatch.stop_wall_time()
-        if verbose:
+        if get_verbose():
             self._stopwatch.print_stats()
         return self.sample(sampler_params)
 
     def generate(
         self,
-        input_tokens: Iterable[int],
+        input_tokens: list[int],
         n_predict: int,
-        stop_tokens: Optional[Iterable[int]] = None,
+        stop_tokens: Optional[list[int]] = None,
         sampler_preset: Optional[SamplerPreset] = None
     ) -> list[int]:
         """Generate new tokens and return them all at once
@@ -1488,55 +1641,30 @@ class Llama:
         self._stopwatch.reset()
         self._stopwatch.start_wall_time()
 
-        n_tokens = len(input_tokens)
+        n_input_tokens = len(input_tokens)
 
-        if n_tokens == 0:
-            raise ValueError('Llama.generate: input_tokens cannot be empty')
-        
-        if n_tokens + 1 > self._n_ctx:
-            raise ExceededContextLengthException(
-                f'Llama.generate: input is too large for context length '
-                f'{self._n_ctx} (got {n_tokens})'
-            )
-        if (n_predict > 0) and (n_tokens + n_predict > self._n_ctx):
-            print_warning(f'Llama.generate: n_tokens + n_predict exceeds context length')
-        
-        stops = stop_tokens if stop_tokens is not None else self.eog_tokens
-
-        if sampler_preset is None:
-            sampler_params = self._default_sampler_params
-        else:
-            sampler_params = self.sampler_params_from_preset(sampler_preset)
-        
-        # find how many tokens in the input are already in the KV cache
-        self.pos = self._first_valid_pos(input_tokens)
-
-        # remove all tokens that are past that point
-        self.kv_cache_seq_rm(0, self.pos, -1)
-        actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
-        self.context_tokens = input_tokens[:self.pos] # tokens already processed
+        actual_input_tokens = self.set_context(input_tokens)
 
         n_actual_input_tokens = len(actual_input_tokens)
-        n_cache_hit_tokens = n_tokens - n_actual_input_tokens
-
-        if verbose:
-            sampler_params.print_chain()
+        n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
 
         print_info_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
 
-        # split the input into batches of tokens
-        batch_splits = range(0, n_actual_input_tokens, self._n_batch)
-        batches = []
-        for i in batch_splits:
-            batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            if len(batch_tokens) > 0:
-                batches.append(batch_tokens)
+        stops = stop_tokens if stop_tokens is not None else self.eog_tokens
 
-        # set up the loop
-        output_tokens = []
+        if sampler_preset is None:
+            sampler_params = self._default_sampler_params
+        else:
+            sampler_params = self.sampler_params_from_preset(sampler_preset)
+        if get_verbose():
+            sampler_params.print_chain()
+
+        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
+
+        predicted_tokens = []
         n_predicted = 0
 
         # process each input batch one-by-one
@@ -1576,25 +1704,25 @@ class Llama:
 
             id = self.sample(sampler_params)
             self.context_tokens.append(id)
-            output_tokens.append(id)
+            predicted_tokens.append(id)
             n_predicted += 1
 
             if id in stops:
                 self._stopwatch.stop_wall_time()
-                if verbose:
+                if get_verbose():
                     self._stopwatch.print_stats()
-                return output_tokens
+                return predicted_tokens
         
         self._stopwatch.stop_wall_time()
-        if verbose:
+        if get_verbose():
             self._stopwatch.print_stats()
-        return output_tokens
+        return predicted_tokens
 
     def stream(
         self,
-        input_tokens: Iterable[int],
+        input_tokens: list[int],
         n_predict: int,
-        stop_tokens: Optional[Iterable[int]] = None,
+        stop_tokens: Optional[list[int]] = None,
         sampler_preset: Optional[SamplerPreset] = None
     ) -> Iterable[int]:
         """Return a Generator which yields tokens as they are generated
@@ -1616,55 +1744,30 @@ class Llama:
         self._stopwatch.reset()
         self._stopwatch.start_wall_time()
 
-        n_tokens = len(input_tokens)
+        n_input_tokens = len(input_tokens)
 
-        if n_tokens == 0:
-            raise ValueError('Llama.stream: input_tokens cannot be empty')
-        
-        if n_tokens + 1 > self._n_ctx:
-            raise ExceededContextLengthException(
-                f'Llama.stream: input is too large for context length '
-                f'{self._n_ctx} (got {n_tokens})'
-            )
-        if n_predict > 0:
-            if n_tokens + n_predict > self._n_ctx:
-                print_warning(f'Llama.stream: n_tokens + n_predict exceeds context length')
-        
-        stops = stop_tokens if stop_tokens is not None else self.eog_tokens
+        actual_input_tokens = self.set_context(input_tokens)
+
+        n_actual_input_tokens = len(actual_input_tokens)
+        n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
+
+        print_info_if_verbose(
+            f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_actual_input_tokens} tokens to eval ...'
+        )
 
         if sampler_preset is None:
             sampler_params = self._default_sampler_params
         else:
             sampler_params = self.sampler_params_from_preset(sampler_preset)
-        
-        # find how many tokens in the input are already in the KV cache
-        self.pos = self._first_valid_pos(input_tokens)
 
-        # remove all tokens that are past that point
-        self.kv_cache_seq_rm(0, self.pos, -1)
-        actual_input_tokens = input_tokens[self.pos:] # tokens after self.pos
-        self.context_tokens = input_tokens[:self.pos] # tokens already processed
-
-        n_actual_input_tokens = len(actual_input_tokens)
-        n_cache_hit_tokens = n_tokens - n_actual_input_tokens
-
-        if verbose:
+        if get_verbose():
             sampler_params.print_chain()
 
-        print_info_if_verbose(
-            f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
-        )
+        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
-        # split the input into batches of tokens
-        batch_splits = range(0, n_actual_input_tokens, self._n_batch)
-        batches = []
-        for i in batch_splits:
-            batch_tokens = actual_input_tokens[i : i + self._n_batch]
-            if len(batch_tokens) > 0:
-                batches.append(batch_tokens)
-
-        n_predicted = 0
+        predicted_tokens = []
+        stops = stop_tokens if stop_tokens is not None else self.eog_tokens
 
         # process each input batch one-by-one
         for batch in batches:
@@ -1708,12 +1811,12 @@ class Llama:
 
             if id in stops:
                 self._stopwatch.stop_wall_time()
-                if verbose:
+                if get_verbose():
                     self._stopwatch.print_stats()
                 return
         
         self._stopwatch.stop_wall_time()
-        if verbose:
+        if get_verbose():
             self._stopwatch.print_stats()
         return
     

@@ -21,7 +21,7 @@ from . import llama
 from . import webui
 from . import utils
 
-# shortcuts, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
+# shorthands, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
 
 from .sampling import SamplerParams, SamplerPresets
 from .formats  import PromptFormat
