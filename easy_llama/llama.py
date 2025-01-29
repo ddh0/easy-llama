@@ -669,7 +669,9 @@ class _InferenceLock:
     """A context manager which is used to prevent an `ez.Llama` instance from accepting
     more than one generation at a time, which is not supported and can cause a hard crash.
 
-    Thread-safe OR async-safe."""
+    - Safe if only used synchronously (`__enter__`/`__exit__`)
+    - Safe if only used asynchronously (`__aenter__`/`__aexit__`)
+    - Not safe for concurrent sync/async"""
     
     def __init__(self):
         self._locked = False
