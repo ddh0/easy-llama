@@ -23,8 +23,8 @@ from . import utils
 
 # shorthands, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
 
+from .llama    import Llama, get_verbose, set_verbose
 from .sampling import SamplerParams, SamplerPresets
 from .formats  import PromptFormat
 from .thread   import Thread
-from .llama    import Llama
 from .webui    import WebUI

@@ -65,7 +65,7 @@ if not os.path.exists(ASSETS_FOLDER):
     )
 
 
-MAX_LENGTH_INPUT = 1_000_000 # one million characters
+MAX_LENGTH_INPUT = 1_000_000_000 # one billion characters
 
 
 def generate_self_signed_ssl_cert() -> None:
@@ -146,13 +146,13 @@ def newline() -> None:
 def encode_transfer(text: str) -> str:
     """Encode the outgoing string into a Base64 string"""
     encoded = base64.b64encode(text.encode('utf-8', errors='strict')).decode('utf-8')
-    print(f"sending encoded: {encoded!r}")
+    # print(f"sending encoded: {encoded!r}")
     return encoded
 
 def decode_transfer(text: str) -> str:
     """Decode the incoming Base64 string into a regular string"""
     decoded = base64.b64decode(text).decode('utf-8', errors='strict')
-    print(f"recieved decoded: {decoded!r}")
+    # print(f"recieved decoded: {decoded!r}")
     return decoded
 
 def assert_max_length(text: str) -> None:

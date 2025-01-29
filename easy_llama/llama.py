@@ -11,6 +11,8 @@ import sys
 import time
 import struct
 import ctypes
+import asyncio
+import threading
 
 import numpy as np
 
@@ -43,20 +45,21 @@ _DEFAULT_KV_TYPE = lib.GGMLType.GGML_TYPE_F16
 
 _cpu_count = None
 
-verbose = True
-"""Module-level variable to enable or disable llama.cpp and easy-llama output"""
+_internal_verbose = True
 
 #
 # Functions
 #
 
 def set_verbose(state: bool) -> None:
-    global verbose
-    verbose = state
+    """Enable or disable verbose terminal output from easy-llama"""
+    global _internal_verbose
+    _internal_verbose = state
 
 def get_verbose() -> bool:
-    global verbose
-    return verbose
+    """Return `True` if verbose terminal output is enabled in easy-llama, `False` otherwise"""
+    global _internal_verbose
+    return _internal_verbose
 
 def print_info_if_verbose(text: str) -> None:
     if get_verbose():
@@ -109,7 +112,7 @@ def _calculate_rope_freq_base(
         n_ctx_train: int,
         n_ctx_load: int,
         rope_freq_base_train: Optional[float]
-    ) -> float:
+) -> float:
     """Returns the rope_freq_base value at which a model should be loaded"""
 
     # n_ctx does not exceed n_ctx_train - simply return native value
@@ -663,36 +666,49 @@ class InferenceLockException(Exception):
     pass
 
 class _InferenceLock:
-    """A context manager which is used to prevent a `llama.Llama` instance from accepting
+    """A context manager which is used to prevent an `ez.Llama` instance from accepting
     more than one generation at a time, which is not supported and can cause a hard crash.
 
-    This is mostly useful in asychronous / multi-threaded contexts."""
-
+    Thread-safe OR async-safe."""
+    
     def __init__(self):
         self._locked = False
+        self._sync_lock = threading.Lock()  # for thread safety
+        self._async_lock = asyncio.Lock()   # for async safety
 
     def __enter__(self):
-        return self.acquire()
-    
+        with self._sync_lock:
+            if self._locked:
+                raise InferenceLockException(
+                    'failed to acquire InferenceLock (already locked)'
+                )
+            self._locked = True
+        return self
+
     def __exit__(self, *_):
-        return self.release()
+        with self._sync_lock:
+            if not self._locked:
+                raise InferenceLockException(
+                    'tried to release InferenceLock that is not acquired'
+                )
+            self._locked = False
 
     async def __aenter__(self):
-        return self.__enter__()
+        async with self._async_lock:
+            if self._locked:
+                raise InferenceLockException(
+                    'async: failed to acquire InferenceLock (already locked)'
+                )
+            self._locked = True
+        return self
 
     async def __aexit__(self, *_):
-        return self.__exit__()
-    
-    def acquire(self):
-        if self._locked:
-            raise InferenceLockException('failed to acquire InferenceLock (already locked)')
-        self._locked = True
-        return self
-    
-    def release(self):
-        if not self._locked:
-            raise InferenceLockException('tried to release InferenceLock that is not acquired')
-        self._locked = False
+        async with self._async_lock:
+            if not self._locked:
+                raise InferenceLockException(
+                    'async: tried to release InferenceLock that is not acquired'
+                )
+            self._locked = False
 
 #
 # Llama
@@ -725,7 +741,6 @@ class Llama:
         rope_freq_base: float = 0.0,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
-        logits_all: bool = False,
         offload_kqv: bool = False,
         flash_attn: bool = False,
         warmup: bool = True,
@@ -1901,10 +1916,10 @@ class Llama:
         return list(zip(tokens, [self.token_to_piece(id, special=True) for id in tokens]))
     
     def print_tokenization_mapping(
-            self,
-            tokens: Iterable[int],
-            file: _SupportsWriteAndFlush = sys.stderr
-        ) -> None:
+        self,
+        tokens: Iterable[int],
+        file: _SupportsWriteAndFlush = sys.stderr
+    ) -> None:
         """Given some tokens, print a mapping of each token ID to the
         corresponding UTF-8 text bytes
 

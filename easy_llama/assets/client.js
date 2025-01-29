@@ -16,7 +16,7 @@ let isGenerating = false;
 
 const GlobalEncoder  = new TextEncoder;
 const GlobalDecoder  = new TextDecoder;
-const maxLengthInput = 1000000; // one million characters
+const maxLengthInput = 1000000000; // one billion characters
 
 
 function bytesToBase64(bytes) {
