@@ -2098,7 +2098,7 @@ class _internals:
     ) -> None:
         """### INTERNAL
 
-        Decode with batch size > 1 (prompt processing)"""
+        Decode with batch size > 1 (prompt processing)."""
         batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
         batch.n_tokens = n_tokens
         for i in range(n_tokens):
@@ -2120,7 +2120,7 @@ class _internals:
     ) -> None:
         """### INTERNAL
 
-        Decode with batch size == 1 (text generation)"""
+        Decode with batch size == 1 (text generation)."""
         batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
         batch.n_tokens = 1
         batch.token[0] = token
@@ -2144,7 +2144,13 @@ class _internals:
 
         Decode with batch size > 1 (prompt processing).
         
-        Return logits for all tokens in the batch."""
+        Return logits for all tokens in the batch. The returned logits have shape 
+        `(n_tokens, n_vocab)`.
+        
+        The logits at index `i` are the predictions for the token at index `i + 1` in the batch.
+        
+        The last column in the array (`logits[n_tokens]`) contains the logits for the inferred
+        next token."""
         batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
         batch.n_tokens = n_tokens
         for i in range(n_tokens):
@@ -2173,7 +2179,7 @@ class _internals:
 
         Decode with batch size == 1 (text generation).
         
-        Return the logits for the predicted token."""
+        Return the logits for the inferred next token."""
         batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
         batch.n_tokens = 1
         batch.token[0] = token
