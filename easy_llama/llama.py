@@ -20,10 +20,10 @@ from .utils    import (
     print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
     softmax, suppress_output, ez_encode, ez_decode, _SupportsWriteAndFlush, ptr
 )
-from .libllama import _internals, GGUFValueType
-from typing    import Optional, Iterable
-from io        import BufferedReader
 from .sampling import SamplerParams, SamplerPreset
+from typing    import Optional, Iterable, Union
+from .libllama import _internals, GGUFValueType
+from io        import BufferedReader
 
 from . import libllama as lib
 
@@ -1548,7 +1548,7 @@ class Llama:
         input_tokens: list[int],
         sampler_preset: Optional[SamplerPreset] = None,
         return_logits: bool = False
-    ) -> int | np.ndarray:
+    ) -> Union[int, np.ndarray]:
         """Generate a single token
 
         - input_tokens:
@@ -1605,7 +1605,7 @@ class Llama:
         stop_tokens: Optional[list[int]] = None,
         sampler_preset: Optional[SamplerPreset] = None,
         return_logits: bool = False
-    ) -> list[int] | np.ndarray:
+    ) -> Union[list[int], np.ndarray]:
         """Generate new tokens and return them all at once
 
         - input_tokens:
@@ -1710,7 +1710,7 @@ class Llama:
         stop_tokens: Optional[list[int]] = None,
         sampler_preset: Optional[SamplerPreset] = None,
         yield_logits: bool = False
-    ) -> Iterable[int]:
+    ) -> Iterable[Union[int, np.ndarray]]:
         """Return a Generator which yields tokens as they are generated
 
         - input_tokens:
