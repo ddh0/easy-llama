@@ -188,9 +188,11 @@ class _LlamaStopwatch:
         self.pp_start_time = None
         self.tg_start_time = None
         self.wall_start_time = None
+        self.generic_start_time = None
         self.pp_elapsed_time = 0
         self.tg_elapsed_time = 0
         self.wall_elapsed_time = 0
+        self.generic_elapsed_time = 0
         self.n_pp_tokens = 0
         self.n_tg_tokens = 0
 
@@ -224,6 +226,16 @@ class _LlamaStopwatch:
             self.wall_elapsed_time += time.time_ns() - self.wall_start_time
             self.wall_start_time = None
 
+    def start_generic(self):
+        """Start generic stopwatch (not shown in print_stats)"""
+        self.generic_start_time = time.time_ns()
+    
+    def stop_generic(self):
+        """Stop generic stopwatch"""
+        if self.generic_start_time is not None:
+            self.generic_elapsed_time += time.time_ns() - self.generic_start_time
+            self.generic_start_time = None
+    
     def get_elapsed_time_pp(self) -> int:
         """Total nanoseconds elapsed during prompt processing"""
         return self.pp_elapsed_time
@@ -235,6 +247,10 @@ class _LlamaStopwatch:
     def get_elapsed_wall_time(self) -> int:
         """Total wall-time nanoseconds elapsed"""
         return self.wall_elapsed_time
+
+    def get_elapsed_time_generic(self) -> int:
+        """Total generic nanoseconds elapsed"""
+        return self.generic_elapsed_time
 
     def increment_pp_tokens(self, n: int):
         if n < 0:
@@ -251,9 +267,11 @@ class _LlamaStopwatch:
         self.pp_start_time = None
         self.tg_start_time = None
         self.wall_start_time = None
+        self.generic_start_time = None
         self.pp_elapsed_time = 0
         self.tg_elapsed_time = 0
         self.wall_elapsed_time = 0
+        self.generic_elapsed_time = 0
         self.n_pp_tokens = 0
         self.n_tg_tokens = 0
 
@@ -1569,11 +1587,6 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
 
-        print_info_if_verbose(
-            f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
-        )
-
         if sampler_preset is None:
             sampler_params = self._default_sampler_params
         else:
@@ -1581,6 +1594,11 @@ class Llama:
 
         if get_verbose():
             sampler_params.print_chain()
+        
+        print_info_if_verbose(
+            f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_actual_input_tokens} tokens to eval ...'
+        )
 
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
@@ -1635,11 +1653,6 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
 
-        print_info_if_verbose(
-            f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
-        )
-
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
 
         if sampler_preset is None:
@@ -1648,6 +1661,11 @@ class Llama:
             sampler_params = self.sampler_params_from_preset(sampler_preset)
         if get_verbose():
             sampler_params.print_chain()
+        
+        print_info_if_verbose(
+            f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_actual_input_tokens} tokens to eval ...'
+        )
 
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
@@ -1741,11 +1759,6 @@ class Llama:
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
 
-        print_info_if_verbose(
-            f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
-        )
-
         stops = stop_tokens if stop_tokens is not None else self.eog_tokens
 
         if sampler_preset is None:
@@ -1754,6 +1767,11 @@ class Llama:
             sampler_params = self.sampler_params_from_preset(sampler_preset)
         if get_verbose():
             sampler_params.print_chain()
+
+        print_info_if_verbose(
+            f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
+            f'{n_actual_input_tokens} tokens to eval ...'
+        )
 
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
@@ -1802,6 +1820,59 @@ class Llama:
         if get_verbose():
             self._stopwatch.print_stats()
         return
+    
+    def benchmark(self, n_tokens_pp: int, n_tokens_tg: int, n_runs: int = 3) -> list[dict]:
+        print_info_if_verbose('starting benchmark')
+        results = []
+        total_pp_time_ns = 0
+        total_tg_time_ns = 0
+        for i in range(1, n_runs+1):
+            print_info_if_verbose(
+                f'starting run {i}/{n_runs}: {n_tokens_pp=}; {n_tokens_tg=} ... please wait ...'
+            )
+            self.reset()
+            with suppress_output():
+                self._stopwatch.reset()
+                self._stopwatch.start_generic()
+                self.eval(input_tokens=[0] * n_tokens_pp)
+                self._stopwatch.stop_generic()
+                pp_ns = self._stopwatch.get_elapsed_time_generic()
+                total_pp_time_ns += pp_ns
+                self._stopwatch.reset()
+                self._stopwatch.start_generic()
+                self.generate(
+                    input_tokens=[0] * n_tokens_pp,
+                    n_predict=n_tokens_tg,
+                    stop_tokens=[],
+                    sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
+                )
+                self._stopwatch.stop_generic()
+                tg_ns = self._stopwatch.get_elapsed_time_generic()
+                total_tg_time_ns += tg_ns
+
+            results.append({
+                'n_tokens_pp' : n_tokens_pp,
+                'n_tokens_tg' : n_tokens_tg,
+                'pp_time_ns'  : pp_ns,
+                'tg_time_ns'  : tg_ns
+            })
+        
+        avg_pp_time_ns = total_pp_time_ns / n_runs
+        avg_tg_time_ns = total_tg_time_ns / n_runs
+
+        avg_pp_tok_per_sec = n_tokens_pp / (avg_pp_time_ns / 1e9)
+        avg_tg_tok_per_sec = n_tokens_tg / (avg_tg_time_ns / 1e9)
+
+        print_info_if_verbose(
+            f'average pp speed for {n_tokens_pp} tokens over {n_runs} runs: '
+            f'{avg_pp_tok_per_sec:10.2f} tok/s'
+        )
+        print_info_if_verbose(
+            f'average tg speed for {n_tokens_tg} tokens over {n_runs} runs: '
+            f'{avg_tg_tok_per_sec:10.2f} tok/s'
+        )
+        
+        return results
     
     def sample_greedy(self) -> int:
         id = _internals.sample_greedy(self._ctx.ctx)

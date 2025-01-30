@@ -615,13 +615,10 @@ class SamplerPresets:
     )
     """Llama3 preset with increased temperature (more random)"""
 
-    MistralNemo = SamplerPreset(
-        top_k = -1,
-        top_p = 1.0,
-        min_p = 0.0,
+    Mistral = SamplerPreset(
         temp = 0.3
     )
-    """[mistralai/Mistral-Nemo-Instruct-2407](https://huggingface.co/mistralai/Mistral-Nemo-Instruct-2407)"""
+    """Mistral models tend to require a lower temperature"""
 
     Qwen2_5Official = SamplerPreset(
         top_k = 20,
