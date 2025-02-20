@@ -161,7 +161,7 @@ class SamplerParams:
         # Logit bias
 
         if logit_bias is not None:
-            self._chain_str += 'logit bias -> '
+            self._chain_str += f'{len(logit_bias)} logit biases -> '
             logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_logit_bias(
                 n_vocab=llama._n_vocab,
@@ -186,9 +186,14 @@ class SamplerParams:
         # Penalties
         
         if any([penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]):
-            self._chain_str += 'penalties -> '
+            _str = 'penalties'
+            _str += f' repeat {penalty_repeat:1.2f}' if penalty_repeat != 1.0 else ''
+            _str += f' presence {penalty_present:1.2f}' if penalty_present != 0.0 else ''
+            _str += f' frequency {penalty_freq:1.2f}' if penalty_freq != 0.0 else ''
+            _last_n = "all" if penalty_last_n < 0 else f"last {penalty_last_n}"
+            _str += f' {_last_n}  -> '
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_penalties(
-                penalty_last_n=penalty_last_n if penalty_last_n > 0 else llama._n_ctx,
+                penalty_last_n=penalty_last_n if penalty_last_n >= 0 else llama._n_ctx,
                 penalty_repeat=penalty_repeat,
                 penalty_freq=penalty_freq,
                 penalty_present=penalty_present
@@ -634,7 +639,7 @@ class SamplerPresets:
         top_k = -1,
         top_p = 0.9,
         min_p = 0.1,
-        temp = 0.8
+        temp = 1.0
     )
     """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
     (unofficial, but recommended)"""

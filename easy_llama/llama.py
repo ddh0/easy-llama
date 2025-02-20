@@ -577,7 +577,7 @@ class _LlamaCtx:
         cb_eval_user_data:   Optional[ptr]     = None,
         type_k:              Optional[int]     = None,
         type_v:              Optional[int]     = None,
-        #logits_all:          Optional[bool]    = None,
+        # logits_all:          Optional[bool]    = None,    no longer used 
         embeddings:          Optional[bool]    = None,
         offload_kqv:         Optional[bool]    = None,
         flash_attn:          Optional[bool]    = None,
@@ -762,6 +762,8 @@ class Llama:
         use_mlock: bool = False,
         n_ctx: int = 512,
         n_batch: int = 2048,
+        n_threads: int = 0,
+        n_threads_batch: int = 0,
         rope_freq_base: float = 0.0,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
@@ -793,6 +795,10 @@ class Llama:
             The maximum number of tokens to process at once. Higher values
             will increase prompt processing speed at expense of increased memory
             usage. Values must be between 32 and n_ctx, inclusive.
+        - n_threads:
+            Number of threads to use for batch size == 1.
+        - n_threads_batch:
+            Number of threads to use for batch sizes > 1.
         - rope_freq_base:
             The RoPE frequency base (theta) to use when loading the model.
             Default is 0.0, which will determine the correct value
@@ -887,6 +893,11 @@ class Llama:
             )
         else:
             _rope_freq_base = rope_freq_base
+        
+        _n_threads = n_threads if n_threads > 0 else _get_optimal_n_threads()
+        _n_threads_batch = n_threads_batch if n_threads_batch > 0 else (
+            _get_optimal_n_threads_batch()
+        )
 
         #
         # New context with model
@@ -896,8 +907,8 @@ class Llama:
             model=self._model,
             n_ctx=_n_ctx,
             n_batch=n_batch,
-            n_threads=_get_optimal_n_threads(),
-            n_threads_batch=_get_optimal_n_threads_batch(),
+            n_threads=_n_threads,
+            n_threads_batch=_n_threads_batch,
             rope_freq_base=_rope_freq_base,
             type_k=type_k,
             type_v=type_v,
@@ -986,7 +997,7 @@ class Llama:
         self._default_sampler_params = SamplerParams(self)
 
         self.pos = 0
-        """The number of tokens in the context window that have been processed"""
+        """The current position of the model within the context"""
 
         self.context_tokens = []
         """A list of all tokens currently in the context window"""
@@ -1212,7 +1223,7 @@ class Llama:
         return lib.llama_kv_cache_can_shift(self._ctx.ctx)
 
     def n_threads(self) -> int:
-        """Get the number of threads used for batch size 1"""
+        """Get the number of threads used for batch size == 1"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads")
         return lib.llama_n_threads(self._ctx.ctx)
 
@@ -1527,6 +1538,7 @@ class Llama:
 
             self.reset()
             actual_input_tokens = input_tokens
+            n_actual_input_tokens = len(input_tokens)
         else:
             actual_input_tokens = self.set_context(input_tokens)
 
@@ -1822,32 +1834,33 @@ class Llama:
         return
     
     def benchmark(self, n_tokens_pp: int, n_tokens_tg: int, n_runs: int = 3) -> list[dict]:
+        stopwatch = _LlamaStopwatch()
         print_info_if_verbose('starting benchmark')
         results = []
         total_pp_time_ns = 0
         total_tg_time_ns = 0
         for i in range(1, n_runs+1):
+            self.reset()
             print_info_if_verbose(
                 f'starting run {i}/{n_runs}: {n_tokens_pp=}; {n_tokens_tg=} ... please wait ...'
             )
-            self.reset()
             with suppress_output():
-                self._stopwatch.reset()
-                self._stopwatch.start_generic()
+                stopwatch.reset()
+                stopwatch.start_generic()
                 self.eval(input_tokens=[0] * n_tokens_pp)
-                self._stopwatch.stop_generic()
-                pp_ns = self._stopwatch.get_elapsed_time_generic()
+                stopwatch.stop_generic()
+                pp_ns = stopwatch.get_elapsed_time_generic()
                 total_pp_time_ns += pp_ns
-                self._stopwatch.reset()
-                self._stopwatch.start_generic()
+                stopwatch.reset()
+                stopwatch.start_generic()
                 self.generate(
                     input_tokens=[0] * n_tokens_pp,
                     n_predict=n_tokens_tg,
                     stop_tokens=[],
                     sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
                 )
-                self._stopwatch.stop_generic()
-                tg_ns = self._stopwatch.get_elapsed_time_generic()
+                stopwatch.stop_generic()
+                tg_ns = stopwatch.get_elapsed_time_generic()
                 total_tg_time_ns += tg_ns
 
             results.append({
@@ -1856,22 +1869,26 @@ class Llama:
                 'pp_time_ns'  : pp_ns,
                 'tg_time_ns'  : tg_ns
             })
-        
+
         avg_pp_time_ns = total_pp_time_ns / n_runs
         avg_tg_time_ns = total_tg_time_ns / n_runs
+
+        avg_pp_time_ms = avg_pp_time_ns / 1e6
+        avg_tg_time_ms = avg_tg_time_ns / 1e6
 
         avg_pp_tok_per_sec = n_tokens_pp / (avg_pp_time_ns / 1e9)
         avg_tg_tok_per_sec = n_tokens_tg / (avg_tg_time_ns / 1e9)
 
-        print_info_if_verbose(
-            f'average pp speed for {n_tokens_pp} tokens over {n_runs} runs: '
-            f'{avg_pp_tok_per_sec:10.2f} tok/s'
-        )
-        print_info_if_verbose(
-            f'average tg speed for {n_tokens_tg} tokens over {n_runs} runs: '
-            f'{avg_tg_tok_per_sec:10.2f} tok/s'
-        )
-        
+        if get_verbose():
+            print_stopwatch(
+                f'average pp speed for {n_tokens_pp:>7} tokens over {n_runs} runs: '
+                f'{avg_pp_time_ms:>13.3f}ms ({avg_pp_tok_per_sec:10.2f} tok/s)'
+            )
+            print_stopwatch(
+                f'average tg speed for {n_tokens_tg:>7} tokens over {n_runs} runs: '
+                f'{avg_tg_time_ms:>13.3f}ms ({avg_tg_tok_per_sec:10.2f} tok/s)'
+            )
+
         return results
     
     def sample_greedy(self) -> int:

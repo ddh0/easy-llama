@@ -8,7 +8,8 @@ import sys
 import contextlib
 
 from .utils    import (
-    _SupportsWriteAndFlush, Colors, print_warning, assert_type, ez_encode, ez_decode
+    _SupportsWriteAndFlush, Colors, print_warning, assert_type, ez_encode, ez_decode,
+    suppress_output
 )
 from typing    import Optional
 from .formats  import PromptFormat
@@ -391,7 +392,9 @@ class Thread:
 
     def print_stats(self, file: _SupportsWriteAndFlush = sys.stderr) -> None:
         """Print stats about the context usage in this thread"""
-        n_thread_tokens = len(self.get_input_ids(role=None))
+        with suppress_output():
+            input_ids = self.get_input_ids(role=None)
+        n_thread_tokens = len(input_ids)
         n_msgs = len(self.messages)
         n_ctx = self.llama._n_ctx
         c = (n_thread_tokens/n_ctx) * 100
