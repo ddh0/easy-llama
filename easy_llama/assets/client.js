@@ -674,7 +674,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     submitButton.addEventListener('click', function(event) {
-        submitForm(event);
+        event.preventDefault();
+        inputForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
 
     removeButton.addEventListener('click', removeLastMessage);

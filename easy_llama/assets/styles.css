@@ -67,13 +67,14 @@ body {
 }
 
 #inputBox {
+    box-sizing: border-box;
     border-right-width: 3px;
     border-top: none;
     border-bottom: none;
     border-left: none;
     border-color: #212121;
     background-color: #161616;
-    width: calc(80svw - 1rem); /* fill width and account for padding */
+    width: calc(80svw - 1rem);
     height: 15svh;
     margin: 0px;
     resize: none;

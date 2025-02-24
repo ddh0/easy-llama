@@ -1440,7 +1440,7 @@ class Llama:
         if n_input_tokens == 0:
             raise ValueError(f'Llama.set_context: input_tokens cannot be empty')
         
-        if n_input_tokens + 1 > self._n_ctx:
+        if n_input_tokens > self._n_ctx:
             raise ExceededContextLengthException(
                 f'Llama.set_context: input is too large for context length '
                 f'{self._n_ctx} (got {n_input_tokens})'
