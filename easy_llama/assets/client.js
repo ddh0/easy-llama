@@ -656,21 +656,16 @@ function generateSummary() {
 
 
 document.addEventListener('DOMContentLoaded', function() {
-
-    // display all non-system messages even after page load/reload
+    // Display all non-system messages even after page load/reload
     populateConversation();
 
     // SHIFT + ENTER -> newline
     // ENTER         -> submit form
     inputBox.addEventListener('keydown', function(event) {
-
         if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault(); // default is newline
-            inputForm.dispatchEvent(
-                new Event('submit')
-            );
+            event.preventDefault(); // Prevent default newline behavior
+            inputForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         }
-
     });
 
     submitButton.addEventListener('click', function(event) {
@@ -716,6 +711,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     summarizeButton.addEventListener('click', generateSummary);
 
+    // Ensure the form submission is handled correctly
+    inputForm.addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent the default form submission
+        // Add your form submission logic here
+        submitForm();
+    });
 });
 
 
