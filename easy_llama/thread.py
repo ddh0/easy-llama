@@ -64,6 +64,9 @@ class Thread:
         else:
             self.messages = messages
         
+        # stop tokens
+        self._stop_tokens = self.prompt_format.stops() or self.llama.eog_tokens
+        
         # save the original messages for self.reset()
         self._orig_messages = self.messages.copy()
 
@@ -240,7 +243,7 @@ class Thread:
         response_toks = self.llama.generate(
             input_tokens=self.get_input_ids(role='bot'),
             n_predict=-1,
-            stop_tokens=self.llama.eog_tokens,
+            stop_tokens=self._stop_tokens,
             sampler_preset=self.sampler_preset
         )
         response_txt = self.llama.detokenize(response_toks, special=False)
@@ -321,7 +324,7 @@ class Thread:
                     tok_gen = self.llama.stream(
                         input_tokens=input_ids,
                         n_predict=-1,
-                        stop_tokens=self.llama.eog_tokens,
+                        stop_tokens=self._stop_tokens,
                         sampler_preset=self.sampler_preset
                     )
 

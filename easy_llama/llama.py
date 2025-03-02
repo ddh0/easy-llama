@@ -1833,18 +1833,25 @@ class Llama:
             self._stopwatch.print_stats()
         return
     
-    def benchmark(self, n_tokens_pp: int, n_tokens_tg: int, n_runs: int = 3) -> list[dict]:
+    def benchmark(
+        self,
+        n_tokens_pp: int = 1000,
+        n_tokens_tg: int = 10,
+        n_runs: int = 3
+    ) -> list[dict]:
         stopwatch = _LlamaStopwatch()
         print_info_if_verbose('starting benchmark')
         results = []
         total_pp_time_ns = 0
         total_tg_time_ns = 0
         for i in range(1, n_runs+1):
-            self.reset()
             print_info_if_verbose(
-                f'starting run {i}/{n_runs}: {n_tokens_pp=}; {n_tokens_tg=} ... please wait ...'
+                f'starting run {i}/{n_runs}:'
+                f' -- n_tokens_pp: {n_tokens_pp} -- n_tokens_tg: {n_tokens_tg}'
             )
+            print_info_if_verbose(f'... please wait ...')
             with suppress_output():
+                self.reset()
                 stopwatch.reset()
                 stopwatch.start_generic()
                 self.eval(input_tokens=[0] * n_tokens_pp)

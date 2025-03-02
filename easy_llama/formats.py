@@ -11,7 +11,7 @@ from datetime        import datetime, timedelta
 from collections.abc import Callable
 from typing          import Optional
 
-def _call_or_return(obj: str | Callable[..., str]) -> str:
+def _call_or_return(obj: object | Callable[..., object]) -> object:
     if callable(obj):
         ret = obj()
         if not isinstance(ret, str):
@@ -39,7 +39,8 @@ class PromptFormat:
         user_prefix:   str | Callable[..., str],
         user_suffix:   str | Callable[..., str],
         bot_prefix:    str | Callable[..., str],
-        bot_suffix:    str | Callable[..., str]
+        bot_suffix:    str | Callable[..., str],
+        stops: list[int] | Callable[..., list[int]] | None = None
     ) -> None:
         self._system_prefix = system_prefix
         self._system_prompt = system_prompt
@@ -48,6 +49,7 @@ class PromptFormat:
         self._user_suffix   = user_suffix
         self._bot_prefix    = bot_prefix
         self._bot_suffix    = bot_suffix
+        self._stops         = stops
     
     def __repr__(self) -> str:
         return (
@@ -58,7 +60,8 @@ class PromptFormat:
             f"user_prefix={self._user_prefix!r}, "
             f"user_suffix={self._user_suffix!r}, "
             f"bot_prefix={self._bot_prefix!r}, "
-            f"bot_suffix={self._bot_suffix!r}"
+            f"bot_suffix={self._bot_suffix!r}, "
+            f"stops={self._stops!r}"
             f")"
         )
     
@@ -89,6 +92,10 @@ class PromptFormat:
     def bot_suffix(self) -> str:
         """Get the bot message suffix"""
         return _call_or_return(self._bot_suffix)
+
+    def stops(self) -> list[int] | None:
+        """Get the optional list of stop tokens"""
+        return _call_or_return(self._stops)
 
 def _llama3_today_date() -> str:
     return datetime.today().strftime('%d %B %Y')
