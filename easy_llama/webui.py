@@ -162,13 +162,22 @@ def assert_max_length(text: str) -> None:
         f'{MAX_LENGTH_INPUT:,} characters'
     )
 
+def _print_tokens_for_debug(tokens: list[int]) -> None:
+    print(
+        f'\n'
+        f'------------------------------- START DEBUG TOKENS -------------------------------\n'
+        f'{tokens!r}\n'
+        f'-------------------------------  END DEBUG TOKENS  -------------------------------',
+        file=sys.stderr,
+        flush=True
+    )
 
 class WebUI:
     """
     The easy-llama WebUI server
     """
 
-    def __init__(self, thread: Thread):
+    def __init__(self, thread: Thread, debug: bool = False):
         """
         Create an instance of the WebUI server based on an existing Thread
         """
@@ -182,6 +191,7 @@ class WebUI:
             template_folder=ASSETS_FOLDER,
             static_url_path=''
         )
+        self.debug = debug
 
         # variables used for logging to console
         self._log_host = None
@@ -221,7 +231,6 @@ class WebUI:
             Whether to generate and use a self-signed SSL certificate to
             encrypt traffic between client and server
         """
-        print(WARNING, file=sys.stderr, flush=True)
 
         assert_type(host, str, 'host', 'WebUI.start')
         assert_type(port, int, 'port', 'WebUI.start')
@@ -243,8 +252,7 @@ class WebUI:
                 self.log('generating self-signed SSL certifcate')
                 generate_self_signed_ssl_cert()
                 print(SSL_CERT_FIRST_TIME_WARNING, file=sys.stderr, flush=True)
-
-
+        
         @self.app.route('/')
         def home():
             return render_template('index.html')
@@ -288,6 +296,8 @@ class WebUI:
                 })
                 print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
                 input_ids = self.thread.get_input_ids()
+                if self.debug:
+                    _print_tokens_for_debug(input_ids)
                 token_generator = self.thread.llama.stream(
                     input_tokens=input_ids,
                     n_predict=-1,
@@ -396,6 +406,8 @@ class WebUI:
 
             def generate():
                 input_ids = self.thread.get_input_ids(role='bot') + prompt_tokens
+                if self.debug:
+                    _print_tokens_for_debug(input_ids)
                 token_generator = self.thread.llama.stream(
                     input_tokens=input_ids,
                     n_predict=-1,
@@ -499,6 +511,8 @@ class WebUI:
         # these variables are used when printing logs
         self._log_host = host
         self._log_port = port
+
+        print(WARNING, file=sys.stderr, flush=True)
         
         try:
             self.app.run(
