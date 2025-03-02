@@ -12,21 +12,7 @@ from collections.abc import Callable
 from typing          import Optional
 
 def _call_or_return(obj: object | Callable[..., object]) -> object:
-    if callable(obj):
-        ret = obj()
-        if not isinstance(ret, str):
-            raise TypeError(
-                f'_call_or_return: obj must be a string or a callable that returns a string '
-                f'(the callable returned type {repr(type(ret))})'
-            )
-        return ret
-    elif isinstance(obj, str):
-        return obj
-    else:
-        raise TypeError(
-            f'_call_or_return: obj must be a string or a callable that returns a string '
-            f'(the object\'s type was {repr(type(obj))})'
-        )
+    return obj() if callable(obj) else obj
 
 class PromptFormat:
     """Define a prompt format"""

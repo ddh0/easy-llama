@@ -291,7 +291,7 @@ class WebUI:
                 token_generator = self.thread.llama.stream(
                     input_tokens=input_ids,
                     n_predict=-1,
-                    stop_tokens=self.thread.llama.eog_tokens,
+                    stop_tokens=self.thread._stop_tokens,
                     sampler_preset=self.thread.sampler_preset
                 )
 
@@ -399,7 +399,7 @@ class WebUI:
                 token_generator = self.thread.llama.stream(
                     input_tokens=input_ids,
                     n_predict=-1,
-                    stop_tokens=self.thread.llama.eog_tokens,
+                    stop_tokens=self.thread._stop_tokens,
                     sampler_preset=self.thread.sampler_preset
                 )
 
