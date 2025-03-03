@@ -141,8 +141,7 @@ def _calculate_rope_freq_base(
     # standard formula -- proportional increase
     adjusted_rope_freq = (n_ctx_load/n_ctx_train)*rope_freq_base_train
     # experimental formula -- slightly above proportional increase
-    #adjusted_rope_freq = \
-    #    ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
+    #adjusted_rope_freq = ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
     
     print_warning(
         f"n_ctx value {n_ctx_load} exceeds n_ctx_train value "

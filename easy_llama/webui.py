@@ -173,14 +173,10 @@ def _print_tokens_for_debug(tokens: list[int]) -> None:
     )
 
 class WebUI:
-    """
-    The easy-llama WebUI server
-    """
+    """The easy-llama WebUI server"""
 
     def __init__(self, thread: Thread, debug: bool = False):
-        """
-        Create an instance of the WebUI server based on an existing Thread
-        """
+        """Create an instance of the WebUI server based on an existing Thread"""
         assert_type(thread, Thread, 'thread', 'WebUI')
         self.thread = thread
         self._cancel_flag = False
