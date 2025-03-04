@@ -37,8 +37,7 @@ class Thread:
         self,
         llama: _llama.Llama,
         prompt_format: PromptFormat,
-        sampler_preset: Optional[SamplerPreset] = None,
-        messages: Optional[list[dict[str, str]]] = None
+        sampler_preset: Optional[SamplerPreset] = None
     ) -> None:
         
         assert_type(llama, _llama.Llama, 'llama', 'Thread.__init__')
@@ -366,6 +365,12 @@ class Thread:
                 else:
                     response = self.send(user_input)
                     print(f'\n{B}{response}{R}\n')
+    
+    def give_input_output_examples(self, examples: dict[str, str]) -> None:
+        """Provide examples for few-shot prompting"""
+        for input_msg_content, output_msg_content in examples.items():
+            self.add_message('user', input_msg_content)
+            self.add_message('bot', output_msg_content)
     
     def summarize(self) -> str:
         """Generate a summary of this thread"""
