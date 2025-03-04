@@ -50,21 +50,19 @@ class Thread:
 
         self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
 
-        if messages is None:
-            self.messages: list[dict[str, str]] = []
+        self.messages: list[dict[str, str]] = []
 
-            system_prompt = prompt_format.system_prompt()
+        system_prompt = prompt_format.system_prompt()
 
-            if system_prompt != '':
-                self.messages.append({
-                    'role': 'system',
-                    'content': system_prompt
-                })
-        else:
-            self.messages = messages
+        if system_prompt != '':
+            self.messages.append({
+                'role': 'system',
+                'content': system_prompt
+            })
         
         # stop tokens
-        self._stop_tokens = self.prompt_format.stops() or self.llama.eog_tokens
+        format_stops = self.prompt_format.stops()
+        self._stop_tokens = format_stops if format_stops is not None else self.llama.eog_tokens
         
         # save the original messages for self.reset()
         self._orig_messages = self.messages.copy()
