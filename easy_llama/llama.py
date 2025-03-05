@@ -17,8 +17,8 @@ import threading
 import numpy as np
 
 from .utils    import (
-    print_info, print_warning, print_error, print_stopwatch, null_ptr_check,
-    softmax, suppress_output, ez_encode, ez_decode, _SupportsWriteAndFlush, ptr
+    null_ptr_check, softmax, suppress_output, ez_encode, ez_decode, _SupportsWriteAndFlush, ptr,
+    log
 )
 from .sampling import SamplerParams, SamplerPreset
 from typing    import Optional, Iterable, Union
@@ -61,9 +61,9 @@ def get_verbose() -> bool:
     global _internal_verbose
     return _internal_verbose
 
-def print_info_if_verbose(text: str) -> None:
+def log_if_verbose(text: str) -> None:
     if get_verbose():
-        print_info(text)
+        log(text)
 
 def _init_backend_if_needed(verbose: bool = True) -> None:
 
@@ -71,22 +71,22 @@ def _init_backend_if_needed(verbose: bool = True) -> None:
     if lib._BACKEND_INIT is True:
         return
     
-    print_info_if_verbose(f'easy_llama package version: {__version__}')
+    log_if_verbose(f'easy_llama package version: {__version__}')
     
     global _cpu_count
     _cpu_count = int(os.cpu_count())
     
     # most cases
     if sys.byteorder == 'little':
-        print_info_if_verbose("host is little-endian")
+        log_if_verbose("host is little-endian")
     # rare
     elif sys.byteorder == 'big':
-        print_warning("host is big-endian, please ensure your GGUF file is also big-endian")
+        log("host is big-endian, please ensure your GGUF file is also big-endian", 2)
     # extremely rare, maybe impossible?
     else:
-        print_error(
+        log(
             f"unexpected value for sys.byteorder: {sys.byteorder!r}; expected 'little' for "
-            f"little-endian host or 'big' for big-endian host"
+            f"little-endian host or 'big' for big-endian host", 3
         )
     
     # actually load the backend
@@ -127,11 +127,11 @@ def _calculate_rope_freq_base(
     # adjustment cannot be applied - show error and return 0.0
 
     if rope_freq_base_train in [None, 0.0]:
-        print_error(
+        log(
             f'n_ctx value {n_ctx_load} > n_ctx_train value {n_ctx_train}, and '
             f'automatic rope_freq_base adjustment is not supported for this '
             f'model; model loading might fail, or the model might not work '
-            f'correctly'
+            f'correctly', 3
         )
         return 0.0
     
@@ -143,12 +143,12 @@ def _calculate_rope_freq_base(
     # experimental formula -- slightly above proportional increase
     #adjusted_rope_freq = ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
     
-    print_warning(
+    log(
         f"n_ctx value {n_ctx_load} exceeds n_ctx_train value "
         f"{n_ctx_train}; using adjusted rope_freq_base value "
         f"{adjusted_rope_freq}, native value is "
         f"{rope_freq_base_train}; model will function with "
-        f"potentially degraded output quality"
+        f"potentially degraded output quality", 2
     )
 
     return adjusted_rope_freq
@@ -285,16 +285,16 @@ class _LlamaStopwatch:
         print(f"\n", end='', file=sys.stderr, flush=True)
 
         if self.n_pp_tokens + self.n_tg_tokens == 0:
-            print_stopwatch(f'print_stats was called but no tokens were processed or generated')
+            log(f'print_stats was called but no tokens were processed or generated', 4)
 
         if self.n_pp_tokens > 0:
             pp_elapsed_ns = self.get_elapsed_time_pp()
             pp_elapsed_ms = pp_elapsed_ns / 1e6
             pp_elapsed_s = pp_elapsed_ns / 1e9
             pp_tps = self.n_pp_tokens / pp_elapsed_s
-            print_stopwatch(
+            log(
                 f'prompt processing: {self.n_pp_tokens:>7} tokens in {pp_elapsed_ms:>13.3f}ms '
-                f'({pp_tps:>10.2f} tok/s)'
+                f'({pp_tps:>10.2f} tok/s)', 4
             )
 
         if self.n_tg_tokens > 0:
@@ -302,14 +302,14 @@ class _LlamaStopwatch:
             tg_elapsed_ms = tg_elapsed_ns / 1e6
             tg_elapsed_s = tg_elapsed_ns / 1e9
             tg_tps = self.n_tg_tokens / tg_elapsed_s
-            print_stopwatch(
+            log(
                 f'  text generation: {self.n_tg_tokens:>7} tokens in {tg_elapsed_ms:>13.3f}ms '
-                f'({tg_tps:>10.2f} tok/s)'
+                f'({tg_tps:>10.2f} tok/s)', 4
             )
         
         wall_elapsed_ns = self.get_elapsed_wall_time()
         wall_elapsed_ms = wall_elapsed_ns / 1e6
-        print_stopwatch(f"        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms")
+        log(f"        wall time:{' ' * 19}{wall_elapsed_ms:>13.3f}ms", 4)
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
@@ -365,11 +365,11 @@ class QuickGGUFReader:
             try:
                 value = value.decode("utf-8")
             except UnicodeDecodeError:
-                print_warning(
+                log(
                     f'UnicodeDecodeError was raised while reading a string '
                     f'from the GGUF metadata. the GGUF format specifies that '
                     f'all strings in file metadata should be valid UTF-8. the '
-                    f'affected string will be left blank.'
+                    f'affected string will be left blank.', 2
                 )
                 value = ''
         else:
@@ -636,20 +636,20 @@ class _LlamaCtx:
         if type_v is not None:
             self.params.type_v = _v = type_v
         if _k != _v:
-            print_warning(
+            log(
                 f'type_k value {_k} != type_v value {_v}; this is rarely '
-                f'supported, program may fail'
+                f'supported, program may fail', 2
             )
         if _k not in _SUPPORTED_KV_TYPES:
-            print_warning(f'type_k value {_k} is unsupported; program may fail')
+            log(f'type_k value {_k} is unsupported; program may fail', 2)
         if _v not in _SUPPORTED_KV_TYPES:
-            print_warning(f'type_v value {_v} is unsupported; program may fail')
+            log(f'type_v value {_v} is unsupported; program may fail', 2)
         if (not flash_attn) and (_v not in [
             lib.GGMLType.GGML_TYPE_F32,
             lib.GGMLType.GGML_TYPE_F16,
             lib.GGMLType.GGML_TYPE_BF16
         ]):
-            print_warning(f'V cache quantization requires flash_attn; program may fail')
+            log(f'V cache quantization requires flash_attn; program may fail', 2)
         # if logits_all is not None:
         #     self.params.logits_all = logits_all
         if embeddings is not None:
@@ -865,7 +865,7 @@ class Llama:
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
         if n_ctx <= 0:
-            print_info_if_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
+            log_if_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
             _n_ctx = int(n_ctx_train)
         else:
             _n_ctx = int(n_ctx)
@@ -923,29 +923,29 @@ class Llama:
         requested_n_ctx = _n_ctx
 
         if actual_n_ctx != requested_n_ctx:
-            print_warning(
+            log(
                 f"requested n_ctx value differs from actual n_ctx value; "
                 f"requested {requested_n_ctx}, actual {actual_n_ctx}"
             )
         if actual_n_ctx < 512:
-            print_warning(
+            log(
                 f"n_ctx value {actual_n_ctx} is less than 512, which can "
                 f"sometimes cause problems with llama.cpp - consider "
-                f"increasing it to at least 512"
+                f"increasing it to at least 512", 2
             )
         if actual_n_ctx % 512 != 0:
-            print_warning(
+            log(
                 f"n_ctx value {actual_n_ctx} is not divisible by 512, which "
                 f"can sometimes cause problems with llama.cpp - consider "
                 f"changing it to "
-                f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}."
+                f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}.", 2
             )
         # warn about default context length 512 - this will prevent headaches
         if actual_n_ctx == 512:
-            print_warning(
+            log(
                 f'you are using the default n_ctx value {actual_n_ctx}, which '
                 f'is very small. increase n_ctx as needed to support longer '
-                f'inputs and outputs.'
+                f'inputs and outputs.', 2
             )
         
         self._stopwatch = _LlamaStopwatch()
@@ -1020,10 +1020,10 @@ class Llama:
             #
             # This adds a few seconds to the Llama load time.
             # 
-            print_info_if_verbose('warming up the model ... please wait ...')
+            log_if_verbose('warming up the model ... please wait ...')
             with self._lock:
                 _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
-            print_info_if_verbose('model is warm')
+            log_if_verbose('model is warm')
 
         # End of Llama.__init__
     
@@ -1035,7 +1035,7 @@ class Llama:
         null_ptr_check(self._ctx.ctx,     'self._ctx.ctx',     '_validate_model_state')
 
         def _fail(txt: str):
-            print_error(f'Llama: validation failed: {txt}')
+            log(f'Llama: validation failed: {txt}', 3)
             raise RuntimeError(f'Llama: validation failed: {txt}')
         
         if self.pos < 0:
@@ -1528,12 +1528,12 @@ class Llama:
 
         if logits_all:
             if self._first_valid_pos(input_tokens) > 0:
-                print_warning(
+                log(
                     f'Llama.eval: the KV cache will be cleared in order to compute the logits '
-                    f'for all tokens in the input'
+                    f'for all tokens in the input', 2
                 )
             
-            print_info_if_verbose(f'Llama.eval: {n_input_tokens} tokens to eval ...')
+            log_if_verbose(f'Llama.eval: {n_input_tokens} tokens to eval ...')
 
             self.reset()
             actual_input_tokens = input_tokens
@@ -1544,7 +1544,7 @@ class Llama:
             n_actual_input_tokens = len(actual_input_tokens)
             n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
 
-            print_info_if_verbose(
+            log_if_verbose(
                 f'Llama.eval: {n_cache_hit_tokens} tokens in cache, '
                 f'{n_actual_input_tokens} tokens to eval ...'
             )
@@ -1606,7 +1606,7 @@ class Llama:
         if get_verbose():
             sampler_params.print_chain()
         
-        print_info_if_verbose(
+        log_if_verbose(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1673,7 +1673,7 @@ class Llama:
         if get_verbose():
             sampler_params.print_chain()
         
-        print_info_if_verbose(
+        log_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1779,7 +1779,7 @@ class Llama:
         if get_verbose():
             sampler_params.print_chain()
 
-        print_info_if_verbose(
+        log_if_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1839,16 +1839,16 @@ class Llama:
         n_runs: int = 3
     ) -> list[dict]:
         stopwatch = _LlamaStopwatch()
-        print_info_if_verbose('starting benchmark')
+        log_if_verbose('starting benchmark')
         results = []
         total_pp_time_ns = 0
         total_tg_time_ns = 0
         for i in range(1, n_runs+1):
-            print_info_if_verbose(
+            log_if_verbose(
                 f'starting run {i}/{n_runs}:'
                 f' -- n_tokens_pp: {n_tokens_pp} -- n_tokens_tg: {n_tokens_tg}'
             )
-            print_info_if_verbose(f'... please wait ...')
+            log_if_verbose(f'... please wait ...')
             with suppress_output():
                 self.reset()
                 stopwatch.reset()
@@ -1886,13 +1886,13 @@ class Llama:
         avg_tg_tok_per_sec = n_tokens_tg / (avg_tg_time_ns / 1e9)
 
         if get_verbose():
-            print_stopwatch(
+            log(
                 f'average pp speed for {n_tokens_pp:>7} tokens over {n_runs} runs: '
-                f'{avg_pp_time_ms:>13.3f}ms ({avg_pp_tok_per_sec:10.2f} tok/s)'
+                f'{avg_pp_time_ms:>13.3f}ms ({avg_pp_tok_per_sec:10.2f} tok/s)', 4
             )
-            print_stopwatch(
+            log(
                 f'average tg speed for {n_tokens_tg:>7} tokens over {n_runs} runs: '
-                f'{avg_tg_time_ms:>13.3f}ms ({avg_tg_tok_per_sec:10.2f} tok/s)'
+                f'{avg_tg_time_ms:>13.3f}ms ({avg_tg_tok_per_sec:10.2f} tok/s)', 4
             )
 
         return results
@@ -2002,4 +2002,4 @@ class Llama:
         self.kv_cache_clear()
         self.pos = 0
         self.context_tokens = []
-        print_info_if_verbose('model was reset')
+        log_if_verbose('model was reset')

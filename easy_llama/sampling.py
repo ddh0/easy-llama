@@ -11,7 +11,7 @@ import ctypes
 
 from typing    import Optional
 from .libllama import _internals
-from .utils    import null_ptr_check, print_info, ez_encode
+from .utils    import null_ptr_check, log, ez_encode
 
 from . import libllama as lib
 
@@ -379,7 +379,7 @@ class SamplerParams:
         )
     
     def print_chain(self) -> None:
-        print_info(f'sampler chain: {self._chain_str}')
+        log(f'sampler chain: {self._chain_str}')
     
     def free(self) -> None:
         if self.smpl is not None:

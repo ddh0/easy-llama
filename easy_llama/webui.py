@@ -10,7 +10,7 @@ import json
 import base64
 
 from .thread import Thread
-from .utils import print_info, assert_type, Colors, ez_encode, ez_decode
+from .utils import log, assert_type, Colors, ez_encode, ez_decode
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -28,7 +28,6 @@ GREEN  = Colors.GREEN
 YELLOW = Colors.YELLOW
 RED    = Colors.RED
 BLUE   = Colors.BLUE
-
 
 WARNING = f"""{RED}
 ################################################################################
@@ -48,13 +47,11 @@ WARNING = f"""{RED}
 ################################################################################
 {RESET}"""
 
-
 SSL_CERT_FIRST_TIME_WARNING = \
 f"{YELLOW}you have just generated a new self-signed SSL certificate and " + \
 f"key. your browser will probably warn you about an untrusted " + \
 f"certificate. this is expected and you may safely proceed to the WebUI. " + \
 f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
-
 
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
 
@@ -64,9 +61,7 @@ if not os.path.exists(ASSETS_FOLDER):
         f'cannot start. consider re-installing easy-llama.'
     )
 
-
 MAX_LENGTH_INPUT = 1_000_000_000 # one billion characters
-
 
 def generate_self_signed_ssl_cert() -> None:
     """
@@ -180,7 +175,6 @@ class WebUI:
         assert_type(thread, Thread, 'thread', 'WebUI')
         self.thread = thread
         self._cancel_flag = False
-
         self.app = Flask(
             __name__,
             static_folder=ASSETS_FOLDER,
@@ -193,10 +187,9 @@ class WebUI:
         self._log_host = None
         self._log_port = None
     
-
     def log(self, text: str) -> None:
         if any(i is None for i in [self._log_host, self._log_port]):
-            print_info(text)
+            log(text)
         else:
             print(
                 f'easy_llama: WebUI @ '
@@ -206,17 +199,13 @@ class WebUI:
                 flush=True
             )
         
-
     def _get_context_string(self) -> str:
         thread_len_tokens = len(self.thread.get_input_ids(role=None))
         max_ctx_len = self.thread.llama._n_ctx
-
         return f"{thread_len_tokens} / {max_ctx_len} tokens used"
     
-
     def start(self, host: str, port: int = 8080, ssl: bool = False):
-        """
-        Start the WebUI on the specified address and port
+        """Start the WebUI on the specified address and port
 
         - host `str`:
             The local IP address from which to host the WebUI. For example,
@@ -225,25 +214,20 @@ class WebUI:
             The port on which to host the WebUI. Defaults to `8080`
         - ssl `bool`:
             Whether to generate and use a self-signed SSL certificate to
-            encrypt traffic between client and server
-        """
-
+            encrypt traffic between client and server"""
+        
         assert_type(host, str, 'host', 'WebUI.start')
         assert_type(port, int, 'port', 'WebUI.start')
-
         self._log_host = None
         self._log_port = None
-
         self.log(f"starting WebUI instance:")
         self.log(f"   host        == {host}")
         self.log(f"   port        == {port}")
         self.log(f"   ssl (HTTPS) == {ssl}")
 
         if ssl:
-
             if check_for_ssl_cert():
                 self.log('re-using previously generated SSL certificate')
-
             else:
                 self.log('generating self-signed SSL certifcate')
                 generate_self_signed_ssl_cert()
@@ -253,20 +237,15 @@ class WebUI:
         def home():
             return render_template('index.html')
         
-
         @self.app.route('/convo', methods=['GET'])
         def convo():
-
             msgs_dict = dict()
-
             i = 0
             for msg in self.thread.messages:
                 msgs_dict[i] = { encode_transfer(msg['role']) : encode_transfer(msg['content']) }
                 i += 1
-            
             json_convo = json.dumps(msgs_dict)
             return json_convo, 200, { 'ContentType' : 'application/json' }
-        
         
         @self.app.route('/cancel', methods=['POST'])
         def cancel():
@@ -274,7 +253,6 @@ class WebUI:
             self.log('hit cancel endpoint - flag is set')
             self._cancel_flag = True
             return '', 200
-
 
         @self.app.route('/submit', methods=['POST'])
         def submit():
@@ -306,6 +284,10 @@ class WebUI:
                 response_txt = ''
 
                 for token in token_generator:
+
+                    if token in self.thread._stop_tokens:
+                        break
+
                     if self._cancel_flag:
                         print(file=sys.stderr)
                         self.log('cancel generation from /submit. teapot')
@@ -350,9 +332,7 @@ class WebUI:
 
             if prompt not in ['', None]:
                 return Response(generate(), mimetype='text/plain')
-
             return '', 200
-
 
         @self.app.route('/reset', methods=['POST'])
         def reset():
@@ -360,35 +340,25 @@ class WebUI:
             self.log(f"thread was reset")
             return '', 200
         
-
         @self.app.route('/get_context_string', methods=['GET'])
         def get_context_string():
-
-            json_content = json.dumps(
-                { 'text' : encode_transfer(self._get_context_string()) }
-            )
-
+            json_content = json.dumps({ 'text' : encode_transfer(self._get_context_string()) })
             return json_content, 200, {'ContentType': 'application/json'}
         
-
         @self.app.route('/remove', methods=['POST'])
         def remove():
-
             if len(self.thread.messages) >= 1:
                 self.thread.messages.pop(-1)
                 self.log('removed last message')
                 return '', 200
-            
             else:
                 self.log('no previous message to remove. teapot')
                 return '', 418 # I'm a teapot
         
-
         @self.app.route('/trigger', methods=['POST'])
         def trigger():
             self.log('hit trigger endpoint')
             prompt = decode_transfer(request.data)
-
             if prompt not in ['', None]:
                 self.log(f'trigger with prompt: {prompt!r}')
                 prompt_tokens = self.thread.llama.tokenize(
@@ -410,18 +380,18 @@ class WebUI:
                     stop_tokens=self.thread._stop_tokens,
                     sampler_preset=self.thread.sampler_preset
                 )
-
                 response_toks = []
                 detok_bytes_buffer = b''
                 response_txt = ''
 
                 for token in token_generator:
+                    if token in self.thread._stop_tokens:
+                        break
                     if self._cancel_flag:
                         print()
                         self.log('cancel generation from /trigger. teapot')
                         self._cancel_flag = False  # reset flag
                         return '', 418  # I'm a teapot
-
                     response_toks.append(token)
                     detok_bytes_buffer += self.thread.llama.token_to_piece(token, special=False)
 
@@ -451,7 +421,6 @@ class WebUI:
 
             return Response(generate(), mimetype='text/plain')
         
-
         @self.app.route('/summarize', methods=['GET'])
         def summarize():
             summary = self.thread.summarize()
@@ -459,13 +428,11 @@ class WebUI:
             self.log(f"generated summary: {BLUE}{summary!r}{RESET}")
             return response, 200, {'ContentType': 'text/plain'}
         
-
         @self.app.route('/settings', methods=['GET'])
         def settings():
             # TODO: update this to work with SamplerParams
             raise NotImplementedError
             return render_template('settings.html')
-
 
         @self.app.route('/update_sampler', methods=['POST'])
         def update_sampler():
@@ -481,7 +448,6 @@ class WebUI:
             self.thread.sampler.presence_penalty = data.get('presence_penalty', self.thread.sampler.presence_penalty)
             self.thread.sampler.repeat_penalty = data.get('repeat_penalty', self.thread.sampler.repeat_penalty)
             return '', 200
-
 
         @self.app.route('/get_sampler', methods=['GET'])
         def get_sampler():
@@ -501,7 +467,6 @@ class WebUI:
         
         self.log('warming up thread')
         self.thread.warmup()
-
         self.log('now running Flask')
 
         # these variables are used when printing logs

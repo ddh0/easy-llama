@@ -8,7 +8,7 @@ import sys
 import contextlib
 
 from .utils    import (
-    _SupportsWriteAndFlush, Colors, print_warning, assert_type, ez_encode, ez_decode,
+    _SupportsWriteAndFlush, Colors, log, assert_type, ez_encode, ez_decode,
     suppress_output
 )
 from typing    import Optional
@@ -19,7 +19,7 @@ from . import llama as _llama
 
 @contextlib.contextmanager
 def KeyboardInterruptHandler():
-    _llama.print_info_if_verbose('Press CTRL+C to exit')
+    _llama.log_if_verbose('Press CTRL+C to exit')
     try:
         yield
     except KeyboardInterrupt:
@@ -219,15 +219,15 @@ class Thread:
                 raise ValueError(f'Thread.get_input_ids: invalid role {role!r}')
         # input_ids is now fully constructed
         n_input_ids = len(input_ids)
-        _llama.print_info_if_verbose(
+        _llama.log_if_verbose(
             f'Thread.get_input_ids: converted {len(self.messages)} messages to '
             f'{n_input_ids} tokens'
         )
         if n_input_ids >= self.llama._n_ctx:
-            print_warning(
+            log(
                 f'Thread.get_input_ids: length of input_ids {n_input_ids} '
                 f'equals or exceeds the current context length '
-                f'{self.llama._n_ctx}'
+                f'{self.llama._n_ctx}', 2
             )
         return input_ids
     
@@ -295,13 +295,13 @@ class Thread:
     def warmup(self) -> None:
         input_ids = self.get_input_ids()
         if self.llama._first_valid_pos(input_ids) < len(input_ids):
-            _llama.print_info_if_verbose(
+            _llama.log_if_verbose(
                 'Thread.warmup: processing thread content with model ...'
             )
             self.llama.generate(input_tokens=input_ids, n_predict=0)
         # if the above condition is not True, the thread is already in the cache, so
         # nothing needs to be done
-        _llama.print_info_if_verbose('Thread.warmup: done')
+        _llama.log_if_verbose('Thread.warmup: done')
     
     def interact(self, stream: bool = True) -> None:
         """Start an interactive terminal-based chat using this thread"""

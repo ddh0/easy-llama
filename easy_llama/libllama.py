@@ -24,7 +24,7 @@ import numpy as np
 
 from enum   import IntEnum
 from typing import Optional, Iterable
-from .utils import ptr, print_warning, ez_decode
+from .utils import ptr, log, ez_decode
 
 faulthandler.enable() # prints more helpful info if python crashes
 
@@ -1253,10 +1253,10 @@ def llama_batch_get_one(tokens: ptr[llama_token], n_tokens: int) -> llama_batch:
     https://github.com/ggerganov/llama.cpp/issues/6475#issuecomment-2040350410
 
     Return batch for single sequence of tokens"""
-    print_warning(
+    log(
         f'you are using libllama.llama_batch_get_one which will be deprecated '
         f'and removed at some point. you should use libllama.llama_batch_init '
-        f'instead'
+        f'instead', 2
     )
     return libllama.llama_batch_get_one(tokens, n_tokens)
 

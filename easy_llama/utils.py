@@ -8,10 +8,74 @@ from ._version import __version__
 
 import os
 import sys
+import datetime
 import contextlib
+
 import numpy as np
 
-from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn
+from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn, Literal
+
+class ANSI:
+    """ANSI codes for terminal emulators"""
+
+    BELL = '\a'
+
+    CLEAR = '\x1bc\x1b[3J' # technically this is two ANSI codes in one
+
+    # Standard colors
+    FG_BLACK   = '\x1b[30m'
+    BG_BLACK   = '\x1b[40m'
+    FG_RED     = '\x1b[31m'
+    BG_RED     = '\x1b[41m'
+    FG_GREEN   = '\x1b[32m'
+    BG_GREEN   = '\x1b[42m'
+    FG_YELLOW  = '\x1b[33m'
+    BG_YELLOW  = '\x1b[43m'
+    FG_BLUE    = '\x1b[34m'
+    BG_BLUE    = '\x1b[44m'
+    FG_MAGENTA = '\x1b[35m'
+    BG_MAGENTA = '\x1b[45m'
+    FG_CYAN    = '\x1b[36m'
+    BG_CYAN    = '\x1b[46m'
+    FG_WHITE   = '\x1b[37m'
+    BG_WHITE   = '\x1b[47m'
+
+    # Bright colors
+    FG_BRIGHT_BLACK   = '\x1b[90m'
+    BG_BRIGHT_BLACK   = '\x1b[100m'
+    FG_BRIGHT_RED     = '\x1b[91m'
+    BG_BRIGHT_RED     = '\x1b[101m'
+    FG_BRIGHT_GREEN   = '\x1b[92m'
+    BG_BRIGHT_GREEN   = '\x1b[102m'
+    FG_BRIGHT_YELLOW  = '\x1b[93m'
+    BG_BRIGHT_YELLOW  = '\x1b[103m'
+    FG_BRIGHT_BLUE    = '\x1b[94m'
+    BG_BRIGHT_BLUE    = '\x1b[104m'
+    FG_BRIGHT_MAGENTA = '\x1b[95m'
+    BG_BRIGHT_MAGENTA = '\x1b[105m'
+    FG_BRIGHT_CYAN    = '\x1b[96m'
+    BG_BRIGHT_CYAN    = '\x1b[106m'
+    FG_BRIGHT_WHITE   = '\x1b[97m'
+    BG_BRIGHT_WHITE   = '\x1b[107m'
+
+    # Modes
+    MODE_RESET_ALL           = '\x1b[0m'
+    MODE_BOLD_SET            = '\x1b[1m'
+    MODE_BOLD_RESET          = '\x1b[22m'
+    MODE_DIM_SET             = '\x1b[2m'
+    MODE_DIM_RESET           = '\x1b[22m'
+    MODE_ITALIC_SET          = '\x1b[3m'
+    MODE_ITALIC_RESET        = '\x1b[23m'
+    MODE_UNDERLINE_SET       = '\x1b[4m'
+    MODE_UNDERLINE_RESET     = '\x1b[24m'
+    MODE_BLINKING_SET        = '\x1b[5m'
+    MODE_BLINKING_RESET      = '\x1b[25m'
+    MODE_REVERSE_SET         = '\x1b[7m'
+    MODE_REVERSE_RESET       = '\x1b[27m'
+    MODE_HIDDEN_SET          = '\x1b[8m'
+    MODE_HIDDEN_RESET        = '\x1b[28m'
+    MODE_STRIKETHROUGH_SET   = '\x1b[9m'
+    MODE_STRIKETHROUGH_RESET = '\x1b[29m'
 
 class Colors:
     """ANSI codes to set text foreground color in terminal output"""
@@ -58,6 +122,34 @@ T = TypeVar('T')
 class ptr(Generic[T]):
     """Generic type hint representing any ctypes pointer. Optionally subscriptable with any
     type."""
+
+def log(
+    text: str,
+    level: Literal[1, 2, 3, 4] = 1,
+    disable: bool = False
+) -> None:
+    """Print the given text to the file, prefixed with a timestamp"""
+    if disable:
+        return
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %a %I:%M:%S.%f")[:-3]
+    if level == 1:
+        lvltxt = f"      {ANSI.FG_BRIGHT_GREEN}INFO"
+    elif level == 2:
+        lvltxt = f"  {ANSI.FG_BRIGHT_YELLOW}WARNING"
+    elif level == 3:
+        lvltxt = f"       {ANSI.FG_BRIGHT_RED}ERROR"
+    elif level == 4:
+        lvltxt = f"{ANSI.FG_BRIGHT_RED}STOPWATCH"
+    else:
+        raise ValueError(f'parameter `level` must be one of `[1, 2, 3, 4]`, not {level}')
+    print(
+        f"{ANSI.MODE_RESET_ALL}{ANSI.MODE_BOLD_SET}{ANSI.FG_BRIGHT_BLACK}[{timestamp}]"
+        f"{ANSI.MODE_RESET_ALL}{ANSI.MODE_BOLD_SET} {lvltxt}{ANSI.MODE_RESET_ALL}"
+        f"{ANSI.MODE_BOLD_SET}{ANSI.FG_BRIGHT_BLACK}:{ANSI.MODE_RESET_ALL} {text}",
+        end='\n',
+        file=sys.stdout if level == 1 else sys.stderr,
+        flush=True
+    )
 
 def softmax(
     z: _ArrayLike, T: Optional[float] = None, dtype: Optional[np.dtype] = None
@@ -117,7 +209,7 @@ def ez_encode(txt: str) -> bytes:
     try:
         return txt.encode('utf-8', errors='strict')
     except UnicodeEncodeError:
-        print_warning(f'error encoding string to UTF-8. using ? replacement character.')
+        log(f'error encoding string to UTF-8. using ? replacement character.', level=3)
         return txt.encode('utf-8', errors='replace')
 
 def ez_decode(txt: bytes) -> str:
@@ -126,7 +218,7 @@ def ez_decode(txt: bytes) -> str:
     try:
         return txt.decode('utf-8', errors='strict')
     except UnicodeDecodeError:
-        print_warning(f'error decoding string from UTF-8. using � replacement character.')
+        log(f'error decoding string from UTF-8. using � replacement character.', level=3)
         return txt.decode('utf-8', errors='replace')
 
 _open = open
@@ -166,21 +258,6 @@ def suppress_output(disable: bool = False):
 
                 _os.close(saved_stdout_fd)
                 _os.close(saved_stderr_fd)
-
-def print_verbose(text: str) -> None:
-    print(f"{RESET}easy_llama:", text, file=sys.stderr, flush=True)
-
-def print_info(text: str) -> None:
-    print(f"{RESET}easy_llama: {GREEN}INFO{RESET}:", text, file=sys.stderr, flush=True)
-
-def print_warning(text: str) -> None:
-    print(f"{RESET}easy_llama: {YELLOW}WARNING{RESET}:", text, file=sys.stderr, flush=True)
-
-def print_error(text: str) -> None:
-    print(f"{RESET}easy_llama: {RED}ERROR{RESET}:", text, file=sys.stderr, flush=True)
-
-def print_stopwatch(text: str) -> None:
-    print(f"{RESET}easy_llama: {MAGENTA}STOPWATCH{RESET}:", text, file=sys.stderr, flush=True)
 
 def assert_type(
     obj: object,

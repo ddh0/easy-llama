@@ -26,7 +26,7 @@ class PromptFormat:
         user_suffix:   str | Callable[..., str],
         bot_prefix:    str | Callable[..., str],
         bot_suffix:    str | Callable[..., str],
-        stops: list[int] | Callable[..., list[int]] | None = None
+        stop_tokens:   list[int] | Callable[..., list[int]] | None = None
     ) -> None:
         self._system_prefix = system_prefix
         self._system_prompt = system_prompt
@@ -35,7 +35,7 @@ class PromptFormat:
         self._user_suffix   = user_suffix
         self._bot_prefix    = bot_prefix
         self._bot_suffix    = bot_suffix
-        self._stops         = stops
+        self._stop_tokens   = stop_tokens
     
     def __repr__(self) -> str:
         return (
@@ -47,7 +47,7 @@ class PromptFormat:
             f"user_suffix={self._user_suffix!r}, "
             f"bot_prefix={self._bot_prefix!r}, "
             f"bot_suffix={self._bot_suffix!r}, "
-            f"stops={self._stops!r}"
+            f"stop_tokens={self._stop_tokens!r}"
             f")"
         )
     
@@ -79,9 +79,9 @@ class PromptFormat:
         """Get the bot message suffix"""
         return _call_or_return(self._bot_suffix)
 
-    def stops(self) -> list[int] | None:
+    def stop_tokens(self) -> list[int] | None:
         """Get the optional list of stop tokens"""
-        return _call_or_return(self._stops)
+        return _call_or_return(self._stop_tokens)
 
 def _llama3_today_date() -> str:
     return datetime.today().strftime('%d %B %Y')
