@@ -4,12 +4,10 @@
 
 from ._version import __version__
 
-"""
-Text generation in Python, as easy as possible
+"""Text generation in Python, as easy as possible
 
 For more information, visit the project's GitHub repository:
-https://github.com/ddh0/easy-llama
-"""
+https://github.com/ddh0/easy-llama"""
 
 # all submodules
 

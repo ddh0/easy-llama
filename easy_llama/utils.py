@@ -77,26 +77,6 @@ class ANSI:
     MODE_STRIKETHROUGH_SET   = '\x1b[9m'
     MODE_STRIKETHROUGH_RESET = '\x1b[29m'
 
-class Colors:
-    """ANSI codes to set text foreground color in terminal output"""
-    RESET   = '\x1b[39m'
-    GREEN   = '\x1b[39m\x1b[32m'
-    BLUE    = '\x1b[39m\x1b[36m'
-    GREY    = '\x1b[39m\x1b[90m'
-    YELLOW  = '\x1b[39m\x1b[33m'
-    RED     = '\x1b[39m\x1b[91m'
-    MAGENTA = '\x1b[39m\x1b[35m'
-
-# color codes used in print_info, print_warning, print_error, and
-# Thread.interact()
-RESET   = RESET_ALL     = Colors.RESET
-GREEN   = USER_STYLE    = Colors.GREEN
-BLUE    = BOT_STYLE     = Colors.BLUE
-GREY    = DIM_STYLE     = Colors.GREY
-YELLOW  = SPECIAL_STYLE = Colors.YELLOW
-RED     = ERROR_STYLE   = Colors.RED
-MAGENTA = TIMER_STYLE   = Colors.MAGENTA
-
 NoneType: type = type(None)
 
 class _ArrayLike(Iterable):
@@ -131,15 +111,15 @@ def log(
     """Print the given text to the file, prefixed with a timestamp"""
     if disable:
         return
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %a %I:%M:%S.%f")[:-3]
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %a %k:%M:%S.%f")[:-3]
     if level == 1:
-        lvltxt = f"      {ANSI.FG_BRIGHT_GREEN}INFO"
+        lvltxt = f"{ANSI.FG_BRIGHT_GREEN}INFO"
     elif level == 2:
-        lvltxt = f"  {ANSI.FG_BRIGHT_YELLOW}WARNING"
+        lvltxt = f"{ANSI.FG_BRIGHT_YELLOW}WARNING"
     elif level == 3:
-        lvltxt = f"       {ANSI.FG_BRIGHT_RED}ERROR"
+        lvltxt = f"{ANSI.FG_BRIGHT_RED}ERROR"
     elif level == 4:
-        lvltxt = f"{ANSI.FG_BRIGHT_RED}STOPWATCH"
+        lvltxt = f"{ANSI.FG_BRIGHT_MAGENTA}STOPWATCH"
     else:
         raise ValueError(f'parameter `level` must be one of `[1, 2, 3, 4]`, not {level}')
     print(
@@ -147,7 +127,7 @@ def log(
         f"{ANSI.MODE_RESET_ALL}{ANSI.MODE_BOLD_SET} {lvltxt}{ANSI.MODE_RESET_ALL}"
         f"{ANSI.MODE_BOLD_SET}{ANSI.FG_BRIGHT_BLACK}:{ANSI.MODE_RESET_ALL} {text}",
         end='\n',
-        file=sys.stdout if level == 1 else sys.stderr,
+        file=sys.stdout if level in [1,4] else sys.stderr,
         flush=True
     )
 
@@ -196,16 +176,15 @@ def cls() -> None:
     if os.name == 'nt':
         os.system('cls')
     else:
-        os.system('clear')
-        print("\033c\033[3J", end='', flush=True)
+        #os.system('clear')
+        print(ANSI.CLEAR, end='', flush=True)
 
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
 def ez_encode(txt: str) -> bytes:
     """Encode the given text `txt` from string to UTF-8. If strict encoding fails, a warning
-    will be shown and the offending character(s) will be replaced with `?`.
-    """
+    will be shown and the offending character(s) will be replaced with `?`."""
     try:
         return txt.encode('utf-8', errors='strict')
     except UnicodeEncodeError:

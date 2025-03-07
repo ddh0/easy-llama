@@ -8,8 +8,7 @@ import sys
 import contextlib
 
 from .utils    import (
-    _SupportsWriteAndFlush, Colors, log, assert_type, ez_encode, ez_decode,
-    suppress_output
+    _SupportsWriteAndFlush, ANSI, log, assert_type, ez_encode, ez_decode, suppress_output,
 )
 from typing    import Optional
 from .formats  import PromptFormat
@@ -23,7 +22,7 @@ def KeyboardInterruptHandler():
     try:
         yield
     except KeyboardInterrupt:
-        print(Colors.RESET, end='\n\n', flush=True)
+        print(ANSI.MODE_RESET_ALL, end='\n\n', flush=True)
 
 class Thread:
 
@@ -61,7 +60,7 @@ class Thread:
             })
         
         # stop tokens
-        format_stops = self.prompt_format.stops()
+        format_stops = self.prompt_format.stop_tokens()
         self._stop_tokens = format_stops if format_stops is not None else self.llama.eog_tokens
         
         # save the original messages for self.reset()
@@ -305,9 +304,9 @@ class Thread:
     
     def interact(self, stream: bool = True) -> None:
         """Start an interactive terminal-based chat using this thread"""
-        R = Colors.RESET
-        B = Colors.BLUE
-        G = Colors.GREEN
+        R = ANSI.MODE_RESET_ALL
+        B = ANSI.FG_BRIGHT_CYAN
+        G = ANSI.FG_BRIGHT_GREEN
         with KeyboardInterruptHandler():
             print()
             while True:

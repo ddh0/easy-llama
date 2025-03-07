@@ -10,7 +10,7 @@ import json
 import base64
 
 from .thread import Thread
-from .utils import log, assert_type, Colors, ez_encode, ez_decode
+from .utils import log, assert_type, ANSI, ez_encode, ez_decode
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -23,15 +23,9 @@ from cryptography.hazmat.primitives.serialization import Encoding
 
 UTC = timezone.utc
 
-RESET  = Colors.RESET
-GREEN  = Colors.GREEN
-YELLOW = Colors.YELLOW
-RED    = Colors.RED
-BLUE   = Colors.BLUE
-
-WARNING = f"""{RED}
+WARNING = f"""{ANSI.MODE_BOLD_SET}{ANSI.FG_BRIGHT_RED}
 ################################################################################
-{RESET}
+{ANSI.MODE_RESET_ALL}{ANSI.MODE_BOLD_SET}
 
                           please keep in mind
 
@@ -43,15 +37,15 @@ WARNING = f"""{RED}
 
                           you have been warned
 
-{RED}
+{ANSI.FG_BRIGHT_RED}
 ################################################################################
-{RESET}"""
+{ANSI.MODE_RESET_ALL}"""
 
 SSL_CERT_FIRST_TIME_WARNING = \
-f"{YELLOW}you have just generated a new self-signed SSL certificate and " + \
+f"{ANSI.FG_BRIGHT_YELLOW}you have just generated a new self-signed SSL certificate and " + \
 f"key. your browser will probably warn you about an untrusted " + \
 f"certificate. this is expected and you may safely proceed to the WebUI. " + \
-f"subsequent WebUI sessions will re-use this SSL certificate.{RESET}"
+f"subsequent WebUI sessions will re-use this SSL certificate.{ANSI.MODE_RESET_ALL}"
 
 ASSETS_FOLDER = os.path.join(os.path.dirname(__file__), 'assets')
 
@@ -117,11 +111,9 @@ def generate_self_signed_ssl_cert() -> None:
         f.write(certificate.public_bytes(Encoding.PEM))
 
 def check_for_ssl_cert() -> bool:
-    """
-    Return `True` if a local SSL certificate already exists
+    """Return `True` if a local SSL certificate already exists
 
-    If not, remove any orphaned certificate files and return `False`
-    """
+    If not, remove any orphaned certificate files and return `False`"""
     fns = [
         f'{ASSETS_FOLDER}/cert.pem',
         f'{ASSETS_FOLDER}/key.pem'
@@ -191,14 +183,11 @@ class WebUI:
         if any(i is None for i in [self._log_host, self._log_port]):
             log(text)
         else:
-            print(
-                f'easy_llama: WebUI @ '
-                f'{YELLOW}{self._log_host}{RESET}:'
-                f'{YELLOW}{self._log_port}{RESET}: {text}',
-                file=sys.stderr,
-                flush=True
+            log(
+            f'WebUI @ {ANSI.FG_BRIGHT_YELLOW}{self._log_host}{ANSI.MODE_RESET_ALL}:'
+            f'{ANSI.FG_BRIGHT_YELLOW}{self._log_port}{ANSI.MODE_RESET_ALL}:'
             )
-        
+    
     def _get_context_string(self) -> str:
         thread_len_tokens = len(self.thread.get_input_ids(role=None))
         max_ctx_len = self.thread.llama._n_ctx
@@ -209,7 +198,7 @@ class WebUI:
 
         - host `str`:
             The local IP address from which to host the WebUI. For example,
-            `'127.0.0.0.1'` or `'10.0.0.140'`
+            `'127.0.0.1'` or `'10.0.0.140'`
         - port `int`:
             The port on which to host the WebUI. Defaults to `8080`
         - ssl `bool`:
@@ -242,7 +231,9 @@ class WebUI:
             msgs_dict = dict()
             i = 0
             for msg in self.thread.messages:
-                msgs_dict[i] = { encode_transfer(msg['role']) : encode_transfer(msg['content']) }
+                msgs_dict[i] = {
+                    encode_transfer(msg['role']) : encode_transfer(msg['content'])
+                }
                 i += 1
             json_convo = json.dumps(msgs_dict)
             return json_convo, 200, { 'ContentType' : 'application/json' }
@@ -268,7 +259,7 @@ class WebUI:
                     'role': 'user',
                     'content': prompt
                 })
-                print(f'{GREEN}{prompt}{RESET}', file=sys.stderr)
+                print(f'{ANSI.FG_BRIGHT_GREEN}{prompt}{ANSI.MODE_RESET_ALL}', file=sys.stderr)
                 input_ids = self.thread.get_input_ids()
                 if self.debug:
                     _print_tokens_for_debug(input_ids)
@@ -284,9 +275,6 @@ class WebUI:
                 response_txt = ''
 
                 for token in token_generator:
-
-                    if token in self.thread._stop_tokens:
-                        break
 
                     if self._cancel_flag:
                         print(file=sys.stderr)
@@ -304,7 +292,7 @@ class WebUI:
                         detok_bytes_buffer = b''
                         response_txt += detok_txt
                         print(
-                            f'{BLUE}{detok_txt}{RESET}',
+                            f'{ANSI.FG_BRIGHT_CYAN}{detok_txt}{ANSI.MODE_RESET_ALL}',
                             end='',
                             flush=True,
                             file=sys.stderr
@@ -316,7 +304,7 @@ class WebUI:
                     leftover_txt = ez_decode(detok_bytes_buffer)
                     response_txt += leftover_txt
                     print(
-                        f'{BLUE}{leftover_txt}{RESET}',
+                        f'{ANSI.FG_BRIGHT_CYAN}{leftover_txt}{ANSI.MODE_RESET_ALL}',
                         end='',
                         flush=True,
                         file=sys.stderr
@@ -385,8 +373,7 @@ class WebUI:
                 response_txt = ''
 
                 for token in token_generator:
-                    if token in self.thread._stop_tokens:
-                        break
+
                     if self._cancel_flag:
                         print()
                         self.log('cancel generation from /trigger. teapot')
@@ -402,14 +389,20 @@ class WebUI:
                     else:
                         detok_bytes_buffer = b''
                         response_txt += detok_txt
-                        print(f'{BLUE}{detok_txt}{RESET}', end='', flush=True)
+                        print(
+                            f'{ANSI.FG_BRIGHT_CYAN}{detok_txt}{ANSI.MODE_RESET_ALL}', end='',
+                            flush=True
+                        )
                         yield encode_transfer(detok_txt) + '\n'  # delimiter between tokens
 
                 # print any leftover bytes (though ideally there should be none)
                 if detok_bytes_buffer != b'':
                     leftover_txt = ez_decode(detok_bytes_buffer)
                     response_txt += leftover_txt
-                    print(f'{BLUE}{leftover_txt}{RESET}', end='', flush=True)
+                    print(
+                        f'{ANSI.FG_BRIGHT_CYAN}{leftover_txt}{ANSI.MODE_RESET_ALL}', end='',
+                        flush=True
+                    )
                     yield encode_transfer(leftover_txt) + '\n'  # delimiter between tokens
 
                 self._cancel_flag = False
@@ -425,7 +418,9 @@ class WebUI:
         def summarize():
             summary = self.thread.summarize()
             response = encode_transfer(summary)
-            self.log(f"generated summary: {BLUE}{summary!r}{RESET}")
+            self.log(
+                f"generated summary: {ANSI.FG_BRIGHT_CYAN}{summary!r}{ANSI.MODE_RESET_ALL}"
+            )
             return response, 200, {'ContentType': 'text/plain'}
         
         @self.app.route('/settings', methods=['GET'])
@@ -438,32 +433,11 @@ class WebUI:
         def update_sampler():
             # TODO: update this to work with SamplerParams
             raise NotImplementedError
-            data = request.get_json()
-            self.thread.sampler.max_len_tokens = data.get('max_len_tokens', self.thread.sampler.max_len_tokens)
-            self.thread.sampler.top_k = data.get('top_k', self.thread.sampler.top_k)
-            self.thread.sampler.top_p = data.get('top_p', self.thread.sampler.top_p)
-            self.thread.sampler.min_p = data.get('min_p', self.thread.sampler.min_p)
-            self.thread.sampler.temp = data.get('temp', self.thread.sampler.temp)
-            self.thread.sampler.frequency_penalty = data.get('frequency_penalty', self.thread.sampler.frequency_penalty)
-            self.thread.sampler.presence_penalty = data.get('presence_penalty', self.thread.sampler.presence_penalty)
-            self.thread.sampler.repeat_penalty = data.get('repeat_penalty', self.thread.sampler.repeat_penalty)
-            return '', 200
 
         @self.app.route('/get_sampler', methods=['GET'])
         def get_sampler():
             # TODO: update this to work with SamplerParams
             raise NotImplementedError
-            sampler_settings = {
-                'max_len_tokens': self.thread.sampler.max_len_tokens,
-                'top_k': self.thread.sampler.top_k,
-                'top_p': self.thread.sampler.top_p,
-                'min_p': self.thread.sampler.min_p,
-                'temp': self.thread.sampler.temp,
-                'frequency_penalty': self.thread.sampler.frequency_penalty,
-                'presence_penalty': self.thread.sampler.presence_penalty,
-                'repeat_penalty': self.thread.sampler.repeat_penalty
-            }
-            return json.dumps(sampler_settings), 200, {'ContentType': 'application/json'}
         
         self.log('warming up thread')
         self.thread.warmup()
@@ -487,7 +461,7 @@ class WebUI:
 
         except Exception as exc:
             newline()
-            self.log(f'{RED}exception in Flask: {exc}{RESET}')
+            self.log(f'{ANSI.FG_BRIGHT_RED}exception in Flask: {exc}{ANSI.MODE_RESET_ALL}')
             raise exc
         
         else:

@@ -5,7 +5,7 @@
 """This file provides a Python interface to LLAMA_API ("libllama"), which is
 originally defined in `llama.cpp/include/llama.h`.
 
-This file was last updated to match commit `08f10f69c38288e9e8bb1f933af63a3fc9013d40`.
+This file was last updated to match llama.cpp commit `08f10f69c38288e9e8bb1f933af63a3fc9013d40`.
 
 ---
 
@@ -56,8 +56,8 @@ def DEPRECATED(new_func_name: Optional[str] = None):
 # Import shared library
 #
 
-#libllama = ctypes.CDLL('/home/dylan/Documents/AI/llama.cpp/build/src/libllama.so')
-libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/src/libllama.dylib')
+#libllama = ctypes.CDLL('/home/dylan/Documents/AI/llama.cpp/build/bin/libllama.so')
+libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/bin/libllama.dylib')
 
 #
 # Type hints and other constants
@@ -394,28 +394,13 @@ dummy_progress_callback = ctypes.CFUNCTYPE(
 )
 
 class llama_model_params(ctypes.Structure):
-    # _fields_ = [
-    #     ("devices", ctypes.POINTER(ctypes.c_void_p)),  # NULL-terminated list of devices to use for offloading (if NULL, all available devices are used)
-    #     ("n_gpu_layers", ctypes.c_int32),  # number of layers to store in VRAM
-    #     ("split_mode", ctypes.c_int),  # how to split the model across multiple GPUs
-    #     ("main_gpu", ctypes.c_int32),  # the GPU that is used for the entire model when split_mode is LLAMA_SPLIT_MODE_NONE
-    #     ("tensor_split", ctypes.POINTER(ctypes.c_float)),  # proportion of the model (layers or rows) to offload to each GPU, size: llama_max_devices()
-    #     ("rpc_servers", ctypes.c_char_p),  # comma separated list of RPC servers to use for offloading
-    #     ("progress_callback", dummy_progress_callback),  # Called with a progress value between 0.0 and 1.0. Pass NULL to disable.
-    #     ("progress_callback_user_data", ctypes.c_void_p),  # context pointer passed to the progress callback
-    #     ("kv_overrides", ctypes.POINTER(llama_model_kv_override)),  # override key-value pairs of the model meta data
-    #     ("vocab_only", ctypes.c_bool),  # only load the vocabulary, no weights
-    #     ("use_mmap", ctypes.c_bool),  # use mmap if possible
-    #     ("use_mlock", ctypes.c_bool),  # force system to keep model in RAM
-    #     ("check_tensors", ctypes.c_bool),  # validate model tensor data
-    # ]
     _fields_ = [
         ("devices", ctypes.POINTER(ctypes.c_void_p)),
         ("n_gpu_layers", ctypes.c_int32),
         ("split_mode", ctypes.c_int),
         ("main_gpu", ctypes.c_int32),
         ("tensor_split", ctypes.POINTER(ctypes.c_float)),
-        ("rpc_servers", ctypes.c_char_p),  # <--- NOW IN CORRECT POSITION
+        ("rpc_servers", ctypes.c_char_p),
         ("progress_callback", dummy_progress_callback),
         ("progress_callback_user_data", ctypes.c_void_p),
         ("kv_overrides", ctypes.POINTER(llama_model_kv_override)),
