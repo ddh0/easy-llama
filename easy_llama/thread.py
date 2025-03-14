@@ -67,7 +67,7 @@ class Thread:
         self._orig_messages = self.messages.copy()
 
         # save the sampler_preset param for repr
-        self._sampler_preset = sampler_preset
+        self._sampler_preset = self.sampler_preset
     
     def __repr__(self) -> str:
         return (

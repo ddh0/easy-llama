@@ -83,13 +83,13 @@ class SamplerParams:
         llama: Llama,    # some samplers require info about n_ctx_train, n_vocab, etc.
         seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use random seed
 
-        top_k:              int   = 40,    # <= 0 to use vocab size
-        top_p:              float = 0.95,  # 1.0 = disabled
-        min_p:              float = 0.05,  # 0.0 = disabled
+        top_k:              int   = -1,    # <= 0 to use vocab size
+        top_p:              float = 1.0,   # 1.0 = disabled
+        min_p:              float = 0.1,   # 0.0 = disabled
         xtc_probability:    float = 0.0,   # 0.0 = disabled
         xtc_threshold:      float = 0.1,   # > 0.5 disables XTC
         typical_p:          float = 1.0,   # 1.0 = disabled 
-        temp:               float = 0.8,   # <= 0.0 to sample greedily
+        temp:               float = 1.0,   # <= 0.0 to sample greedily
         dynatemp_delta:     float = 0.0,   # 0.0 = disabled
         dynatemp_exponent:  float = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
         penalty_last_n:     int   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
@@ -406,13 +406,13 @@ class SamplerPreset:
         self,
         seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use random seed
 
-        top_k:              int   = 40,    # <= 0 to use vocab size
-        top_p:              float = 0.95,  # 1.0 = disabled
-        min_p:              float = 0.05,  # 0.0 = disabled
+        top_k:              int   = -1,    # <= 0 to use vocab size
+        top_p:              float = 1.0,   # 1.0 = disabled
+        min_p:              float = 0.1,   # 0.0 = disabled
         xtc_probability:    float = 0.0,   # 0.0 = disabled
         xtc_threshold:      float = 0.1,   # > 0.5 disables XTC
         typical_p:          float = 1.0,   # 1.0 = disabled 
-        temp:               float = 0.8,   # <= 0.0 to sample greedily
+        temp:               float = 1.0,   # <= 0.0 to sample greedily
         dynatemp_delta:     float = 0.0,   # 0.0 = disabled
         dynatemp_exponent:  float = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
         penalty_last_n:     int   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
@@ -500,7 +500,15 @@ class SamplerPresets:
     """The most likely token is always chosen"""
 
     Default = SamplerPreset()
-    """The default llama.cpp sampling"""
+    """The default easy-llama sampler preset"""
+
+    LlamaCPP = SamplerPreset(
+        top_k = 40,
+        top_p = 0.95,
+        min_p = 0.05,
+        temp = 0.8
+    )
+    """The default llama.cpp sampler preset"""
 
     Neutral = SamplerPreset(
         top_k = -1,
@@ -518,7 +526,7 @@ class SamplerPresets:
     MinPCool = SamplerPreset(
         top_k = -1,
         top_p = 1.0,
-        min_p = 0.1,
+        min_p = 0.2,
         temp = 1.0
     )
     """Use min-p as the only active sampler (less random)"""
@@ -526,7 +534,7 @@ class SamplerPresets:
     MinPWarm = SamplerPreset(
         top_k = -1,
         top_p = 1.0,
-        min_p = 0.05,
+        min_p = 0.025,
         temp = 1.0
     )
     """Use min-p as the only active sampler (more random)"""
@@ -555,7 +563,7 @@ class SamplerPresets:
     """Decreased temperature (less random)"""
 
     Warm = SamplerPreset(
-        temp = 1.05
+        temp = 5.0          # default min-p of 0.1 keeps this in check
     )
     """Increased temperature (more random)"""
 

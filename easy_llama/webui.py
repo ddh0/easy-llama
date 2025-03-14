@@ -185,7 +185,7 @@ class WebUI:
         else:
             log(
             f'WebUI @ {ANSI.FG_BRIGHT_YELLOW}{self._log_host}{ANSI.MODE_RESET_ALL}:'
-            f'{ANSI.FG_BRIGHT_YELLOW}{self._log_port}{ANSI.MODE_RESET_ALL}:'
+            f'{ANSI.FG_BRIGHT_YELLOW}{self._log_port}{ANSI.MODE_RESET_ALL}: {text}'
             )
     
     def _get_context_string(self) -> str:

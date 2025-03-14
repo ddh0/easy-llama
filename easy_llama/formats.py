@@ -162,3 +162,15 @@ class PromptFormats:
             bot_prefix='[/INST]',
             bot_suffix='</s>'
         )
+
+    def Gemma3() -> PromptFormat:
+        """Gemma 3 prompt format"""
+        return PromptFormat(
+            system_prefix='',
+            system_prompt='',
+            system_suffix='',
+            user_prefix='<start_of_turn>user',
+            user_suffix='<end_of_turn>',
+            bot_prefix='<start_of_turn>model',
+            bot_suffix='<end_of_turn>'
+        )
