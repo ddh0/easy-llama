@@ -5,7 +5,12 @@
 """This file provides a Python interface to LLAMA_API ("libllama"), which is
 originally defined in `llama.cpp/include/llama.h`.
 
-This file was last updated to match llama.cpp commit `08f10f69c38288e9e8bb1f933af63a3fc9013d40`.
+This file was last updated to match llama.cpp commit:
+- Full SHA: `1466621e738779eefe1bb672e17dc55d63d166bb`
+- Commit message: "llama : Support llama 4 text-only (#12791)"
+
+This file's status with respect to the above commit is:
+- WIP
 
 ---
 
@@ -389,18 +394,27 @@ class llama_model_kv_override(ctypes.Structure):
 
 llama_model_kv_override_p = ctypes.POINTER(llama_model_kv_override)
 
+class llama_model_tensor_buft_override(ctypes.Structure):
+    _fields_ = [
+        ("pattern", ctypes.c_char_p),          # Pattern to match tensor names
+        ("buft", ctypes.c_void_p),             # Pointer to buffer type (ggml_backend_buffer_type_t)
+    ]
+
+llama_model_tensor_buft_override_p = ctypes.POINTER(llama_model_tensor_buft_override)
+
 dummy_progress_callback = ctypes.CFUNCTYPE(
-    ctypes.c_void_p, ctypes.c_float, ctypes.c_void_p
+    ctypes.c_bool, ctypes.c_float, ctypes.c_void_p  # Corrected to return c_bool
 )
 
 class llama_model_params(ctypes.Structure):
     _fields_ = [
         ("devices", ctypes.POINTER(ctypes.c_void_p)),
+        ("tensor_buft_overrides", llama_model_tensor_buft_override_p),
         ("n_gpu_layers", ctypes.c_int32),
         ("split_mode", ctypes.c_int),
         ("main_gpu", ctypes.c_int32),
         ("tensor_split", ctypes.POINTER(ctypes.c_float)),
-        ("rpc_servers", ctypes.c_char_p),
+        # ("rpc_servers", ctypes.c_char_p),
         ("progress_callback", dummy_progress_callback),
         ("progress_callback_user_data", ctypes.c_void_p),
         ("kv_overrides", ctypes.POINTER(llama_model_kv_override)),
@@ -2117,7 +2131,57 @@ class _internals:
         llama_batch_free(batch)
         if ret != 0:
             raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
+
+    def decode_pp(
+        ctx: ptr[llama_context],
+        pos: int,
+        tokens: list[int],
+        n_tokens: int,
+    ) -> np.ndarray:
+        """### INTERNAL
+
+        Decode with batch size > 1 (prompt processing)"""
+        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
+        batch.n_tokens = n_tokens
+        for i in range(n_tokens):
+            batch.token[i] = tokens[i]
+            batch.pos[i] = pos + i
+            batch.seq_id[i][0] = 0
+            batch.n_seq_id[i] = 1
+            batch.logits[i] = False
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
+
+    def decode_tg_with_logits(
+        ctx: ptr[llama_context],
+        pos: int,
+        token: int,
+        n_vocab: int
+    ) -> np.ndarray:
+        """### INTERNAL
+
+        Decode with batch size == 1 (text generation).
         
+        Return the logits for the inferred next token."""
+        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
+        batch.n_tokens = 1
+        batch.token[0] = token
+        batch.pos[0] = pos
+        batch.seq_id[0][0] = 0
+        batch.n_seq_id[0] = 1
+        batch.logits[0] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(
+                f'decode_tg_with_logits: llama_decode failed with status code {ret}'
+            )
+        ctypes_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(1, n_vocab))[0]
+        return logits
+    
     def decode_pp_with_logits(
         ctx: ptr[llama_context],
         pos: int,
@@ -2152,34 +2216,6 @@ class _internals:
             )
         ctypes_logits = llama_get_logits(ctx)
         logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(n_tokens, n_vocab))
-        return logits
-
-    def decode_tg_with_logits(
-        ctx: ptr[llama_context],
-        pos: int,
-        token: int,
-        n_vocab: int
-    ) -> np.ndarray:
-        """### INTERNAL
-
-        Decode with batch size == 1 (text generation).
-        
-        Return the logits for the inferred next token."""
-        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
-        batch.n_tokens = 1
-        batch.token[0] = token
-        batch.pos[0] = pos
-        batch.seq_id[0][0] = 0
-        batch.n_seq_id[0] = 1
-        batch.logits[0] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
-        if ret != 0:
-            raise RuntimeError(
-                f'decode_tg_with_logits: llama_decode failed with status code {ret}'
-            )
-        ctypes_logits = llama_get_logits(ctx)
-        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(1, n_vocab))[0]
         return logits
 
     greedy_sampler = llama_sampler_init_greedy()

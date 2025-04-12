@@ -108,7 +108,7 @@ def log(
     level: Literal[1, 2, 3, 4] = 1,
     disable: bool = False
 ) -> None:
-    """Print the given text to the file, prefixed with a timestamp"""
+    """Print the given text, prefixed with a timestamp"""
     if disable:
         return
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %a %k:%M:%S.%f")[:-3]

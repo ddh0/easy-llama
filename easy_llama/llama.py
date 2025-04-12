@@ -16,10 +16,7 @@ import threading
 
 import numpy as np
 
-from .utils    import (
-    null_ptr_check, softmax, suppress_output, ez_encode, ez_decode, _SupportsWriteAndFlush, ptr,
-    log
-)
+from .utils    import null_ptr_check, softmax, suppress_output, _SupportsWriteAndFlush, ptr, log
 from .sampling import SamplerParams, SamplerPreset
 from typing    import Optional, Iterable, Union
 from .libllama import _internals, GGUFValueType
@@ -65,10 +62,10 @@ def log_if_verbose(text: str) -> None:
     if get_verbose():
         log(text)
 
-def _init_backend_if_needed(verbose: bool = True) -> None:
+def _init_backend_if_needed() -> None:
 
     # if already initialized, no need to do anything
-    if lib._BACKEND_INIT is True:
+    if lib._BACKEND_INIT:
         return
     
     log_if_verbose(f'easy_llama package version: {__version__}')
@@ -92,13 +89,15 @@ def _init_backend_if_needed(verbose: bool = True) -> None:
     # actually load the backend
     lib.llama_backend_init() # this sets libllama._BACKEND_INIT to True
 
-# NOTE: the optimal n_threads value (for text generation) is equal
-#       to the number of physical cores (for homogenous CPUs) or
-#       to the number of performance cores (for heterogenous CPUs)
+# NOTE: the optimal n_threads value (for text generation) is equal to the number of physical
+#       cores (for homogenous CPUs) or to the number of performance cores (for heterogenous
+#       CPUs)
 #
-#       the optimal n_threads_batch value (for prompt processing) is equal
-#       to the total number of logical cores, regardless of
-#       their type
+#       the optimal n_threads_batch value (for prompt processing) is equal to the total number
+#       of logical cores, regardless of their type
+#
+#       the following two functions are not universally optimal, but provide a reasonable
+#       default number of threads for most machines
 
 def _get_optimal_n_threads() -> int:
     global _cpu_count
@@ -109,9 +108,9 @@ def _get_optimal_n_threads_batch() -> int:
     return _cpu_count
 
 def _calculate_rope_freq_base(
-        n_ctx_train: int,
-        n_ctx_load: int,
-        rope_freq_base_train: Optional[float]
+    n_ctx_train: int,
+    n_ctx_load: int,
+    rope_freq_base_train: Optional[float]
 ) -> float:
     """Returns the rope_freq_base value at which a model should be loaded"""
 
@@ -799,7 +798,7 @@ class Llama:
         - n_threads_batch:
             Number of threads to use for batch sizes > 1.
         - rope_freq_base:
-            The RoPE frequency base (theta) to use when loading the model.
+            The RoPE frequency base (i.e theta value) to use when loading the model.
             Default is 0.0, which will determine the correct value
             automatically. Recommended to leave at 0.0 unless you know what
             you're doing.
@@ -822,8 +821,7 @@ class Llama:
             to set to True if possible.
         - warmup:
             Whether to warm-up the model with an empty run. This reduces the
-            latency of the first generation at the cost of a slightly slower
-            load time.
+            latency of the first generation at the cost of a slower load time.
         - verbose:
             Print informational output when loading model as well as at
             runtime. Default is True. If set to False, warnings and errors
@@ -938,7 +936,7 @@ class Llama:
                 f"n_ctx value {actual_n_ctx} is not divisible by 512, which "
                 f"can sometimes cause problems with llama.cpp - consider "
                 f"changing it to "
-                f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}.", 2
+                f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}", 2
             )
         # warn about default context length 512 - this will prevent headaches
         if actual_n_ctx == 512:
@@ -1005,15 +1003,13 @@ class Llama:
 
         if warmup:
             #
-            # The llama.cpp warmup calls `llama_decode` with a dummy batch of only 1 token.
-            #
             # Here, we are warming up the model by calling `llama_decode` with a dummy batch
-            # which has `n_batch` tokens.
+            # which has `n_batch` tokens (as opposed to llama.cpp, which decodes a batch of only
+            # one token).
             #
-            # The reason for doing this is that, when using llama.cpp, the model might often
-            # be very large compared to the host's VRAM or even system RAM. In this case,
-            # decoding small batches might work fine, but the program may crash or be killed
-            # by OOM when decoding large batches.
+            # The model might often be very large compared to the host's VRAM or even system
+            # RAM. In this case, decoding small batches might work fine, but the program may
+            # crash or be killed by OOM when decoding large batches.
             #
             # By decoding a full batch right after the model loads, we prevent unexpected
             # crashes or OOMs later on during execution, by "stress-testing" with a full batch.
@@ -1065,6 +1061,11 @@ class Llama:
             f"flash_attn={self._ctx.params.flash_attn}"
             f")"
         )
+    
+    def name(self) -> str:
+        """Get the name of the model file excluding ".gguf\""""
+        model_file_name = self.metadata['']
+        return model_file_name.removesuffix('.gguf')
     
     def free(self):
         """Deallocate the context and model"""
@@ -1834,10 +1835,12 @@ class Llama:
     
     def benchmark(
         self,
-        n_tokens_pp: int = 1000,
-        n_tokens_tg: int = 10,
-        n_runs: int = 3
+        n_tokens_pp: Optional[int] = None,
+        n_tokens_tg: Optional[int] = None,
+        n_runs: Optional[int] = None
     ) -> list[dict]:
+        if n_tokens_pp is not None:
+            n_tokens_pp = Llama.n_batch() * 2
         stopwatch = _LlamaStopwatch()
         log_if_verbose('starting benchmark')
         results = []

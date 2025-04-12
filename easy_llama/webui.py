@@ -9,6 +9,8 @@ import sys
 import json
 import base64
 
+# FIXME: when webui bot generation is stopped via stop token, the stop token is included in the context
+
 from .thread import Thread
 from .utils import log, assert_type, ANSI, ez_encode, ez_decode
 
@@ -58,9 +60,7 @@ if not os.path.exists(ASSETS_FOLDER):
 MAX_LENGTH_INPUT = 1_000_000_000 # one billion characters
 
 def generate_self_signed_ssl_cert() -> None:
-    """
-    Generate a self-signed SSL certificate and store it in the assets folder
-    """
+    """Generate a self-signed SSL certificate and store it in the assets folder"""
 
     private_key = rsa.generate_private_key(
         public_exponent=65537,
