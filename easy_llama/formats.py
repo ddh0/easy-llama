@@ -146,12 +146,12 @@ class PromptFormats:
     def Llama4(system_prompt: Optional[str] = None) -> PromptFormat:
         """Prompt format for Meta's Llama 4 models"""
         return PromptFormat(
-            system_prefix='<|start_header_id|>system<|end_header_id|>\n\n',
+            system_prefix='<|header_start|>system<|header_end|>\n\n',
             system_prompt=system_prompt if system_prompt is not None else '',
             system_suffix='<|eot|>',
-            user_prefix='<|start_header_id|>user<|end_header_id|>\n\n',
+            user_prefix='<|header_start|>user<|header_end|>\n\n',
             user_suffix='<|eot|>',
-            bot_prefix='<|start_header_id|>assistant<|end_header_id|>\n\n',
+            bot_prefix='<|header_start|>assistant<|header_end|>\n\n',
             bot_suffix='<|eot|>'
         )
 
