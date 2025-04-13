@@ -132,7 +132,7 @@ class PromptFormats:
         )
 
     def Llama3(system_prompt: Optional[str] = None) -> PromptFormat:
-        """Prompt format for Meta Llama 3.0, 3.1, 3.2, 3.3"""
+        """Prompt format for Meta's Llama 3.0, 3.1, 3.2, 3.3 models"""
         return PromptFormat(
             system_prefix='<|start_header_id|>system<|end_header_id|>\n\n',
             system_prompt=system_prompt if system_prompt is not None else '',
@@ -141,6 +141,18 @@ class PromptFormats:
             user_suffix='<|eot_id|>',
             bot_prefix='<|start_header_id|>assistant<|end_header_id|>\n\n',
             bot_suffix='<|eot_id|>'
+        )
+
+    def Llama4(system_prompt: Optional[str] = None) -> PromptFormat:
+        """Prompt format for Meta's Llama 4 models"""
+        return PromptFormat(
+            system_prefix='<|start_header_id|>system<|end_header_id|>\n\n',
+            system_prompt=system_prompt if system_prompt is not None else '',
+            system_suffix='<|eot|>',
+            user_prefix='<|start_header_id|>user<|end_header_id|>\n\n',
+            user_suffix='<|eot|>',
+            bot_prefix='<|start_header_id|>assistant<|end_header_id|>\n\n',
+            bot_suffix='<|eot|>'
         )
 
     def ChatML(system_prompt: Optional[str] = None) -> PromptFormat:
