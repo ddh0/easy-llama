@@ -1838,37 +1838,54 @@ class Llama:
         n_tokens_tg: Optional[int] = None,
         n_runs: Optional[int] = None
     ) -> list[dict]:
-        if n_tokens_pp is not None:
+        
+        if n_tokens_pp is None:
             n_tokens_pp = self.n_batch() * 2
-        stopwatch = _LlamaStopwatch()
+        if n_tokens_tg is None:
+            n_tokens_tg = 10
+        if n_runs is None:
+            n_runs = 3
+        
         log_if_verbose('starting benchmark')
+
         results = []
         total_pp_time_ns = 0
         total_tg_time_ns = 0
+
         for i in range(1, n_runs+1):
+
             log_if_verbose(
                 f'starting run {i}/{n_runs}:'
                 f' -- n_tokens_pp: {n_tokens_pp} -- n_tokens_tg: {n_tokens_tg}'
             )
             log_if_verbose(f'... please wait ...')
+
             with suppress_output():
-                self.reset()
-                stopwatch.reset()
-                stopwatch.start_generic()
+                
+                self.reset() # reset the model state to invalidate prompt cache
+                self._stopwatch.reset()
+                self._stopwatch.start_generic()
+
+                # process 2 full batches of tokens to determine the prompt processing speed (pp)
                 self.eval(input_tokens=[0] * n_tokens_pp)
-                stopwatch.stop_generic()
-                pp_ns = stopwatch.get_elapsed_time_generic()
+
+                self._stopwatch.stop_generic()
+                pp_ns = self._stopwatch.get_elapsed_time_generic()
                 total_pp_time_ns += pp_ns
-                stopwatch.reset()
-                stopwatch.start_generic()
+
+                self._stopwatch.reset()
+                self._stopwatch.start_generic()
+
+                # generate new tokens to determine the text generation speed (tg)
                 self.generate(
                     input_tokens=[0] * n_tokens_pp,
                     n_predict=n_tokens_tg,
                     stop_tokens=[],
                     sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
                 )
-                stopwatch.stop_generic()
-                tg_ns = stopwatch.get_elapsed_time_generic()
+                
+                self._stopwatch.stop_generic()
+                tg_ns = self._stopwatch.get_elapsed_time_generic()
                 total_tg_time_ns += tg_ns
 
             results.append({
