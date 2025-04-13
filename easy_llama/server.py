@@ -23,11 +23,11 @@ class Server:
 
     def __init__(
         self,
-        thread: ez.Thread,
+        thread: 'ez.Thread',
         host: str = "127.0.0.1",
         port: int = 8080
     ):
-        assert_type(thread, ez.Thread, 'thread', 'Server.__init__')
+        assert_type(thread, getattr(ez, 'Thread'), 'thread', 'Server.__init__')
         self.thread = thread
         self.host = host
         self.port = port
