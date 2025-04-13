@@ -1894,8 +1894,10 @@ class Llama:
                 'pp_time_ns'  : pp_ns,
                 'tg_time_ns'  : tg_ns
             })
+
+            print(f'DEBUG_A: {n_tokens_pp=}, {n_tokens_tg=}, {pp_ns=}, {tg_ns=}')
         
-        print(f'DEBUG: {n_tokens_pp=}, {n_tokens_tg=}, {n_runs=}, {total_pp_time_ns=}, {total_tg_time_ns=}')
+        print(f'DEBUG_B: {n_tokens_pp=}, {n_tokens_tg=}, {n_runs=}, {total_pp_time_ns=}, {total_tg_time_ns=}')
 
         avg_pp_time_ns = total_pp_time_ns / n_runs
         avg_tg_time_ns = total_tg_time_ns / n_runs
