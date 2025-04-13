@@ -1463,10 +1463,11 @@ class Llama:
         self,
         batch_tokens: list[int],
         logits_all: bool = False
-    ) -> np.ndarray:
+    ) -> Optional[np.ndarray]:
         """Process a batch of one or more tokens. If `logits_all` is True, return the logits
-        for all tokens in the batch. Otherwise, return the logits for the last token only."""
+        for all tokens in the batch. Otherwise, return None."""
 
+        batch_logits = None
         n_batch_tokens = len(batch_tokens)
         
         if n_batch_tokens > 1: # prompt processing
@@ -1486,7 +1487,6 @@ class Llama:
                 with self._lock:
                     _internals.decode_pp(self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens)
                 self._stopwatch.stop_pp()
-                batch_logits = self.get_logits()
             
             self._stopwatch.increment_pp_tokens(n_batch_tokens)
         
@@ -1883,7 +1883,7 @@ class Llama:
                     stop_tokens=[],
                     sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
                 )
-                
+
                 self._stopwatch.stop_generic()
                 tg_ns = self._stopwatch.get_elapsed_time_generic()
                 total_tg_time_ns += tg_ns
