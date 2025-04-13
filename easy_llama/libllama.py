@@ -21,6 +21,7 @@ Helpful references:
 - `llama.h` at master:
     [llama.cpp/blob/master/include/llama.h](https://github.com/ggerganov/llama.cpp/blob/master/include/llama.h)"""
 
+import os
 import sys
 import ctypes
 import faulthandler
@@ -61,8 +62,43 @@ def DEPRECATED(new_func_name: Optional[str] = None):
 # Import shared library
 #
 
-#libllama = ctypes.CDLL('/home/dylan/Documents/AI/llama.cpp/build/bin/libllama.so')
-libllama = ctypes.CDLL('/Users/dylan/Documents/AI/llama.cpp/build/bin/libllama.dylib')
+lib_path = os.environ.get('LLAMA_LIB_PATH')
+
+if lib_path is None:
+    log(f'failed to load libllama: LLAMA_LIB_PATH is not set', 3)
+    raise EnvironmentError(
+        f"The llama.cpp shared library could not be loaded because the LLAMA_LIB_PATH "
+        f"environment variable is not set. You must set LLAMA_LIB_PATH to the path of your "
+        f"libllama shared library file (`.so`, `.dll`, or `.dylib`). For example, on Linux: "
+        f"`export LLAMA_LIB_PATH=/path/to/your/libllama.so`."
+    )
+
+if not os.path.exists(lib_path):
+    log(f'failed to load libllama: LLAMA_LIB_PATH does not exist: {lib_path}', 3)
+    raise EnvironmentError(
+        f"The llama.cpp shared library could not be loaded because the LLAMA_LIB_PATH "
+        f"environment variable points to a file that does not actually exist. You must set "
+        f"LLAMA_LIB_PATH to the path of your libllama shared library file (`.so`, `.dll`, or "
+        f"`.dylib`). For example, on Linux: `export LLAMA_LIB_PATH=/path/to/your/libllama.so`."
+    )
+
+if os.path.isdir(lib_path):
+    log(f'failed to load libllama: LLAMA_LIB_PATH is a directory, not a file: {lib_path}', 3)
+    raise EnvironmentError(
+        f"The llama.cpp shared library could not be loaded because the LLAMA_LIB_PATH "
+        f"environment variable points to a directory, but it should point to a file instead. "
+        f"You must set LLAMA_LIB_PATH to the path of your libllama shared library file (`.so`, "
+        f"`.dll`, or `.dylib`). For example, on Linux: "
+        f"`export LLAMA_LIB_PATH=/path/to/your/libllama.so`."
+    )
+
+try:
+    libllama = ctypes.CDLL(lib_path)
+except Exception as exc:
+    log(f'failed to load libllama: {exc}', 3)
+    raise exc
+else:
+    log(f'loaded libllama from {lib_path}')
 
 #
 # Type hints and other constants

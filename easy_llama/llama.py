@@ -81,9 +81,9 @@ def _init_backend_if_needed() -> None:
         log("host is big-endian, please ensure your GGUF file is also big-endian", 2)
     # extremely rare, maybe impossible?
     else:
-        log(
+        raise RuntimeError(
             f"unexpected value for sys.byteorder: {sys.byteorder!r}; expected 'little' for "
-            f"little-endian host or 'big' for big-endian host", 3
+            f"little-endian host or 'big' for big-endian host"
         )
     
     # actually load the backend
@@ -575,7 +575,6 @@ class _LlamaCtx:
         cb_eval_user_data:   Optional[ptr]     = None,
         type_k:              Optional[int]     = None,
         type_v:              Optional[int]     = None,
-        # logits_all:          Optional[bool]    = None,    no longer used 
         embeddings:          Optional[bool]    = None,
         offload_kqv:         Optional[bool]    = None,
         flash_attn:          Optional[bool]    = None,
@@ -702,7 +701,7 @@ class _InferenceLock:
         with self._sync_lock:
             if self._locked:
                 raise InferenceLockException(
-                    'failed to acquire InferenceLock (already locked)'
+                    'sync: failed to acquire InferenceLock (already locked)'
                 )
             self._locked = True
         return self
@@ -711,7 +710,7 @@ class _InferenceLock:
         with self._sync_lock:
             if not self._locked:
                 raise InferenceLockException(
-                    'tried to release InferenceLock that is not acquired'
+                    'sync: tried to release InferenceLock that is not acquired'
                 )
             self._locked = False
 
@@ -923,7 +922,7 @@ class Llama:
         if actual_n_ctx != requested_n_ctx:
             log(
                 f"requested n_ctx value differs from actual n_ctx value; "
-                f"requested {requested_n_ctx}, actual {actual_n_ctx}"
+                f"requested {requested_n_ctx}, actual {actual_n_ctx}", 2
             )
         if actual_n_ctx < 512:
             log(
@@ -938,7 +937,7 @@ class Llama:
                 f"changing it to "
                 f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}", 2
             )
-        # warn about default context length 512 - this will prevent headaches
+        # warn about default context length
         if actual_n_ctx == 512:
             log(
                 f'you are using the default n_ctx value {actual_n_ctx}, which '
@@ -1138,7 +1137,7 @@ class Llama:
         return lib.llama_model_rope_freq_scale_train(self._model.model)
 
     def model_size_bytes(self) -> int:
-        """Get the total size of the model in bytes"""
+        """Get the total size of all tensors in the model, in bytes"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.model_size_bytes")
         return lib.llama_model_size(self._model.model)
     
