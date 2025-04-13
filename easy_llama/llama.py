@@ -1839,7 +1839,7 @@ class Llama:
         n_runs: Optional[int] = None
     ) -> list[dict]:
         if n_tokens_pp is not None:
-            n_tokens_pp = Llama.n_batch() * 2
+            n_tokens_pp = self.n_batch() * 2
         stopwatch = _LlamaStopwatch()
         log_if_verbose('starting benchmark')
         results = []

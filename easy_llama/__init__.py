@@ -14,9 +14,10 @@ https://github.com/ddh0/easy-llama"""
 from . import libllama
 from . import sampling
 from . import formats
+from . import server
 from . import thread
 from . import llama
-from . import webui
+from . import webui # TODO: remove
 from . import utils
 
 # shorthands, so you can do `ez.Llama` instead of `ez.llama.Llama`, etc.
@@ -24,5 +25,6 @@ from . import utils
 from .sampling import SamplerParams, SamplerPreset, SamplerPresets
 from .formats  import PromptFormat, PromptFormats, SystemPrompts
 from .llama    import Llama, get_verbose, set_verbose
+from .server   import Server
 from .thread   import Thread
-from .webui    import WebUI
+from .webui    import WebUI # TODO: remove
