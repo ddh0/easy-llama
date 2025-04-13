@@ -1558,12 +1558,16 @@ class Llama:
         if logits_all:
             all_logits = []
             for batch in batches:
+                self._stopwatch.start_pp()
                 batch_logits = self._process_batch(batch, logits_all=True)
+                self._stopwatch.stop_pp()
                 all_logits.append(batch_logits)
             final_logits = np.concatenate(all_logits, axis=0)
         else:
+            self._stopwatch.start_pp()
             for batch in batches:
                 final_logits = self._process_batch(batch, logits_all=False)
+            self._stopwatch.stop_pp()
 
         self._stopwatch.stop_wall_time()
 
@@ -1862,19 +1866,13 @@ class Llama:
 
             with suppress_output():
                 
-                self.reset() # reset the model state to invalidate prompt cache
-                self._stopwatch.reset()
-                self._stopwatch.start_generic()
+                # reset the model state to invalidate prompt cache
+                self.reset()
 
                 # process 2 full batches of tokens to determine the prompt processing speed (pp)
                 self.eval(input_tokens=[0] * n_tokens_pp)
-
-                self._stopwatch.stop_generic()
-                pp_ns = self._stopwatch.get_elapsed_time_generic()
+                pp_ns = self._stopwatch.get_elapsed_time_pp()
                 total_pp_time_ns += pp_ns
-
-                self._stopwatch.reset()
-                self._stopwatch.start_generic()
 
                 # generate new tokens to determine the text generation speed (tg)
                 self.generate(
@@ -1883,9 +1881,7 @@ class Llama:
                     stop_tokens=[],
                     sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
                 )
-
-                self._stopwatch.stop_generic()
-                tg_ns = self._stopwatch.get_elapsed_time_generic()
+                tg_ns = self._stopwatch.get_elapsed_time_tg()
                 total_tg_time_ns += tg_ns
 
             results.append({
