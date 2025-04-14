@@ -6,6 +6,7 @@
 
 from ._version import __version__
 
+import re
 import os
 import sys
 import time
@@ -1062,9 +1063,12 @@ class Llama:
         )
     
     def name(self) -> str:
-        """Get the name of the model file excluding ".gguf\""""
-        model_file_name = self.metadata['']
-        return model_file_name.removesuffix('.gguf')
+        """Get the name of the model based on the GGUF file name"""
+        # '/path/to/my-model.gguf' --> 'my-model'
+        model_file_basename = os.path.basename(self._model.path_model).removesuffix('gguf')
+        # 'my-model-00001-of-00099' --> 'my-model'
+        model_file_basename = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
+        return model_file_basename
     
     def free(self):
         """Deallocate the context and model"""
