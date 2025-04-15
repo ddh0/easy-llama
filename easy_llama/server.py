@@ -39,14 +39,14 @@ class Server:
 
         # mount components
         self.app.include_router(self.api_router)
-        self.app.mount(
-            "/",
-            StaticFiles(
-                directory="webui",
-                html=True
-            ),
-            name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
-        )
+        # self.app.mount(
+        #     "/",
+        #     StaticFiles(
+        #         directory="webui",
+        #         html=True
+        #     ),
+        #     name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
+        # )
 
     def add_cors(self):
         from fastapi.middleware.cors import CORSMiddleware
