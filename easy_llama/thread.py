@@ -231,7 +231,8 @@ class Thread:
         return input_ids
     
     def send(self, content: str) -> str:
-        """Send a message in this thread and return the generated response"""
+        """Send a message in this thread and return the generated response. This adds your
+        message and the bot's message to the thread."""
         self.messages.append({
             'role': 'user',
             'content': content

@@ -13,7 +13,7 @@ import uvicorn
 import easy_llama as ez
 
 from fastapi             import FastAPI, APIRouter, HTTPException, status
-from typing              import List, Optional, Literal
+from typing              import List, Optional, Literal, Union
 from pydantic            import BaseModel, Field
 from easy_llama.utils    import assert_type, log
 from fastapi.staticfiles import StaticFiles
@@ -33,14 +33,14 @@ class Server:
         self.port = port
         self.app = FastAPI(title=f"[easy-llama.Server @ {host}:{port}]")
 
-        # Add CORS middleware for WebUI compatibility
+        # add CORS middleware for WebUI compatibility
         self.add_cors()
 
-        # Set up API router
+        # set up API router
         self.api_router = APIRouter(prefix="/api")
         self.setup_api_endpoints()
 
-        # Mount components
+        # mount components
         self.app.include_router(self.api_router)
         self.app.mount(
             "/",
@@ -63,10 +63,31 @@ class Server:
     def setup_api_endpoints(self):
 
         @self.api_router.post("/send")
-        async def send(content: str) -> str:
-            """Send a message and receive the response as a string"""
-            response = self.thread.send(content)
-            return response
+        async def send(content: str) -> dict:
+            """Send a message in this thread as the user and return the generated response.
+            This adds your message and the bot's message to the thread."""
+            self.thread.messages.append({
+                'role': 'user',
+                'content': content
+            })
+            input_tokens = self.thread.get_input_ids(role='bot')
+            response_toks = self.thread.llama.generate(
+                input_tokens=input_tokens,
+                n_predict=-1,
+                stop_tokens=self.thread._stop_tokens,
+                sampler_preset=self.thread.sampler_preset
+            )
+            response_txt = self.thread.llama.detokenize(response_toks, special=False)
+            self.thread.messages.append({
+                'role': 'bot',
+                'content': response_txt
+            })
+            return {
+                'role': 'bot',
+                'content': response_txt,
+                'n_input_tokens': len(input_tokens),
+                'n_output_tokens': len(response_toks)
+            }
 
         @self.api_router.post("/add_message")
         async def add_message(role: str, content: str) -> None:
@@ -102,15 +123,32 @@ class Server:
             top_p: Optional[float] = None,
             min_p: Optional[float] = None,
             temp: Optional[float] = None
-        ) -> None:
+        ) -> dict[str, Union[int, float]]:
             """Control the most common sampler settings over the API"""
+            # use values if specified, otherwise use current values
+            _seed = seed if isinstance(seed, int) else self.thread.sampler_preset.seed
+            _top_k = top_k if isinstance(top_k, int) else self.thread.sampler_preset.top_k
+            _top_p = top_p if isinstance(top_p, float) else self.thread.sampler_preset.top_p
+            _min_p = min_p if isinstance(min_p, float) else self.thread.sampler_preset.min_p
+            _temp = temp if isinstance(temp, float) else self.thread.sampler_preset.temp
+
+            # replace the sampler preset
             self.thread.sampler_preset = ez.SamplerPreset(
-                seed=seed if seed is not None else self.thread.sampler_preset.seed,
-                top_k=top_k if top_k is not None else self.thread.sampler_preset.top_k,
-                top_p=top_p if top_p is not None else self.thread.sampler_preset.top_p,
-                min_p=min_p if min_p is not None else self.thread.sampler_preset.min_p,
-                temp=temp if temp is not None else self.thread.sampler_preset.temp
+                seed=_seed,
+                top_k=_top_k,
+                top_p=_top_p,
+                min_p=_min_p,
+                temp=_temp
             )
+
+            # return the current values
+            return {
+                'seed': _seed,
+                'top_k': _top_k,
+                'top_p': _top_p,
+                'min_p': _min_p,
+                'temp': _temp
+            }
 
         @self.api_router.get("/summarize")
         async def summarize() -> str:
@@ -121,17 +159,19 @@ class Server:
         async def get_info() -> dict:
             """Return some info about the llama model and the context usage"""
             return {
-                'model': self.thread.llama.name(),
-                'n_tokens_used': len(self.thread.get_input_ids(role=None)),
-                'n_ctx': self.thread.llama.n_ctx(),
-                'n_ctx_train': self.thread.llama.n_ctx_train(),
-                'n_messages': len(self.thread.messages),
+                'llama_name': self.thread.llama.name(),
+                'llama_n_params': self.thread.llama.n_params(),
+                'llama_size_bytes': self.thread.llama.model_size_bytes(),
+                'llama_pos': self.thread.llama.pos,
+                'llama_n_ctx': self.thread.llama.n_ctx(),
+                'llama_n_ctx_train': self.thread.llama.n_ctx_train(),
+                'thread_n_messages': len(self.thread.messages),
             }
 
         @self.api_router.post("/cancel")
         async def cancel() -> None:
             """If the model is currently generating, cancel it. Otherwise, do nothing."""
-            # TODO: Implement cancellation logic if needed
+            # TODO
             pass
 
         @self.api_router.post("/reset")
