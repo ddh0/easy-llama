@@ -62,34 +62,34 @@ def DEPRECATED(new_func_name: Optional[str] = None):
 # Import shared library
 #
 
-lib_path = os.environ.get('LLAMA_LIB_PATH')
+lib_path = os.environ.get('LIBLLAMA')
 
 if lib_path is None:
-    log(f'failed to load libllama: LLAMA_LIB_PATH is not set', 3)
+    log(f'failed to load libllama: $LIBLLAMA is not set', 3)
     raise EnvironmentError(
-        f"The llama.cpp shared library could not be loaded because the LLAMA_LIB_PATH "
-        f"environment variable is not set. You must set LLAMA_LIB_PATH to the path of your "
+        f"The llama.cpp shared library could not be loaded because the LIBLLAMA "
+        f"environment variable is not set. You must set LIBLLAMA to the path of your "
         f"libllama shared library file (`.so`, `.dll`, or `.dylib`). For example, on Linux: "
-        f"`export LLAMA_LIB_PATH=/path/to/your/libllama.so`."
+        f"`export LIBLLAMA=/path/to/your/libllama.so`."
     )
 
 if not os.path.exists(lib_path):
-    log(f'failed to load libllama: LLAMA_LIB_PATH does not exist: {lib_path}', 3)
+    log(f'failed to load libllama: $LIBLLAMA does not exist: {lib_path}', 3)
     raise EnvironmentError(
-        f"The llama.cpp shared library could not be loaded because the LLAMA_LIB_PATH "
+        f"The llama.cpp shared library could not be loaded because the LIBLLAMA "
         f"environment variable points to a file that does not actually exist. You must set "
-        f"LLAMA_LIB_PATH to the path of your libllama shared library file (`.so`, `.dll`, or "
-        f"`.dylib`). For example, on Linux: `export LLAMA_LIB_PATH=/path/to/your/libllama.so`."
+        f"LIBLLAMA to the path of your libllama shared library file (`.so`, `.dll`, or "
+        f"`.dylib`). For example, on Linux: `export LIBLLAMA=/path/to/your/libllama.so`."
     )
 
 if os.path.isdir(lib_path):
-    log(f'failed to load libllama: LLAMA_LIB_PATH is a directory, not a file: {lib_path}', 3)
+    log(f'failed to load libllama: $LIBLLAMA is a directory, not a file: {lib_path}', 3)
     raise EnvironmentError(
-        f"The llama.cpp shared library could not be loaded because the LLAMA_LIB_PATH "
+        f"The llama.cpp shared library could not be loaded because the LIBLLAMA "
         f"environment variable points to a directory, but it should point to a file instead. "
-        f"You must set LLAMA_LIB_PATH to the path of your libllama shared library file (`.so`, "
+        f"You must set LIBLLAMA to the path of your libllama shared library file (`.so`, "
         f"`.dll`, or `.dylib`). For example, on Linux: "
-        f"`export LLAMA_LIB_PATH=/path/to/your/libllama.so`."
+        f"`export LIBLLAMA=/path/to/your/libllama.so`."
     )
 
 try:

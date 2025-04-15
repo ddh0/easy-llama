@@ -4,12 +4,12 @@
 
 """Submodule containing the easy-llama WebUI server"""
 
+# XXX: This module is to be removed shortly and replaced by server.py
+
 import os
 import sys
 import json
 import base64
-
-# FIXME: when webui bot generation is stopped via stop token, the stop token is included in the context
 
 from .thread import Thread
 from .utils import log, assert_type, ANSI, ez_encode, ez_decode

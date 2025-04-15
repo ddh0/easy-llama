@@ -1015,9 +1015,10 @@ class Llama:
             # crashes or OOMs later on during execution, by "stress-testing" with a full batch.
             #
             # This adds a few seconds to the Llama load time.
-            # 
+            #
             log_if_verbose('warming up the model ... please wait ...')
             with self._lock:
+                _internals.decode_tg(self._ctx.ctx, 0, 0)
                 _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
             log_if_verbose('model is warm')
 

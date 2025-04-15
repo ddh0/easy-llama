@@ -4,18 +4,15 @@
 
 """The easy-llama FastAPI server, including an API endpoint and a WebUI"""
 
-import os
-import sys
-import time
-import uuid
+# XXX: This module is WIP.
+
 import uvicorn
 
 import easy_llama as ez
 
-from fastapi             import FastAPI, APIRouter, HTTPException, status
-from typing              import List, Optional, Literal, Union
-from pydantic            import BaseModel, Field
-from easy_llama.utils    import assert_type, log
+from fastapi             import FastAPI, APIRouter
+from typing              import Optional, Union
+from easy_llama.utils    import assert_type
 from fastapi.staticfiles import StaticFiles
 
 class Server:
