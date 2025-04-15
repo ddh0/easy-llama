@@ -1,4 +1,4 @@
-# instruct_demo.py
+# chat_demo.py
 # Python 3.12.9
 
 import easy_llama as ez
