@@ -10,13 +10,13 @@ import uvicorn
 
 import easy_llama as ez
 
+from typing              import Optional, Union, Literal
 from fastapi             import FastAPI, APIRouter
-from typing              import Optional, Union
 from easy_llama.utils    import assert_type
 from fastapi.staticfiles import StaticFiles
 
 class Server:
-    """The easy-llama FastAPI server, providing a WebUI and an API endpoint"""
+    """The easy-llama FastAPI server, providing a WebUI and an API router"""
 
     def __init__(
         self,
@@ -39,14 +39,17 @@ class Server:
 
         # mount components
         self.app.include_router(self.api_router)
-        # self.app.mount(
-        #     "/",
-        #     StaticFiles(
-        #         directory="webui",
-        #         html=True
-        #     ),
-        #     name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
-        # )
+        self.app.mount(
+            "/",
+            StaticFiles(
+                directory="webui",
+                html=True
+            ),
+            name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
+        )
+    
+    def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
+        ez.utils.log(f'[easy-llama.Server @ {self.host}:{self.port}] {text}', level=level)
 
     def add_cors(self):
         from fastapi.middleware.cors import CORSMiddleware
@@ -122,6 +125,7 @@ class Server:
             temp: Optional[float] = None
         ) -> dict[str, Union[int, float]]:
             """Control the most common sampler settings over the API"""
+
             # use values if specified, otherwise use current values
             _seed = seed if isinstance(seed, int) else self.thread.sampler_preset.seed
             _top_k = top_k if isinstance(top_k, int) else self.thread.sampler_preset.top_k
@@ -129,7 +133,7 @@ class Server:
             _min_p = min_p if isinstance(min_p, float) else self.thread.sampler_preset.min_p
             _temp = temp if isinstance(temp, float) else self.thread.sampler_preset.temp
 
-            # replace the sampler preset
+            # replace the current sampler preset with the new values
             self.thread.sampler_preset = ez.SamplerPreset(
                 seed=_seed,
                 top_k=_top_k,
@@ -138,7 +142,7 @@ class Server:
                 temp=_temp
             )
 
-            # return the current values
+            # return the new values
             return {
                 'seed': _seed,
                 'top_k': _top_k,
@@ -154,15 +158,22 @@ class Server:
 
         @self.api_router.get("/info")
         async def get_info() -> dict:
-            """Return some info about the llama model and the context usage"""
+            """Return some info about the llama model and the thread"""
+            with ez.utils.suppress_output():
+                input_ids = self.get_input_ids(role=None)
+            n_thread_tokens = len(input_ids)
+            n_ctx = self.thread.llama.n_ctx()
+            c = (n_thread_tokens/n_ctx) * 100
+            ctx_used_pct = int(c) + (c > int(c)) # round up to next integer
             return {
-                'llama_name': self.thread.llama.name(),
-                'llama_n_params': self.thread.llama.n_params(),
-                'llama_size_bytes': self.thread.llama.model_size_bytes(),
-                'llama_pos': self.thread.llama.pos,
-                'llama_n_ctx': self.thread.llama.n_ctx(),
-                'llama_n_ctx_train': self.thread.llama.n_ctx_train(),
-                'thread_n_messages': len(self.thread.messages),
+                'model_name': self.thread.llama.name(),
+                'model_n_params': self.thread.llama.n_params(),
+                'model_bpw': self.thread.llama.bpw(),
+                'n_ctx': n_ctx,
+                'n_ctx_train': self.thread.llama.n_ctx_train(),
+                'n_thread_tokens': n_thread_tokens,
+                'n_thread_messages': len(self.messages),
+                'ctx_used_pct': ctx_used_pct
             }
 
         @self.api_router.post("/cancel")
@@ -177,4 +188,8 @@ class Server:
             self.thread.reset()
 
     def run(self):
-        uvicorn.run(self.app, host=self.host, port=self.port)
+        self.log('starting uvicorn!')
+        try:
+            uvicorn.run(self.app, host=self.host, port=self.port)
+        except Exception as exc:
+            self.log(f'exception in uvicorn: {type(exc).__name__}: {exc}', 3)

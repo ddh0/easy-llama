@@ -184,8 +184,8 @@ class PromptFormats:
             system_prefix='',
             system_prompt='',
             system_suffix='',
-            user_prefix='<start_of_turn>user',
-            user_suffix='<end_of_turn>',
-            bot_prefix='<start_of_turn>model',
-            bot_suffix='<end_of_turn>'
+            user_prefix='<start_of_turn>user\n',
+            user_suffix='<end_of_turn>\n',
+            bot_prefix='<start_of_turn>model\n',
+            bot_suffix='<end_of_turn>\n'
         )

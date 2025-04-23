@@ -82,7 +82,7 @@ def _init_backend_if_needed() -> None:
         log("host is big-endian, please ensure your GGUF file is also big-endian", 2)
     # extremely rare, maybe impossible?
     else:
-        raise RuntimeError(
+        raise OSError(
             f"unexpected value for sys.byteorder: {sys.byteorder!r}; expected 'little' for "
             f"little-endian host or 'big' for big-endian host"
         )
@@ -745,8 +745,8 @@ class Llama:
     Example usage:
     >>> import easy_llama as ez
     >>> MyLlama = ez.Llama('/path/to/model.gguf', n_ctx=8192)
-    >>> in_txt = "The apple doesn't fall far from"
-    >>> in_toks = MyLlama.tokenize(in_txt.encode(), add_special=True, parse_special=False)
+    >>> in_txt = b"The apple doesn't fall far from"
+    >>> in_toks = MyLlama.tokenize(in_txt, add_special=True, parse_special=False)
     >>> out_toks = MyLlama.generate(in_toks, n_predict=16)
     >>> out_txt = MyLlama.detokenize(out_toks, special=True)
     >>> print(out_txt)
@@ -960,7 +960,8 @@ class Llama:
         self._n_ctx_train           = self.n_ctx_train()
         self._n_embd                = self.n_embd()
         self._n_layer               = self.n_layer()
-        self._n_head                = self.n_head() # attn heads, not KV
+        self._n_head                = self.n_head()
+        self._n_head_kv             = self.n_head_kv()
         self._pooling_type          = self.pooling_type()
         self._vocab_type            = self.vocab_type()
         self._rope_type             = self.rope_type()
@@ -968,6 +969,7 @@ class Llama:
         self._model_size_bytes      = self.model_size_bytes()
         self._chat_template         = self.chat_template()
         self._n_params              = self.n_params()
+        self._bpw                   = self.bpw()
         self._has_encoder           = self.has_encoder()
         self._has_decoder           = self.has_decoder()
         self._is_recurrent          = self.is_recurrent()
@@ -1016,13 +1018,31 @@ class Llama:
             #
             # This adds a few seconds to the Llama load time.
             #
-            log_if_verbose('warming up the model ... please wait ...')
-            with self._lock:
-                # _internals.decode_tg(self._ctx.ctx, 0, 0)
-                _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
-            log_if_verbose('model is warm')
+            self.warmup()
 
         # End of Llama.__init__
+    
+    def __repr__(self) -> str:
+        return (
+            f"Llama("
+            f"path_model={self._model.path_model!r}, "
+            f"n_gpu_layers={self._model.params.n_gpu_layers}, "
+            f"use_mmap={self._model.params.use_mmap}, "
+            f"use_mlock={self._model.params.use_mlock}, "
+            f"n_ctx={self._n_ctx}, "
+            f"n_batch={self._n_batch}, "
+            f"rope_freq_base={self._ctx.params.rope_freq_base}, "
+            f"type_k={self._ctx.params.type_k}, "
+            f"type_v={self._ctx.params.type_v}, "
+            f"offload_kqv={self._ctx.params.offload_kqv}, "
+            f"flash_attn={self._ctx.params.flash_attn}"
+            f")"
+        )
+    
+    def free(self):
+        """Deallocate the context and model"""
+        self._ctx.free()
+        self._model.free()
     
     def _validate_model_state(self) -> None:
         """Ensure `llama_model`, `llama_vocab` and `llama_context` are not NULL and validate
@@ -1043,38 +1063,34 @@ class Llama:
                 f'self.context_tokens {len(self.context_tokens)}'
             )
         if not hasattr(self, '_default_sampler_params'):
-            # re-create the default sampler params if they are missing
             self._default_sampler_params = SamplerParams(self)
     
-    def __repr__(self) -> str:
-        return (
-            f"Llama("
-            f"path_model={self._model.path_model!r}, "
-            f"n_gpu_layers={self._model.params.n_gpu_layers}, "
-            f"use_mmap={self._model.params.use_mmap}, "
-            f"use_mlock={self._model.params.use_mlock}, "
-            f"n_ctx={self._n_ctx}, "
-            f"n_batch={self._n_batch}, "
-            f"rope_freq_base={self._ctx.params.rope_freq_base}, "
-            f"type_k={self._ctx.params.type_k}, "
-            f"type_v={self._ctx.params.type_v}, "
-            f"offload_kqv={self._ctx.params.offload_kqv}, "
-            f"flash_attn={self._ctx.params.flash_attn}"
-            f")"
-        )
+    def warmup(self) -> None:
+        """Warm-up the model. This clears the KV cache."""
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.warmup")
+
+        log_if_verbose('warmup: single token decode ...')
+        with self._lock:
+            lib.llama_kv_self_clear(self._ctx.ctx)
+            _internals.decode_tg(self._ctx.ctx, 0, 0)
+        
+        log_if_verbose('warmup: full batch decode ...')
+        with self._lock:
+            lib.llama_kv_self_clear(self._ctx.ctx)
+            _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
+        log_if_verbose('warmup: done')
     
     def name(self) -> str:
-        """Get the name of the model based on the GGUF file name"""
+        """Get the name of the model from the GGUF file name"""
         # '/path/to/my-model.gguf' --> 'my-model'
-        model_file_basename = os.path.basename(self._model.path_model).removesuffix('gguf')
-        # 'my-model-00001-of-00099' --> 'my-model'
+        model_file_basename = os.path.basename(self._model.path_model).removesuffix('.gguf')
+        # 'my-model-00001-of-99999' --> 'my-model'
         model_file_basename = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
         return model_file_basename
     
-    def free(self):
-        """Deallocate the context and model"""
-        self._ctx.free()
-        self._model.free()
+    def bpw(self) -> float:
+        """Get the average bits per weight of the model"""
+        return (self._model_size_bytes * 8) / self._n_params
 
     def n_ctx(self) -> int:
         """Get the current context length"""
@@ -1120,6 +1136,11 @@ class Llama:
         """Get the number of attention heads"""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_head")
         return lib.llama_model_n_head(self._model.model)
+    
+    def n_head_kv(self) -> int:
+        """Get the number of KV heads"""
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_head_kv")
+        return lib.llama_model_n_head_kv(self._model.model)
 
     def pooling_type(self) -> int:
         """Get the pooling type used by the context"""
@@ -1146,11 +1167,10 @@ class Llama:
         null_ptr_check(self._model.model, "self._model.model", "Llama.model_size_bytes")
         return lib.llama_model_size(self._model.model)
     
-    def chat_template(self) -> str:
+    def chat_template(self) -> Optional[str]:
         """Get the model's built-in chat template string. Returns None if not available."""
-        # TODO: almost certainly does not work yet
         null_ptr_check(self._model.model, "self._model.model", "Llama.chat_template")
-        return lib.llama_model_chat_template(self._model.model)
+        return lib.llama_model_chat_template(self._model.model, name=None)
 
     def n_params(self) -> int:
         """Get the total number of parameters in the model"""
@@ -1179,52 +1199,52 @@ class Llama:
     def kv_cache_clear(self) -> None:
         """Clear the KV cache"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_clear")
-        lib.llama_kv_cache_clear(self._ctx.ctx)
+        lib.llama_kv_self_clear(self._ctx.ctx)
 
     def kv_cache_seq_rm(self, seq_id: int, p0: int, p1: int) -> bool:
         """Remove tokens from a sequence in the KV cache"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_rm")
-        return lib.llama_kv_cache_seq_rm(self._ctx.ctx, seq_id, p0, p1)
+        return lib.llama_kv_self_seq_rm(self._ctx.ctx, seq_id, p0, p1)
 
     def kv_cache_seq_cp(self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
         """Copy tokens between sequences in the KV cache"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_cp")
-        lib.llama_kv_cache_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
+        lib.llama_kv_self_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
 
     def kv_cache_seq_keep(self, seq_id: int) -> None:
         """Remove all tokens except for the ones in this sequence"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep")
-        lib.llama_kv_cache_seq_keep(self._ctx.ctx, seq_id)
+        lib.llama_kv_self_seq_keep(self._ctx.ctx, seq_id)
 
     def kv_cache_seq_add(self, seq_id: int, p0: int, p1: int, delta: int) -> None:
         """Add relative position "delta" to the tokens"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_add")
-        lib.llama_kv_cache_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
+        lib.llama_kv_self_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
 
     def kv_cache_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
         """Integer division of the positions by factor of `d > 1`"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div")
-        lib.llama_kv_cache_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
+        lib.llama_kv_self_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
 
     def kv_cache_seq_pos_max(self, seq_id: int) -> int:
         """Returns the largest position present in the KV cache for the specified sequence"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max")
-        return lib.llama_kv_cache_seq_pos_max(self._ctx.ctx, seq_id)
+        return lib.llama_kv_self_seq_pos_max(self._ctx.ctx, seq_id)
 
     def kv_cache_defrag(self) -> None:
         """Defragment the KV cache"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_defrag")
-        lib.llama_kv_cache_defrag(self._ctx.ctx)
+        lib.llama_kv_self_defrag(self._ctx.ctx)
 
     def kv_cache_update(self) -> None:
         """Apply the KV cache updates (K-shifts, defragmentation, etc.)"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_update")
-        lib.llama_kv_cache_update(self._ctx.ctx)
+        lib.llama_kv_self_update(self._ctx.ctx)
 
     def kv_cache_can_shift(self) -> bool:
         """Check if the context supports KV cache shifting"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_can_shift")
-        return lib.llama_kv_cache_can_shift(self._ctx.ctx)
+        return lib.llama_kv_self_can_shift(self._ctx.ctx)
 
     def n_threads(self) -> int:
         """Get the number of threads used for batch size == 1"""
@@ -1251,37 +1271,37 @@ class Llama:
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_is_control")
         return lib.llama_vocab_is_control(self._vocab, token)
 
-    def token_bos(self) -> int:
+    def token_bos(self) -> Optional[int]:
         """Get the BOS (Beginning-Of-Sequence) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_bos")
         id = lib.llama_vocab_bos(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_eos(self) -> int:
+    def token_eos(self) -> Optional[int]:
         """Get the EOS (End-Of-Sequence) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_eos")
         id = lib.llama_vocab_eos(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_eot(self) -> int:
+    def token_eot(self) -> Optional[int]:
         """Get the EOT (End-Of-Turn) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_eot")
         id = lib.llama_vocab_eot(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_sep(self) -> int:
+    def token_sep(self) -> Optional[int]:
         """Get the SEP (Separator) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_sep")
         id = lib.llama_vocab_sep(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_nl(self) -> int:
+    def token_nl(self) -> Optional[int]:
         """Get the NL (Newline) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_nl")
         id = lib.llama_vocab_nl(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_pad(self) -> int:
+    def token_pad(self) -> Optional[int]:
         """Get the PAD (Padding) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_pad")
         id = lib.llama_vocab_pad(self._vocab)
@@ -1297,37 +1317,37 @@ class Llama:
         null_ptr_check(self._vocab, "self._vocab", "Llama.add_eos_token")
         return lib.llama_vocab_get_add_eos(self._vocab)
 
-    def token_fim_pre(self) -> int:
+    def token_fim_pre(self) -> Optional[int]:
         """Get the FIM PRE (Fill-In-Middle Prefix) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_pre")
         id = lib.llama_vocab_fim_pre(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_fim_suf(self) -> int:
+    def token_fim_suf(self) -> Optional[int]:
         """Get the FIM SUF (Fill-In-Middle Suffix) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_suf")
         id = lib.llama_vocab_fim_suf(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_fim_mid(self) -> int:
+    def token_fim_mid(self) -> Optional[int]:
         """Get the FIM MID (Fill-In-Middle Middle) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_mid")
         id = lib.llama_vocab_fim_mid(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_fim_pad(self) -> int:
+    def token_fim_pad(self) -> Optional[int]:
         """Get the FIM PAD (Fill-In-Middle Padding) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_pad")
         id = lib.llama_vocab_fim_pad(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_fim_rep(self) -> int:
+    def token_fim_rep(self) -> Optional[int]:
         """Get the FIM REP (Fill-In-Middle Repository) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_rep")
         id = lib.llama_vocab_fim_rep(self._vocab)
         return id if id != lib.LLAMA_TOKEN_NULL else None
 
-    def token_fim_sep(self) -> int:
+    def token_fim_sep(self) -> Optional[int]:
         """Get the FIM SEP (Fill-In-Middle Separator) token. Return None if not available."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.token_fim_sep")
         id = lib.llama_vocab_fim_sep(self._vocab)
@@ -1849,7 +1869,7 @@ class Llama:
     ) -> list[dict]:
         
         if n_tokens_pp is None:
-            n_tokens_pp = self.n_batch() * 2
+            n_tokens_pp = self.n_batch()
         if n_tokens_tg is None:
             n_tokens_tg = 10
         if n_runs is None:
@@ -1925,11 +1945,11 @@ class Llama:
         return id
     
     def sampler_params_from_preset(self, sampler_preset: SamplerPreset) -> SamplerParams:
-        """Create and return a new `SamplerParams` object using the provided `SamplerPreset`
+        """Create and return a new `SamplerParams` object for this Llama using the provided
+        `SamplerPreset`.
 
-        - sampler_preset:
-            The `sampling.SamplerPreset` object which defines the sampler parameter values to
-            use"""
+        @param sampler_preset: The `sampling.SamplerPreset` object which defines the sampler
+        parameter values to use"""
         
         return SamplerParams(
             llama                 = self,
@@ -1952,6 +1972,7 @@ class Llama:
             dry_allowed_length    = sampler_preset.dry_allowed_length,
             dry_penalty_last_n    = sampler_preset.dry_penalty_last_n,
             mirostat              = sampler_preset.mirostat,
+            top_n_sigma           = sampler_preset.top_n_sigma,
             mirostat_tau          = sampler_preset.mirostat_tau,
             mirostat_eta          = sampler_preset.mirostat_eta,
             dry_sequence_breakers = sampler_preset.dry_sequence_breakers,
