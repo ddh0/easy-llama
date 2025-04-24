@@ -17,7 +17,9 @@ import threading
 
 import numpy as np
 
-from .utils    import null_ptr_check, softmax, suppress_output, _SupportsWriteAndFlush, ptr, log
+from .utils    import (
+    null_ptr_check, softmax, suppress_output, _SupportsWriteAndFlush, ptr, log, ez_decode
+)
 from .sampling import SamplerParams, SamplerPreset
 from typing    import Optional, Iterable, Union
 from .libllama import _internals, GGUFValueType
@@ -128,10 +130,9 @@ def _calculate_rope_freq_base(
 
     if rope_freq_base_train in [None, 0.0]:
         log(
-            f'n_ctx value {n_ctx_load} > n_ctx_train value {n_ctx_train}, and '
-            f'automatic rope_freq_base adjustment is not supported for this '
-            f'model; model loading might fail, or the model might not work '
-            f'correctly', 3
+            f'n_ctx value {n_ctx_load} > n_ctx_train value {n_ctx_train}, and automatic '
+            f'rope_freq_base adjustment is not supported for this model; model loading might '
+            f'fail, or the model might not work correctly', 3
         )
         return 0.0
     
@@ -144,11 +145,9 @@ def _calculate_rope_freq_base(
     #adjusted_rope_freq = ((n_ctx_load/n_ctx_train)**(2**(1/4)))*rope_freq_base_train
     
     log(
-        f"n_ctx value {n_ctx_load} exceeds n_ctx_train value "
-        f"{n_ctx_train}; using adjusted rope_freq_base value "
-        f"{adjusted_rope_freq}, native value is "
-        f"{rope_freq_base_train}; model will function with "
-        f"potentially degraded output quality", 2
+        f"n_ctx value {n_ctx_load} exceeds n_ctx_train value {n_ctx_train}; using adjusted "
+        f"rope_freq_base value {adjusted_rope_freq}, native value is {rope_freq_base_train}; "
+        f"model will function with potentially degraded output quality", 2
     )
 
     return adjusted_rope_freq
@@ -475,26 +474,39 @@ class _LlamaModel:
         self,
         path_model: str,
 
-        devices:                     Optional[ptr]                         = None,
-        n_gpu_layers:                Optional[int]                         = None,
-        split_mode:                  Optional[int]                         = None,
-        main_gpu:                    Optional[int]                         = None,
-        tensor_split:                Optional[ptr]                         = None,
-        rpc_servers:                 Optional[str]                         = None,
-        progress_callback:           Optional[ptr]                         = None,
-        progress_callback_user_data: Optional[ptr]                         = None,
-        kv_overrides:                Optional[lib.llama_model_kv_override] = None,
-        vocab_only:                  Optional[bool]                        = None,
-        use_mmap:                    Optional[bool]                        = None,
-        use_mlock:                   Optional[bool]                        = None,
-        check_tensors:               Optional[bool]                        = None
+        devices:                     Optional[list[ptr]]   = None,
+        tensor_buft_override:        Optional[list[ptr]]   = None,
+        n_gpu_layers:                Optional[int]         = None,
+        split_mode:                  Optional[int]         = None,
+        main_gpu:                    Optional[int]         = None,
+        tensor_split:                Optional[list[float]] = None,
+        rpc_servers:                 Optional[str]         = None,
+        progress_callback:           Optional[ptr]         = None,
+        progress_callback_user_data: Optional[ptr]         = None,
+        kv_overrides:                Optional[list[ptr]]   = None,
+        vocab_only:                  Optional[bool]        = None,
+        use_mmap:                    Optional[bool]        = None,
+        use_mlock:                   Optional[bool]        = None,
+        check_tensors:               Optional[bool]        = None
     ):
+        # refuse to load files with incorrect extension
+        if not path_model.lower().endswith('.gguf'):
+            raise ValueError(
+                f"_LlamaModel.__init__: the given path_model {path_model!r} does not end "
+                f"in '.gguf'. easy-llama refuses to load from files that do not have the "
+                f"correct file extension."
+            )
+        
         _init_backend_if_needed()
         self.path_model = path_model
         self.params = lib.llama_model_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaModel.__init__")
         if devices is not None:
             self.params.devices = (ctypes.c_void_p * (len(devices) + 1))(*devices, None)
+        if tensor_buft_override is not None:
+            self.params.tensor_buft_overrides = (
+                lib.llama_model_tensor_buft_override_p * (len(tensor_buft_override) + 1)
+            )(*tensor_buft_override, None)
         if n_gpu_layers is not None:
             self.params.n_gpu_layers = (
                 n_gpu_layers
@@ -523,19 +535,11 @@ class _LlamaModel:
             self.params.use_mlock = use_mlock
         if check_tensors is not None:
             self.params.check_tensors = check_tensors
-
-        # refuse to load files with incorrect extension
-        if not path_model.lower().endswith('.gguf'):
-            raise ValueError(
-                f"_LlamaModel.__init__: the given path_model {path_model!r} does not end "
-                f"in '.gguf'. easy-llama refuses to load from files that do not have the "
-                f"correct file extension."
-            )
         
         # load model
-        
         with suppress_output(disable=get_verbose()):
             self.model = lib.llama_model_load_from_file(path_model, self.params)
+        
         null_ptr_check(self.model, "self.model", "_LlamaModel.__init__")
     
     def __del__(self):
@@ -649,8 +653,6 @@ class _LlamaCtx:
             lib.GGMLType.GGML_TYPE_BF16
         ]):
             log(f'V cache quantization requires flash_attn; program may fail', 2)
-        # if logits_all is not None:
-        #     self.params.logits_all = logits_all
         if embeddings is not None:
             self.params.embeddings = embeddings
         if offload_kqv is not None:
@@ -756,19 +758,16 @@ class Llama:
         self,
         path_model: str,
         n_gpu_layers: int = 0,
-        use_mmap: bool = True,
-        use_mlock: bool = False,
         n_ctx: int = 512,
-        n_batch: int = 2048,
         n_threads: int = 0,
         n_threads_batch: int = 0,
-        rope_freq_base: float = 0.0,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
         offload_kqv: bool = False,
         flash_attn: bool = False,
         warmup: bool = True,
-        verbose: bool = True
+        verbose: bool = True,
+        **kwargs
     ):
         """Load a llama model from a file
 
@@ -797,11 +796,6 @@ class Llama:
             Number of threads to use for batch size == 1.
         - n_threads_batch:
             Number of threads to use for batch sizes > 1.
-        - rope_freq_base:
-            The RoPE frequency base (i.e theta value) to use when loading the model.
-            Default is 0.0, which will determine the correct value
-            automatically. Recommended to leave at 0.0 unless you know what
-            you're doing.
         - type_k:
             The `libllama.GGMLType` to use for the K cache. Default is 1 (f16).
             In most cases, this must be the same as `type_v`.
@@ -849,9 +843,20 @@ class Llama:
 
         self._model = _LlamaModel(
             path_model=path_model,
+            devices=kwargs.get('devices'),
+            tensor_buft_override=kwargs.get('tensor_buft_override'),
             n_gpu_layers=n_gpu_layers,
-            use_mmap=use_mmap,
-            use_mlock=use_mlock
+            split_mode=kwargs.get('split_mode'),
+            main_gpu=kwargs.get('main_gpu'),
+            tensor_split=kwargs.get('tensor_split'),
+            rpc_servers=kwargs.get('rpc_servers'),
+            progress_callback=kwargs.get('progress_callback'),
+            progress_callback_user_data=kwargs.get('progress_callback_user_data'),
+            kv_overrides=kwargs.get('kv_overrides'),
+            vocab_only=kwargs.get('vocab_only'),
+            use_mmap=kwargs.get('use_mmap'),
+            use_mlock=kwargs.get('use_mlock'),
+            check_tensors=kwargs.get('check_tensors')
         )
         
         self._vocab = lib.llama_model_get_vocab(self._model.model)
@@ -870,6 +875,7 @@ class Llama:
 
         # use rope_freq_base unless it == 0.0, in that case use the native
         # rope_freq_base found in the GGUF metadata
+        rope_freq_base = kwargs.get('rope_freq_base', 0.0)
 
         if rope_freq_base == 0.0:
             rope_freq_base_train = None
@@ -902,15 +908,33 @@ class Llama:
         
         self._ctx = _LlamaCtx(
             model=self._model,
-            n_ctx=_n_ctx,
-            n_batch=n_batch,
+            n_ctx=n_ctx,
+            n_batch=kwargs.get('n_batch'),
+            n_ubatch=kwargs.get('n_ubatch'),
+            n_seq_max=1,
             n_threads=_n_threads,
             n_threads_batch=_n_threads_batch,
+            rope_scaling_type=kwargs.get('role_scaling_type'),
+            pooling_type=kwargs.get('pooling_type'),
+            attention_type=kwargs.get('attention_type'),
             rope_freq_base=_rope_freq_base,
+            rope_freq_scale=kwargs.get('rope_freq_scale'),
+            yarn_ext_factor=kwargs.get('yarn_ext_factor'),
+            yarn_attn_factor=kwargs.get('yarn_attn_factor'),
+            yarn_beta_fast=kwargs.get('yarn_beta_fast'),
+            yarn_beta_slow=kwargs.get('yarn_beta_slow'),
+            yarn_orig_ctx=kwargs.get('yarn_orig_ctx'),
+            defrag_thold=kwargs.get('defrag_thold'),
+            cb_eval=kwargs.get('cb_eval'),
+            cb_eval_user_data=kwargs.get('cb_eval_user_data'),
             type_k=type_k,
             type_v=type_v,
+            embeddings=kwargs.get('embeddings'),
             offload_kqv=offload_kqv,
-            flash_attn=flash_attn
+            flash_attn=flash_attn,
+            no_perf=kwargs.get('no_perf'),
+            abort_callback=kwargs.get('abort_callback'),
+            abort_callback_data=kwargs.get('abort_callback_data')
         )
 
         #
@@ -1489,40 +1513,47 @@ class Llama:
         batch_tokens: list[int],
         logits_all: bool = False
     ) -> Optional[np.ndarray]:
-        """Process a batch of one or more tokens. If `logits_all` is True, return the logits
-        for all tokens in the batch. Otherwise, return None."""
+        """Process a batch of one or more tokens, up to `Llama.n_batch()`. If `logits_all` is
+        True, return the logits for all tokens in the batch. Otherwise, return None."""
 
         batch_logits = None
         n_batch_tokens = len(batch_tokens)
+
+        if n_batch_tokens > self._n_batch:
+            raise ValueError(
+                f'Llama._process_batch: n_batch_tokens cannot exceed n_batch '
+                f'({n_batch_tokens} > {self._n_batch})'
+            )
         
         if n_batch_tokens > 1: # prompt processing
 
             if logits_all:
-
-                self._stopwatch.start_pp()
+                
                 with self._lock:
+                    self._stopwatch.start_pp()
                     batch_logits = _internals.decode_pp_with_logits(
                         self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens, self._n_vocab
                     )
-                self._stopwatch.stop_pp()
+                    self._stopwatch.stop_pp()
             
             else:
 
-                self._stopwatch.start_pp()
                 with self._lock:
+                    self._stopwatch.start_pp()
                     _internals.decode_pp(self._ctx.ctx, self.pos, batch_tokens, n_batch_tokens)
-                self._stopwatch.stop_pp()
+                    self._stopwatch.stop_pp()
             
             self._stopwatch.increment_pp_tokens(n_batch_tokens)
         
         elif n_batch_tokens == 1: # text generation
 
-            self._stopwatch.start_tg()
             with self._lock:
+                self._stopwatch.start_tg()
                 batch_logits = _internals.decode_tg_with_logits(
                     self._ctx.ctx, self.pos, batch_tokens[0], self._n_vocab
                 )
-            self._stopwatch.stop_tg()
+                self._stopwatch.stop_tg()
+            
             self._stopwatch.increment_tg_tokens(1)
         
         else:
@@ -1583,16 +1614,12 @@ class Llama:
         if logits_all:
             all_logits = []
             for batch in batches:
-                self._stopwatch.start_pp()
                 batch_logits = self._process_batch(batch, logits_all=True)
-                self._stopwatch.stop_pp()
                 all_logits.append(batch_logits)
             final_logits = np.concatenate(all_logits, axis=0)
         else:
-            self._stopwatch.start_pp()
             for batch in batches:
                 final_logits = self._process_batch(batch, logits_all=False)
-            self._stopwatch.stop_pp()
 
         self._stopwatch.stop_wall_time()
 
@@ -1699,13 +1726,21 @@ class Llama:
             sampler_params = self._default_sampler_params
         else:
             sampler_params = self.sampler_params_from_preset(sampler_preset)
+        
         if get_verbose():
             sampler_params.print_chain()
-        
+
+        _n_predict = n_predict if n_predict >= 0 else self._n_ctx - self.pos
+
         log_if_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
+            f'{n_actual_input_tokens} tokens to eval'
         )
+
+        if _n_predict > 0:
+            log_if_verbose(
+                f'Llama.generate: predicting up to {n_predict} new tokens ...'
+            )
 
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
@@ -1723,18 +1758,18 @@ class Llama:
         # continue generating until n_predict or n_ctx is reached
         while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
             if return_logits:
-                self._stopwatch.start_tg()
                 with self._lock:
+                    self._stopwatch.start_tg()
                     token_logits = _internals.decode_tg_with_logits(
                         self._ctx.ctx, self.pos, self.context_tokens[-1], self._n_vocab
                     )
-                self._stopwatch.stop_tg()
+                    self._stopwatch.stop_tg()
                 all_logits.append(token_logits)
             else:
-                self._stopwatch.start_tg()
                 with self._lock:
+                    self._stopwatch.start_tg()
                     _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
-                self._stopwatch.stop_tg()
+                    self._stopwatch.stop_tg()
             
             self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
@@ -1747,6 +1782,8 @@ class Llama:
 
             if id in stops:
                 self._stopwatch.stop_wall_time()
+                eog_str = ez_decode(self.token_to_piece(id, special=True))
+                log_if_verbose(f'emitted stop token: {id} {eog_str!r}')
                 if get_verbose():
                     self._stopwatch.print_stats()
                 if return_logits:
@@ -1805,13 +1842,21 @@ class Llama:
             sampler_params = self._default_sampler_params
         else:
             sampler_params = self.sampler_params_from_preset(sampler_preset)
+        
         if get_verbose():
             sampler_params.print_chain()
 
+        _n_predict = n_predict if n_predict >= 0 else self._n_ctx - self.pos
+        
         log_if_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, '
-            f'{n_actual_input_tokens} tokens to eval ...'
+            f'{n_actual_input_tokens} tokens to eval'
         )
+
+        if _n_predict > 0:
+            log_if_verbose(
+                f'Llama.stream: predicting up to {n_predict} new tokens ...'
+            )
 
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
@@ -1827,17 +1872,17 @@ class Llama:
         # continue generating until n_predict or n_ctx is reached
         while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
             if yield_logits:
-                self._stopwatch.start_tg()
                 with self._lock:
+                    self._stopwatch.start_tg()
                     token_logits = _internals.decode_tg_with_logits(
                         self._ctx.ctx, self.pos, self.context_tokens[-1], self._n_vocab
                     )
-                self._stopwatch.stop_tg()
+                    self._stopwatch.stop_tg()
             else:
-                self._stopwatch.start_tg()
                 with self._lock:
+                    self._stopwatch.start_tg()
                     _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
-                self._stopwatch.stop_tg()
+                    self._stopwatch.stop_tg()
             
             self._stopwatch.increment_tg_tokens(1)
             self.pos += 1
@@ -1852,6 +1897,8 @@ class Llama:
 
             if id in stops:
                 self._stopwatch.stop_wall_time()
+                eog_str = ez_decode(self.token_to_piece(id, special=True))
+                log_if_verbose(f'emitted stop token: {id} {eog_str!r}')
                 if get_verbose():
                     self._stopwatch.print_stats()
                 return
@@ -2012,7 +2059,7 @@ class Llama:
         logits = self.get_logits()
         return softmax(logits, T=temp)
     
-    def get_tokenization_mapping(self, tokens: Iterable[int]) -> list[tuple[int, bytes]]:
+    def get_tokenization_mapping(self, tokens: list[int]) -> list[tuple[int, bytes]]:
         """Given some tokens, return a list of tuples where the first item in the
         tuple is the token ID and the second item is the corresponding UTF-8
         text bytes."""
@@ -2020,7 +2067,7 @@ class Llama:
     
     def print_tokenization_mapping(
         self,
-        tokens: Iterable[int],
+        tokens: list[int],
         file: _SupportsWriteAndFlush = sys.stderr
     ) -> None:
         """Given some tokens, print a mapping of each token ID to the

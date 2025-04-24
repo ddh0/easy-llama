@@ -27,7 +27,7 @@ import faulthandler
 import numpy as np
 
 from enum   import IntEnum
-from typing import Optional, Iterable
+from typing import Optional
 from .utils import ptr, log, ez_decode
 
 faulthandler.enable() # prints more helpful info if python crashes
@@ -430,7 +430,7 @@ class llama_context_params(ctypes.Structure):
         ("type_k", ctypes.c_int), # data type for K cache [EXPERIMENTAL]
         ("type_v", ctypes.c_int), # data type for V cache [EXPERIMENTAL]
 
-        ("logits_all", ctypes.c_bool),  # the llama_decode() call computes all logits, not just the last one (DEPRECATED - set llama_batch.logits instead)
+        ("logits_all", ctypes.c_bool),  # the llama_decode() call computes all logits, not just the last one (DEPRECATED - set llama_batch.logits instead) # TODO: should this be removed?
         ("embeddings", ctypes.c_bool),  # if true, extract embeddings (together with logits)
         ("offload_kqv", ctypes.c_bool), # whether to offload the KQV ops (including the KV cache) to GPU
         ("flash_attn", ctypes.c_bool),  # whether to use flash attention [EXPERIMENTAL]
@@ -1801,6 +1801,293 @@ def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
     libllama.llama_perf_sampler_reset(smpl)
 
 #
+# End of LLAMA_API
+#
+
+class _internals:
+
+    greedy_sampler: Optional[llama_sampler]
+    """This built-in greedy sampler will be initialized along with libllama."""
+
+    MAX_TOKEN_LENGTH = 256
+    """The maximum supported length of a single token's text, in bytes"""
+
+    class LogitBiasArray:
+        """Type hint for a `ctypes.Array[llama_logit_bias]` of arbitrary length"""
+
+    def decode_pp(
+        ctx: ptr[llama_context],
+        pos: int,
+        tokens: list[int],
+        n_tokens: int,
+    ) -> None:
+        """### INTERNAL
+
+        Decode with batch size > 1 (prompt processing)."""
+        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
+        batch.n_tokens = n_tokens
+        for i in range(n_tokens):
+            batch.token[i] = tokens[i]
+            batch.pos[i] = pos + i
+            batch.seq_id[i][0] = 0
+            batch.n_seq_id[i] = 1
+            batch.logits[i] = False
+        batch.logits[n_tokens - 1] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
+
+    def decode_tg(
+        ctx: ptr[llama_context],
+        pos: int,
+        token: int
+    ) -> None:
+        """### INTERNAL
+
+        Decode with batch size == 1 (text generation)."""
+        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
+        batch.n_tokens = 1
+        batch.token[0] = token
+        batch.pos[0] = pos
+        batch.seq_id[0][0] = 0
+        batch.n_seq_id[0] = 1
+        batch.logits[0] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
+
+    def decode_pp(
+        ctx: ptr[llama_context],
+        pos: int,
+        tokens: list[int],
+        n_tokens: int,
+    ) -> None:
+        """### INTERNAL
+
+        Decode with batch size > 1 (prompt processing)"""
+        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
+        batch.n_tokens = n_tokens
+        for i in range(n_tokens):
+            batch.token[i] = tokens[i]
+            batch.pos[i] = pos + i
+            batch.seq_id[i][0] = 0
+            batch.n_seq_id[i] = 1
+            batch.logits[i] = False
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
+
+    def decode_tg_with_logits(
+        ctx: ptr[llama_context],
+        pos: int,
+        token: int,
+        n_vocab: int
+    ) -> np.ndarray:
+        """### INTERNAL
+
+        Decode with batch size == 1 (text generation).
+        
+        Return the logits for the inferred next token."""
+        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
+        batch.n_tokens = 1
+        batch.token[0] = token
+        batch.pos[0] = pos
+        batch.seq_id[0][0] = 0
+        batch.n_seq_id[0] = 1
+        batch.logits[0] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(
+                f'decode_tg_with_logits: llama_decode failed with status code {ret}'
+            )
+        ctypes_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(1, n_vocab))[0]
+        return logits
+    
+    def decode_pp_with_logits(
+        ctx: ptr[llama_context],
+        pos: int,
+        tokens: list[int],
+        n_tokens: int,
+        n_vocab: int
+    ) -> np.ndarray:
+        """### INTERNAL
+
+        Decode with batch size > 1 (prompt processing).
+        
+        Return logits for all tokens in the batch. The returned logits have shape 
+        `(n_tokens, n_vocab)`.
+        
+        The logits at index `i` are the predictions for the token at index `i + 1` in the batch.
+        
+        The last column in the array (`logits[n_tokens]`) contains the logits for the inferred
+        next token."""
+        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
+        batch.n_tokens = n_tokens
+        for i in range(n_tokens):
+            batch.token[i] = tokens[i]
+            batch.pos[i] = pos + i
+            batch.seq_id[i][0] = 0
+            batch.n_seq_id[i] = 1
+            batch.logits[i] = True
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
+        if ret != 0:
+            raise RuntimeError(
+                f'decode_pp_with_logits: llama_decode failed with status code {ret}'
+            )
+        ctypes_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(n_tokens, n_vocab))
+        return logits
+
+    def sample_greedy(ctx: ptr[llama_context]) -> int:
+        """### INTERNAL
+
+        Sample the most likely token"""
+        return llama_sampler_sample(_internals.greedy_sampler, ctx, -1)
+
+    def tokenize(
+        vocab: ptr[llama_vocab],
+        text_bytes: bytes,
+        n_tokens_max: int,
+        add_special: bool,
+        parse_special: bool,
+    ) -> list[int]:
+        """### INTERNAL
+
+        Convert the provided UTF-8 encoded text into tokens
+
+        - vocab:
+            A pointer to a llama_vocab to use for tokenization
+        - text_bytes:
+            The text to be tokenized
+        - n_tokens_max:
+            Tokenization will fail if the text is more than this many tokens.
+            Larger numbers allow more text to be tokenized but will allocate
+            more memory (4 bytes per token).
+        - add_special:
+            Allow to add BOS and EOS tokens if model is configured to do so.
+        - parse_special:
+            Allow tokenizing special and/or control tokens which otherwise are
+            not exposed and treated as plaintext. Does not insert a leading
+            space."""
+        # unlike detokenization, this buffer is created and destroyed as needed
+        # because it could potentially be quite large - each token takes 4 bytes
+        tokens_buf = (ctypes.c_int32 * n_tokens_max)()
+        n_tokens = llama_tokenize(
+            vocab=vocab,
+            text=text_bytes,
+            text_len=len(text_bytes),
+            tokens=tokens_buf,
+            n_tokens_max=n_tokens_max,
+            add_special=add_special,
+            parse_special=parse_special
+        )
+        if n_tokens < 0:
+            raise ValueError(
+                f'tokenize: n_tokens value {-n_tokens} exceeds '
+                f'n_tokens_max value {n_tokens_max}'
+            )
+        ret = list(tokens_buf[:n_tokens])
+        del tokens_buf
+        return ret
+
+    # this buffer is re-used every time llama_token_to_piece() is called
+    # it is only 256 bytes, so OK to keep in memory
+    detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
+
+    def token_to_piece(vocab: ptr[llama_vocab], token: int, special: bool) -> bytes:
+        """### INTERNAL
+
+        Convert token ID to text bytes"""
+        n_bytes = llama_token_to_piece(
+            vocab=vocab,
+            token=token,
+            buf=_internals.detok_buffer,
+            length=_internals.MAX_TOKEN_LENGTH,
+            lstrip=0, # skip up to 'lstrip' leading spaces
+            special=special
+        )
+        if n_bytes > _internals.MAX_TOKEN_LENGTH:
+            raise ValueError(
+                f"token_to_piece: the token with ID {token} requires a "
+                f"buffer of size {n_bytes}, but the maximum buffer size is "
+                f"{_internals.MAX_TOKEN_LENGTH}"
+            )
+        # NOTE: do not just do buf.value.decode() because the token could
+        #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
+        #       string itself. let the caller handle this
+        return _internals.detok_buffer.raw[:n_bytes]
+
+    def detokenize(
+        vocab: ptr[llama_vocab],
+        tokens: list[int],
+        special: bool
+    ) -> str:
+        """### INTERNAL
+
+        Convert the provided tokens into a string
+
+        - special:
+            If True, special tokens are rendered in the output"""
+        # this function is just like token_to_piece but in a loop
+        detok_bytes = b""
+        for token in tokens:
+            n_bytes = llama_token_to_piece(
+                vocab=vocab,
+                token=token,
+                buf=_internals.detok_buffer,
+                length=_internals.MAX_TOKEN_LENGTH,
+                lstrip=0, # skip up to 'lstrip' leading spaces
+                special=special
+            )
+            if n_bytes > _internals.MAX_TOKEN_LENGTH:
+                raise ValueError(
+                    f"detokenize: the token with ID {token} requires a buffer of size "
+                    f"{n_bytes}, but the maximum buffer size is {_internals.MAX_TOKEN_LENGTH}"
+                )
+            detok_bytes += _internals.detok_buffer.raw[:n_bytes]
+        return ez_decode(detok_bytes)
+
+    def get_length(
+        vocab: ptr[llama_vocab],
+        text_bytes: bytes,
+        add_special: bool,
+        parse_special: bool,
+    ) -> int:
+        """### INTERNAL
+
+        Return the length of a given text, as measured in tokens"""
+        return -llama_tokenize(
+            vocab=vocab,
+            text=text_bytes,
+            text_len=len(text_bytes),
+            tokens=NULL,
+            n_tokens_max=0,
+            add_special=add_special,
+            parse_special=parse_special
+        )
+    
+    def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
+        """### INTERNAL
+
+        Create and return a ctypes array of `llama_logit_bias`"""
+        if len(logit_biases) == 0:
+            raise ValueError(f'logit_biases parameter cannot be empty')
+        LogitBiasArrayType = llama_logit_bias * len(logit_biases)
+        arr = LogitBiasArrayType()
+        i = 0
+        for k, v in logit_biases.items():
+            arr[i].token = k
+            arr[i].bias = v
+            i += 1
+        return arr
+
+#
 # Deprecation
 #
 
@@ -2059,290 +2346,3 @@ def llama_sampler_init_softmax(*args):
 @DEPRECATED(new_func_name='llama_sampler_init_grammar_lazy_patterns')
 def llama_sampler_init_grammar_lazy(*args):
     pass
-
-#
-# End of LLAMA_API
-#
-
-class _internals:
-
-    greedy_sampler: Optional[llama_sampler]
-    """This built-in greedy sampler will be initialized along with libllama."""
-
-    MAX_TOKEN_LENGTH = 256
-    """The maximum supported length of a single token's text, in bytes"""
-
-    class LogitBiasArray:
-        """Type hint for a `ctypes.Array[llama_logit_bias]` of arbitrary length"""
-
-    def decode_pp(
-        ctx: ptr[llama_context],
-        pos: int,
-        tokens: list[int],
-        n_tokens: int,
-    ) -> None:
-        """### INTERNAL
-
-        Decode with batch size > 1 (prompt processing)."""
-        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
-        batch.n_tokens = n_tokens
-        for i in range(n_tokens):
-            batch.token[i] = tokens[i]
-            batch.pos[i] = pos + i
-            batch.seq_id[i][0] = 0
-            batch.n_seq_id[i] = 1
-            batch.logits[i] = False
-        batch.logits[n_tokens - 1] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
-        if ret != 0:
-            raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
-
-    def decode_tg(
-        ctx: ptr[llama_context],
-        pos: int,
-        token: int
-    ) -> None:
-        """### INTERNAL
-
-        Decode with batch size == 1 (text generation)."""
-        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
-        batch.n_tokens = 1
-        batch.token[0] = token
-        batch.pos[0] = pos
-        batch.seq_id[0][0] = 0
-        batch.n_seq_id[0] = 1
-        batch.logits[0] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
-        if ret != 0:
-            raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
-
-    def decode_pp(
-        ctx: ptr[llama_context],
-        pos: int,
-        tokens: list[int],
-        n_tokens: int,
-    ) -> None:
-        """### INTERNAL
-
-        Decode with batch size > 1 (prompt processing)"""
-        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
-        batch.n_tokens = n_tokens
-        for i in range(n_tokens):
-            batch.token[i] = tokens[i]
-            batch.pos[i] = pos + i
-            batch.seq_id[i][0] = 0
-            batch.n_seq_id[i] = 1
-            batch.logits[i] = False
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
-        if ret != 0:
-            raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
-
-    def decode_tg_with_logits(
-        ctx: ptr[llama_context],
-        pos: int,
-        token: int,
-        n_vocab: int
-    ) -> np.ndarray:
-        """### INTERNAL
-
-        Decode with batch size == 1 (text generation).
-        
-        Return the logits for the inferred next token."""
-        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
-        batch.n_tokens = 1
-        batch.token[0] = token
-        batch.pos[0] = pos
-        batch.seq_id[0][0] = 0
-        batch.n_seq_id[0] = 1
-        batch.logits[0] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
-        if ret != 0:
-            raise RuntimeError(
-                f'decode_tg_with_logits: llama_decode failed with status code {ret}'
-            )
-        ctypes_logits = llama_get_logits(ctx)
-        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(1, n_vocab))[0]
-        return logits
-    
-    def decode_pp_with_logits(
-        ctx: ptr[llama_context],
-        pos: int,
-        tokens: list[int],
-        n_tokens: int,
-        n_vocab: int
-    ) -> np.ndarray:
-        """### INTERNAL
-
-        Decode with batch size > 1 (prompt processing).
-        
-        Return logits for all tokens in the batch. The returned logits have shape 
-        `(n_tokens, n_vocab)`.
-        
-        The logits at index `i` are the predictions for the token at index `i + 1` in the batch.
-        
-        The last column in the array (`logits[n_tokens]`) contains the logits for the inferred
-        next token."""
-        batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
-        batch.n_tokens = n_tokens
-        for i in range(n_tokens):
-            batch.token[i] = tokens[i]
-            batch.pos[i] = pos + i
-            batch.seq_id[i][0] = 0
-            batch.n_seq_id[i] = 1
-            batch.logits[i] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
-        if ret != 0:
-            raise RuntimeError(
-                f'decode_pp_with_logits: llama_decode failed with status code {ret}'
-            )
-        ctypes_logits = llama_get_logits(ctx)
-        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(n_tokens, n_vocab))
-        return logits
-
-    def sample_greedy(ctx: ptr[llama_context]) -> int:
-        """### INTERNAL
-
-        Sample the most likely token"""
-        return llama_sampler_sample(_internals.greedy_sampler, ctx, -1)
-
-    def tokenize(
-        vocab: ptr[llama_vocab],
-        text_bytes: bytes,
-        n_tokens_max: int,
-        add_special: bool,
-        parse_special: bool,
-    ) -> list[int]:
-        """### INTERNAL
-
-        Convert the provided UTF-8 encoded text into tokens
-
-        - vocab:
-            A pointer to a llama_vocab to use for tokenization
-        - text_bytes:
-            The text to be tokenized
-        - n_tokens_max:
-            Tokenization will fail if the text is more than this many tokens.
-            Larger numbers allow more text to be tokenized but will allocate
-            more memory (4 bytes per token).
-        - add_special:
-            Allow to add BOS and EOS tokens if model is configured to do so.
-        - parse_special:
-            Allow tokenizing special and/or control tokens which otherwise are
-            not exposed and treated as plaintext. Does not insert a leading
-            space."""
-        # unlike detokenization, this buffer is created and destroyed as needed
-        # because it could potentially be quite large - each token takes 4 bytes
-        tokens_buf = (ctypes.c_int32 * n_tokens_max)()
-        n_tokens = llama_tokenize(
-            vocab=vocab,
-            text=text_bytes,
-            text_len=len(text_bytes),
-            tokens=tokens_buf,
-            n_tokens_max=n_tokens_max,
-            add_special=add_special,
-            parse_special=parse_special
-        )
-        if n_tokens < 0:
-            raise ValueError(
-                f'tokenize: n_tokens value {-n_tokens} exceeds '
-                f'n_tokens_max value {n_tokens_max}'
-            )
-        ret = list(tokens_buf[:n_tokens])
-        del tokens_buf
-        return ret
-
-    # this buffer is re-used every time llama_token_to_piece() is called
-    # it is only 256 bytes, so OK to keep in memory
-    detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
-
-    def token_to_piece(vocab: ptr[llama_vocab], token: int, special: bool) -> bytes:
-        """### INTERNAL
-
-        Convert token ID to text bytes"""
-        n_bytes = llama_token_to_piece(
-            vocab=vocab,
-            token=token,
-            buf=_internals.detok_buffer,
-            length=_internals.MAX_TOKEN_LENGTH,
-            lstrip=0, # skip up to 'lstrip' leading spaces
-            special=special
-        )
-        if n_bytes > _internals.MAX_TOKEN_LENGTH:
-            raise ValueError(
-                f"token_to_piece: the token with ID {token} requires a "
-                f"buffer of size {n_bytes}, but the maximum buffer size is "
-                f"{_internals.MAX_TOKEN_LENGTH}"
-            )
-        # NOTE: do not just do buf.value.decode() because the token could
-        #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
-        #       string itself. let the caller handle this
-        return _internals.detok_buffer.raw[:n_bytes]
-
-    def detokenize(
-        vocab: ptr[llama_vocab],
-        tokens: Iterable[int],
-        special: bool
-    ) -> str:
-        """### INTERNAL
-
-        Convert the provided tokens into a string
-
-        - special:
-            If True, special tokens are rendered in the output"""
-        # this function is just like token_to_piece but in a loop
-        detok_bytes = b""
-        for token in tokens:
-            n_bytes = llama_token_to_piece(
-                vocab=vocab,
-                token=token,
-                buf=_internals.detok_buffer,
-                length=_internals.MAX_TOKEN_LENGTH,
-                lstrip=0, # skip up to 'lstrip' leading spaces
-                special=special
-            )
-            if n_bytes > _internals.MAX_TOKEN_LENGTH:
-                raise ValueError(
-                    f"detokenize: the token with ID {token} requires a buffer of size "
-                    f"{n_bytes}, but the maximum buffer size is {_internals.MAX_TOKEN_LENGTH}"
-                )
-            detok_bytes += _internals.detok_buffer.raw[:n_bytes]
-        return ez_decode(detok_bytes)
-
-    def get_length(
-        vocab: ptr[llama_vocab],
-        text_bytes: bytes,
-        add_special: bool,
-        parse_special: bool,
-    ) -> int:
-        """### INTERNAL
-
-        Return the length of a given text, as measured in tokens"""
-        return -llama_tokenize(
-            vocab=vocab,
-            text=text_bytes,
-            text_len=len(text_bytes),
-            tokens=NULL,
-            n_tokens_max=0,
-            add_special=add_special,
-            parse_special=parse_special
-        )
-    
-    def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
-        """### INTERNAL
-
-        Create and return a ctypes array of `llama_logit_bias`"""
-        if len(logit_biases) == 0:
-            raise ValueError(f'logit_biases parameter cannot be empty')
-        LogitBiasArrayType = llama_logit_bias * len(logit_biases)
-        arr = LogitBiasArrayType()
-        i = 0
-        for k, v in logit_biases.items():
-            arr[i].token = k
-            arr[i].bias = v
-            i += 1
-        return arr

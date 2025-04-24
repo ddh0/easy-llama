@@ -183,7 +183,7 @@ def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
 def ez_encode(txt: str) -> bytes:
-    """Encode the given text `txt` from string to UTF-8. If strict encoding fails, a warning
+    """Encode the given text `txt` from string to UTF-8. If strict encoding fails, an error
     will be shown and the offending character(s) will be replaced with `?`."""
     try:
         return txt.encode('utf-8', errors='strict')
@@ -192,7 +192,7 @@ def ez_encode(txt: str) -> bytes:
         return txt.encode('utf-8', errors='replace')
 
 def ez_decode(txt: bytes) -> str:
-    """Decode the given text `txt` from UTF-8 to string. If strict decoding fails, a warning
+    """Decode the given text `txt` from UTF-8 to string. If strict decoding fails, an error
     will be shown and the offending character(s) will be replaced with `�` (U+FFFD)."""
     try:
         return txt.decode('utf-8', errors='strict')
