@@ -1911,7 +1911,7 @@ class Llama:
         n_tokens_tg: Optional[int] = None,
         n_runs: Optional[int] = None
     ) -> list[dict]:
-        
+        # TODO: onelinify this
         if n_tokens_pp is None:
             n_tokens_pp = self.n_batch()
         if n_tokens_tg is None:

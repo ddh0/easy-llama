@@ -40,14 +40,14 @@ class Server:
 
         # mount components
         self.app.include_router(self.api_router)
-        self.app.mount(
-            "/",
-            StaticFiles(
-                directory="webui",
-                html=True
-            ),
-            name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
-        )
+        # self.app.mount(
+        #     "/",
+        #     StaticFiles(
+        #         directory="webui",
+        #         html=True
+        #     ),
+        #     name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
+        # )
     
     def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
         ez.utils.log(f'[easy-llama.Server @ {self.host}:{self.port}] {text}', level=level)
