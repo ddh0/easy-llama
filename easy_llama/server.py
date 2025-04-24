@@ -238,7 +238,7 @@ class Server:
         async def get_info() -> dict:
             """Return some info about the llama model and the thread"""
             with ez.utils.suppress_output():
-                input_ids = self.get_input_ids(role=None)
+                input_ids = self.thread.get_input_ids(role=None)
             n_thread_tokens = len(input_ids)
             n_ctx = self.thread.llama.n_ctx()
             c = (n_thread_tokens/n_ctx) * 100
