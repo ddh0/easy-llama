@@ -295,10 +295,10 @@ class Thread:
     def warmup(self) -> None:
         input_ids = self.get_input_ids()
         if self.llama._first_valid_pos(input_ids) < len(input_ids):
-            _llama.log_if_verbose(
-                'Thread.warmup: processing thread content with model ...'
-            )
-            self.llama.generate(input_tokens=input_ids, n_predict=0)
+            _llama.log_if_verbose('Thread.warmup: processing thread content with model ...')
+            with suppress_output(disable=_llama.get_verbose()):
+                self.llama.generate(input_tokens=input_ids, n_predict=0)
+        
         # if the above condition is not True, the thread is already in the cache, so
         # nothing needs to be done
         _llama.log_if_verbose('Thread.warmup: done')

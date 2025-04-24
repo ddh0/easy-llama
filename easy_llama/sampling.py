@@ -35,7 +35,7 @@ class SamplerParams:
     without having to specify a Llama object. In turn, the Llama class can use these presets to
     create the actual SamplerParams object it needs for sampling."""
 
-    # NOTE: as of 2025-01-01, the default sampler chain for llama-cli is:
+    # NOTE: as of 2025-04-04, the default sampler chain for llama-cli is:
     #
     #       logits -> logit-bias -> penalties -> dry -> top-k -> typical -> top-p -> min-p ->
     #       xtc -> temp-ext -> dist
@@ -87,8 +87,8 @@ class SamplerParams:
         #
         self,
         llama: Llama,    # some samplers require info about n_ctx_train, n_vocab, etc.
-        seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use random seed
-
+        
+        seed:               int   = -1,    # the seed used to initialize llama_sampler; if <= 0, use random seed
         top_k:              int   = -1,    # <= 0 to disable
         top_p:              float = 1.0,   # 1.0 to disable
         min_p:              float = 0.1,   # 0.0 to disable
@@ -432,8 +432,8 @@ class SamplerPreset:
     
     def __init__(
         self,
-        seed:  int = -1, # the seed used to initialize llama_sampler; if <= 0, use random seed
 
+        seed:               int   = -1,    # the seed used to initialize llama_sampler; if <= 0, use random seed
         top_k:              int   = -1,    # <= 0 to disable
         top_p:              float = 1.0,   # 1.0 to disable
         min_p:              float = 0.1,   # 0.0 to disable

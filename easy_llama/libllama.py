@@ -72,8 +72,8 @@ class GGMLType(IntEnum):
     GGML_TYPE_F16     = 1
     GGML_TYPE_Q4_0    = 2
     GGML_TYPE_Q4_1    = 3
-    # GGML_TYPE_Q4_2  = 4 -- support has been removed
-    # GGML_TYPE_Q4_3  = 5 -- support has been removed
+    # GGML_TYPE_Q4_2  = 4 # support has been removed
+    # GGML_TYPE_Q4_3  = 5 # support has been removed
     GGML_TYPE_Q5_0    = 6
     GGML_TYPE_Q5_1    = 7
     GGML_TYPE_Q8_0    = 8
@@ -99,10 +99,10 @@ class GGMLType(IntEnum):
     GGML_TYPE_F64     = 28
     GGML_TYPE_IQ1_M   = 29
     GGML_TYPE_BF16    = 30
-    # GGML_TYPE_Q4_0_4_4 = 31 -- support has been removed from gguf files
+    # GGML_TYPE_Q4_0_4_4 = 31 # support has been removed from gguf files
     # GGML_TYPE_Q4_0_4_8 = 32
     # GGML_TYPE_Q4_0_8_8 = 33
-    GGML_TYPE_TQ1_0   = 3,
+    GGML_TYPE_TQ1_0   = 34,
     GGML_TYPE_TQ2_0   = 35
     # GGML_TYPE_IQ4_NL_4_4 = 36
     # GGML_TYPE_IQ4_NL_4_8 = 37
@@ -256,6 +256,9 @@ class LlamaFType(IntEnum):
     LLAMA_FTYPE_MOSTLY_F16           = 1  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q4_0          = 2  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q4_1          = 3  # except 1d tensors
+    # LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16 = 4, # support has been removed
+    # LLAMA_FTYPE_MOSTLY_Q4_2          = 5, # support has been removed
+    # LLAMA_FTYPE_MOSTLY_Q4_3          = 6, # support has been removed
     LLAMA_FTYPE_MOSTLY_Q8_0          = 7  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q5_0          = 8  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q5_1          = 9  # except 1d tensors
@@ -282,9 +285,9 @@ class LlamaFType(IntEnum):
     LLAMA_FTYPE_MOSTLY_IQ4_XS        = 30 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_IQ1_M         = 31 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_BF16          = 32 # except 1d tensors
-    # LLAMA_FTYPE_MOSTLY_Q4_0_4_4      = 33 # except 1d tensors
-    # LLAMA_FTYPE_MOSTLY_Q4_0_4_8      = 34 # except 1d tensors
-    # LLAMA_FTYPE_MOSTLY_Q4_0_8_8      = 35 # except 1d tensors
+    # LLAMA_FTYPE_MOSTLY_Q4_0_4_4      = 33 # removed from gguf files, use Q4_0 and runtime repack
+    # LLAMA_FTYPE_MOSTLY_Q4_0_4_8      = 34 # removed from gguf files, use Q4_0 and runtime repack
+    # LLAMA_FTYPE_MOSTLY_Q4_0_8_8      = 35 # removed from gguf files, use Q4_0 and runtime repack
     LLAMA_FTYPE_MOSTLY_TQ1_0         = 36 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_TQ2_0         = 37 # except 1d tensors
 

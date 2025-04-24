@@ -842,21 +842,21 @@ class Llama:
         #
 
         self._model = _LlamaModel(
-            path_model=path_model,
-            devices=kwargs.get('devices'),
-            tensor_buft_override=kwargs.get('tensor_buft_override'),
-            n_gpu_layers=n_gpu_layers,
-            split_mode=kwargs.get('split_mode'),
-            main_gpu=kwargs.get('main_gpu'),
-            tensor_split=kwargs.get('tensor_split'),
-            rpc_servers=kwargs.get('rpc_servers'),
-            progress_callback=kwargs.get('progress_callback'),
-            progress_callback_user_data=kwargs.get('progress_callback_user_data'),
-            kv_overrides=kwargs.get('kv_overrides'),
-            vocab_only=kwargs.get('vocab_only'),
-            use_mmap=kwargs.get('use_mmap'),
-            use_mlock=kwargs.get('use_mlock'),
-            check_tensors=kwargs.get('check_tensors')
+            path_model                  = path_model,
+            devices                     = kwargs.get('devices'),
+            tensor_buft_override        = kwargs.get('tensor_buft_override'),
+            n_gpu_layers                = n_gpu_layers,
+            split_mode                  = kwargs.get('split_mode'),
+            main_gpu                    = kwargs.get('main_gpu'),
+            tensor_split                = kwargs.get('tensor_split'),
+            rpc_servers                 = kwargs.get('rpc_servers'),
+            progress_callback           = kwargs.get('progress_callback'),
+            progress_callback_user_data = kwargs.get('progress_callback_user_data'),
+            kv_overrides                = kwargs.get('kv_overrides'),
+            vocab_only                  = kwargs.get('vocab_only'),
+            use_mmap                    = kwargs.get('use_mmap'),
+            use_mlock                   = kwargs.get('use_mlock'),
+            check_tensors               = kwargs.get('check_tensors')
         )
         
         self._vocab = lib.llama_model_get_vocab(self._model.model)
@@ -907,34 +907,34 @@ class Llama:
         #
         
         self._ctx = _LlamaCtx(
-            model=self._model,
-            n_ctx=n_ctx,
-            n_batch=kwargs.get('n_batch'),
-            n_ubatch=kwargs.get('n_ubatch'),
-            n_seq_max=1,
-            n_threads=_n_threads,
-            n_threads_batch=_n_threads_batch,
-            rope_scaling_type=kwargs.get('role_scaling_type'),
-            pooling_type=kwargs.get('pooling_type'),
-            attention_type=kwargs.get('attention_type'),
-            rope_freq_base=_rope_freq_base,
-            rope_freq_scale=kwargs.get('rope_freq_scale'),
-            yarn_ext_factor=kwargs.get('yarn_ext_factor'),
-            yarn_attn_factor=kwargs.get('yarn_attn_factor'),
-            yarn_beta_fast=kwargs.get('yarn_beta_fast'),
-            yarn_beta_slow=kwargs.get('yarn_beta_slow'),
-            yarn_orig_ctx=kwargs.get('yarn_orig_ctx'),
-            defrag_thold=kwargs.get('defrag_thold'),
-            cb_eval=kwargs.get('cb_eval'),
-            cb_eval_user_data=kwargs.get('cb_eval_user_data'),
-            type_k=type_k,
-            type_v=type_v,
-            embeddings=kwargs.get('embeddings'),
-            offload_kqv=offload_kqv,
-            flash_attn=flash_attn,
-            no_perf=kwargs.get('no_perf'),
-            abort_callback=kwargs.get('abort_callback'),
-            abort_callback_data=kwargs.get('abort_callback_data')
+            model               = self._model,
+            n_ctx               = n_ctx,
+            n_batch             = kwargs.get('n_batch'),
+            n_ubatch            = kwargs.get('n_ubatch'),
+            # n_seq_max           = None,
+            n_threads           = _n_threads,
+            n_threads_batch     = _n_threads_batch,
+            rope_scaling_type   = kwargs.get('rope_scaling_type'),
+            pooling_type        = kwargs.get('pooling_type'),
+            attention_type      = kwargs.get('attention_type'),
+            rope_freq_base      = _rope_freq_base,
+            rope_freq_scale     = kwargs.get('rope_freq_scale'),
+            yarn_ext_factor     = kwargs.get('yarn_ext_factor'),
+            yarn_attn_factor    = kwargs.get('yarn_attn_factor'),
+            yarn_beta_fast      = kwargs.get('yarn_beta_fast'),
+            yarn_beta_slow      = kwargs.get('yarn_beta_slow'),
+            yarn_orig_ctx       = kwargs.get('yarn_orig_ctx'),
+            defrag_thold        = kwargs.get('defrag_thold'),
+            cb_eval             = kwargs.get('cb_eval'),
+            cb_eval_user_data   = kwargs.get('cb_eval_user_data'),
+            type_k              = type_k,
+            type_v              = type_v,
+            embeddings          = kwargs.get('embeddings'),
+            offload_kqv         = offload_kqv,
+            flash_attn          = flash_attn,
+            no_perf             = kwargs.get('no_perf'),
+            abort_callback      = kwargs.get('abort_callback'),
+            abort_callback_data = kwargs.get('abort_callback_data')
         )
 
         #
@@ -976,6 +976,8 @@ class Llama:
         # Store Llama metadata as attributes for faster access internally
         #
 
+        self._name                  = self.name()
+        self._bpw                   = self.bpw()
         self._n_ctx                 = self.n_ctx()
         self._n_batch               = self.n_batch()
         self._n_ubatch              = self.n_ubatch()
@@ -993,7 +995,6 @@ class Llama:
         self._model_size_bytes      = self.model_size_bytes()
         self._chat_template         = self.chat_template()
         self._n_params              = self.n_params()
-        self._bpw                   = self.bpw()
         self._has_encoder           = self.has_encoder()
         self._has_decoder           = self.has_decoder()
         self._is_recurrent          = self.is_recurrent()
@@ -1051,11 +1052,7 @@ class Llama:
             f"Llama("
             f"path_model={self._model.path_model!r}, "
             f"n_gpu_layers={self._model.params.n_gpu_layers}, "
-            f"use_mmap={self._model.params.use_mmap}, "
-            f"use_mlock={self._model.params.use_mlock}, "
             f"n_ctx={self._n_ctx}, "
-            f"n_batch={self._n_batch}, "
-            f"rope_freq_base={self._ctx.params.rope_freq_base}, "
             f"type_k={self._ctx.params.type_k}, "
             f"type_v={self._ctx.params.type_v}, "
             f"offload_kqv={self._ctx.params.offload_kqv}, "
