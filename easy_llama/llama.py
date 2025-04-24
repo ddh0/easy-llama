@@ -977,7 +977,6 @@ class Llama:
         #
 
         self._name                  = self.name()
-        self._bpw                   = self.bpw()
         self._n_ctx                 = self.n_ctx()
         self._n_batch               = self.n_batch()
         self._n_ubatch              = self.n_ubatch()
@@ -995,6 +994,7 @@ class Llama:
         self._model_size_bytes      = self.model_size_bytes()
         self._chat_template         = self.chat_template()
         self._n_params              = self.n_params()
+        self._bpw                   = self.bpw()
         self._has_encoder           = self.has_encoder()
         self._has_decoder           = self.has_decoder()
         self._is_recurrent          = self.is_recurrent()
