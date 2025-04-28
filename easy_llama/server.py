@@ -4,17 +4,76 @@
 
 """The easy-llama FastAPI server, including an API endpoint and a WebUI"""
 
-# XXX: This module is WIP.
-
-import sys
+import os
 import uvicorn
 
 import easy_llama as ez
 
 from typing              import Optional, Union, Literal
-from fastapi             import FastAPI, APIRouter
+from fastapi             import FastAPI, APIRouter, Body
+from pydantic            import BaseModel, ConfigDict
 from easy_llama.utils    import assert_type
 from fastapi.staticfiles import StaticFiles
+
+WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
+
+#
+# Pydantic Models for FastAPI
+#
+
+class MessageModel(BaseModel):
+    role: str
+    content: str
+    timestamp: int # seconds since unix epoch when the message was sent
+
+class SendRequestModel(BaseModel):
+    message: MessageModel
+    model_config = ConfigDict(extra='allow') # other fields, like `n_tokens_input`, are optional
+
+class SamplerSettingsModel(BaseModel):
+    seed:                  Optional[int]
+    top_k:                 Optional[int]
+    top_p:                 Optional[float]
+    min_p:                 Optional[float]
+    xtc_probability:       Optional[float]
+    xtc_threshold:         Optional[float]
+    typical_p:             Optional[float]
+    temp:                  Optional[float]
+    dynatemp_delta:        Optional[float]
+    dynatemp_exponent:     Optional[float]
+    penalty_last_n:        Optional[int]
+    penalty_repeat:        Optional[float]
+    penalty_freq:          Optional[float]
+    penalty_present:       Optional[float]
+    dry_multiplier:        Optional[float]
+    dry_base:              Optional[float]
+    dry_allowed_length:    Optional[int]
+    dry_penalty_last_n:    Optional[int]
+    mirostat:              Optional[int]
+    top_n_sigma:           Optional[float]
+    mirostat_tau:          Optional[float]
+    mirostat_eta:          Optional[float]
+    dry_sequence_breakers: Optional[list[str]]
+    logit_bias:            Optional[dict[int, float]]
+
+class SendResponseModel(BaseModel):
+    role: str
+    content: str
+    n_input_tokens: int
+    n_output_tokens: int
+
+class InfoResponseModel(BaseModel):
+    model_name: str
+    model_n_params: int
+    model_bpw: float
+    n_tokens: int
+    n_ctx: int
+    n_ctx_train: int
+    n_thread_tokens: int
+    n_thread_messages: int
+
+class SummaryResponseModel(BaseModel):
+    summary: str
 
 class Server:
     """The easy-llama FastAPI server, providing a WebUI and an API router"""
@@ -40,14 +99,14 @@ class Server:
 
         # mount components
         self.app.include_router(self.api_router)
-        # self.app.mount(
-        #     "/",
-        #     StaticFiles(
-        #         directory="webui",
-        #         html=True
-        #     ),
-        #     name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
-        # )
+        self.app.mount(
+            "/",
+            StaticFiles(
+                directory=WEBUI_DIRECTORY,
+                html=True
+            ),
+            name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
+        )
     
     def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
         ez.utils.log(f'[easy-llama.Server @ {self.host}:{self.port}] {text}', level=level)
@@ -63,17 +122,17 @@ class Server:
 
     def setup_api_endpoints(self):
 
-        @self.api_router.post("/send")
-        async def send(content: str) -> dict:
+        @self.api_router.post("/send", response_model=SendResponseModel)
+        async def send(request: SendRequestModel = Body(...)) -> dict[str, Union[str, int]]:
             """Send a message in this thread as the user and return the generated response.
             This adds your message and the bot's message to the thread."""
             self.thread.messages.append({
                 'role': 'user',
-                'content': content
+                'content': request.message.content
             })
-            input_tokens = self.thread.get_input_ids(role='bot')
+            input_toks = self.thread.get_input_ids(role='bot')
             response_toks = self.thread.llama.generate(
-                input_tokens=input_tokens,
+                input_tokens=input_toks,
                 n_predict=-1,
                 stop_tokens=self.thread._stop_tokens,
                 sampler_preset=self.thread.sampler_preset
@@ -86,21 +145,21 @@ class Server:
             return {
                 'role': 'bot',
                 'content': response_txt,
-                'n_input_tokens': len(input_tokens),
+                'n_input_tokens': len(input_toks),
                 'n_output_tokens': len(response_toks)
             }
 
         @self.api_router.post("/add_message")
-        async def add_message(role: str, content: str) -> None:
+        async def add_message(message: MessageModel = Body(...)) -> None:
             """Add a message to the Thread without triggering a response"""
-            self.thread.add_message(role, content)
+            self.thread.add_message(message.role, message.content)
 
-        @self.api_router.post("/trigger")
-        async def trigger() -> str:
-            """Trigger a new message to be generated, even without sending a message"""
-            input_ids = self.thread.get_input_ids(role='bot')
+        @self.api_router.post("/trigger", response_model=SendResponseModel)
+        async def trigger() -> dict[str, Union[str, int]]:
+            """Trigger a new message to be generated"""
+            input_toks = self.thread.get_input_ids(role='bot')
             response_toks = self.thread.llama.generate(
-                input_tokens=input_ids,
+                input_tokens=input_toks,
                 n_predict=-1,
                 stop_tokens=self.thread._stop_tokens,
                 sampler_preset=self.thread.sampler_preset
@@ -110,41 +169,48 @@ class Server:
                 'role': 'bot',
                 'content': response_txt
             })
-            return response_txt
+            return {
+                'role': 'bot',
+                'content': response_txt,
+                'n_input_tokens': len(input_toks),
+                'n_output_tokens': len(response_toks)
+            }
 
-        @self.api_router.get("/messages")
+        @self.api_router.get("/messages", response_model=list[MessageModel])
         async def messages() -> list[dict]:
             """Get a list of all messages in this thread"""
             return self.thread.messages
 
-        @self.api_router.post("/sampler")
-        async def sampler(
-            seed:                  Optional[int]              = None,
-            top_k:                 Optional[int]              = None,
-            top_p:                 Optional[float]            = None,
-            min_p:                 Optional[float]            = None,
-            xtc_probability:       Optional[float]            = None,
-            xtc_threshold:         Optional[float]            = None,
-            typical_p:             Optional[float]            = None,
-            temp:                  Optional[float]            = None,
-            dynatemp_delta:        Optional[float]            = None,
-            dynatemp_exponent:     Optional[float]            = None,
-            penalty_last_n:        Optional[int]              = None,
-            penalty_repeat:        Optional[float]            = None,
-            penalty_freq:          Optional[float]            = None,
-            penalty_present:       Optional[float]            = None,
-            dry_multiplier:        Optional[float]            = None,
-            dry_base:              Optional[float]            = None,
-            dry_allowed_length:    Optional[int]              = None,
-            dry_penalty_last_n:    Optional[int]              = None,
-            mirostat:              Optional[int]              = None,
-            top_n_sigma:           Optional[float]            = None,
-            mirostat_tau:          Optional[float]            = None,
-            mirostat_eta:          Optional[float]            = None,
-            dry_sequence_breakers: Optional[list[str]]        = None,
-            logit_bias:            Optional[dict[int, float]] = None
-        ) -> dict[str, Union[int, float, list[str], dict[int, float]]]:
+        @self.api_router.post("/sampler", response_model=SamplerSettingsModel)
+        async def sampler(settings: SamplerSettingsModel = Body(...)) -> dict[
+            str, Union[int, float, list[str], dict[int, float]]
+        ]:
             """Control the sampler settings over the API"""
+
+            seed                  = settings.seed
+            top_k                 = settings.top_k
+            top_p                 = settings.top_p
+            min_p                 = settings.min_p
+            xtc_probability       = settings.xtc_probability
+            xtc_threshold         = settings.xtc_threshold
+            typical_p             = settings.typical_p
+            temp                  = settings.temp
+            dynatemp_delta        = settings.dynatemp_delta
+            dynatemp_exponent     = settings.dynatemp_exponent
+            penalty_last_n        = settings.penalty_last_n
+            penalty_repeat        = settings.penalty_repeat
+            penalty_freq          = settings.penalty_freq
+            penalty_present       = settings.penalty_present
+            dry_multiplier        = settings.dry_multiplier
+            dry_base              = settings.dry_base
+            dry_allowed_length    = settings.dry_allowed_length
+            dry_penalty_last_n    = settings.dry_penalty_last_n
+            mirostat              = settings.mirostat
+            top_n_sigma           = settings.top_n_sigma
+            mirostat_tau          = settings.mirostat_tau
+            mirostat_eta          = settings.mirostat_eta
+            dry_sequence_breakers = settings.dry_sequence_breakers
+            logit_bias            = settings.logit_bias
             
             current = self.thread.sampler_preset
             
@@ -229,41 +295,41 @@ class Server:
                 'logit_bias'            : new_preset.logit_bias
             }
 
-        @self.api_router.get("/summarize")
-        async def summarize() -> str:
+        @self.api_router.get("/summarize", response_model=SummaryResponseModel)
+        async def summarize() -> dict[str, str]:
             """Generate and return a summary of the thread content"""
-            return self.thread.summarize()
+            return {"summary": self.thread.summarize()}
 
-        @self.api_router.get("/info")
-        async def get_info() -> dict:
+        @self.api_router.get("/info", response_model=InfoResponseModel)
+        async def get_info() -> dict[str, Union[str, int, float]]:
             """Return some info about the llama model and the thread"""
             with ez.utils.suppress_output():
                 input_ids = self.thread.get_input_ids(role=None)
             n_thread_tokens = len(input_ids)
             n_ctx = self.thread.llama.n_ctx()
             c = (n_thread_tokens/n_ctx) * 100
-            ctx_used_pct = int(c) + (c > int(c)) # round up to next integer
             return {
                 'model_name': self.thread.llama.name(),
                 'model_n_params': self.thread.llama.n_params(),
                 'model_bpw': self.thread.llama.bpw(),
+                'n_tokens': self.thread.llama.pos,
                 'n_ctx': n_ctx,
                 'n_ctx_train': self.thread.llama.n_ctx_train(),
                 'n_thread_tokens': n_thread_tokens,
-                'n_thread_messages': len(self.messages),
-                'ctx_used_pct': ctx_used_pct
+                'n_thread_messages': len(self.thread.messages)
             }
 
         @self.api_router.post("/cancel")
-        async def cancel() -> None:
+        async def cancel() -> dict:
             """If the model is currently generating, cancel it. Otherwise, do nothing."""
             # TODO
-            pass
+            return {"status": "success"}
 
         @self.api_router.post("/reset")
-        async def reset() -> None:
+        async def reset() -> dict:
             """Reset the thread to its default state"""
             self.thread.reset()
+            return {"status": "success"}
 
     def run(self):
         self.log('starting uvicorn!')
@@ -271,4 +337,3 @@ class Server:
             uvicorn.run(self.app, host=self.host, port=self.port)
         except Exception as exc:
             self.log(f'exception in uvicorn: {type(exc).__name__}: {exc}', 3)
-            sys.exit(1)

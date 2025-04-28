@@ -74,8 +74,7 @@ class Thread:
             f"Thread("
             f"llama={self.llama!r}, "
             f"prompt_format={self.prompt_format!r}, "
-            f"sampler_preset={self._sampler_preset!r}, "
-            f"messages={self.messages!r}"
+            f"sampler_preset={self._sampler_preset!r}"
             f")"
         )
     
@@ -115,6 +114,7 @@ class Thread:
                     add_special=False,
                     parse_special=True
                 ))
+            
             elif first_msg['role'].lower() in Thread.valid_user_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.user_prefix()),
@@ -131,6 +131,7 @@ class Thread:
                     add_special=False,
                     parse_special=True
                 ))
+            
             elif first_msg['role'].lower() in Thread.valid_bot_roles:
                 input_ids.extend(self.llama.tokenize(
                     text_bytes=ez_encode(self.prompt_format.bot_prefix()),
@@ -147,10 +148,12 @@ class Thread:
                     add_special=False,
                     parse_special=True
                 ))
+            
             else:
                 raise ValueError(
                     f'Thread.get_input_ids: first message has invalid role {role!r}'
                 )
+            
             # all the other messages are treated the same
             i = 0
             for msg in self.messages[1:]:
@@ -195,6 +198,7 @@ class Thread:
                     raise ValueError(
                         f'Thread.get_input_ids: message {i} has invalid role {role!r}'
                     )
+        
         if role is not None:
             # append the role prefix tokens to the end
             # (if role is None, no prefix is appended)
@@ -216,18 +220,22 @@ class Thread:
                 ))
             else:
                 raise ValueError(f'Thread.get_input_ids: invalid role {role!r}')
+        
         # input_ids is now fully constructed
         n_input_ids = len(input_ids)
+
         _llama.log_if_verbose(
             f'Thread.get_input_ids: converted {len(self.messages)} messages to '
             f'{n_input_ids} tokens'
         )
+
         if n_input_ids >= self.llama._n_ctx:
             log(
                 f'Thread.get_input_ids: length of input_ids {n_input_ids} '
                 f'equals or exceeds the current context length '
                 f'{self.llama._n_ctx}', 2
             )
+        
         return input_ids
     
     def send(self, content: str) -> str:

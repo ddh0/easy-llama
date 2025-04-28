@@ -1475,7 +1475,7 @@ class Llama:
                 batches.append(batch_tokens)
         return batches
     
-    def set_context(self, input_tokens: list[int]) -> list[int]:
+    def _set_context(self, input_tokens: list[int]) -> list[int]:
         """Prepare the KV cache for the next llama_decode, by finding the longest prefix match
         from the tokens in the cache and the tokens you provide here.
 
@@ -1592,7 +1592,7 @@ class Llama:
             actual_input_tokens = input_tokens
             n_actual_input_tokens = len(input_tokens)
         else:
-            actual_input_tokens = self.set_context(input_tokens)
+            actual_input_tokens = self._set_context(input_tokens)
 
             n_actual_input_tokens = len(actual_input_tokens)
             n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
@@ -1648,7 +1648,7 @@ class Llama:
 
         n_input_tokens = len(input_tokens)
 
-        actual_input_tokens = self.set_context(input_tokens)
+        actual_input_tokens = self._set_context(input_tokens)
 
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
@@ -1715,7 +1715,7 @@ class Llama:
 
         n_input_tokens = len(input_tokens)
 
-        actual_input_tokens = self.set_context(input_tokens)
+        actual_input_tokens = self._set_context(input_tokens)
 
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
@@ -1832,7 +1832,7 @@ class Llama:
 
         n_input_tokens = len(input_tokens)
 
-        actual_input_tokens = self.set_context(input_tokens)
+        actual_input_tokens = self._set_context(input_tokens)
 
         n_actual_input_tokens = len(actual_input_tokens)
         n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
