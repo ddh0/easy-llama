@@ -763,7 +763,7 @@ class Llama:
         n_threads_batch: int = 0,
         type_k: Optional[int] = None,
         type_v: Optional[int] = None,
-        offload_kqv: bool = False,
+        offload_kqv: bool = False, # XXX: can you make this actually offload the whole KV cache, not just per-layer?
         flash_attn: bool = False,
         warmup: bool = True,
         verbose: bool = True,
@@ -908,7 +908,7 @@ class Llama:
         
         self._ctx = _LlamaCtx(
             model               = self._model,
-            n_ctx               = n_ctx,
+            n_ctx               = _n_ctx,
             n_batch             = kwargs.get('n_batch'),
             n_ubatch            = kwargs.get('n_ubatch'),
             # n_seq_max           = None,
@@ -1610,11 +1610,13 @@ class Llama:
         # process each batch one-by-one
         if logits_all:
             all_logits = []
+            # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
             for batch in batches:
                 batch_logits = self._process_batch(batch, logits_all=True)
                 all_logits.append(batch_logits)
             final_logits = np.concatenate(all_logits, axis=0)
         else:
+            # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
             for batch in batches:
                 final_logits = self._process_batch(batch, logits_all=False)
 
@@ -1667,6 +1669,7 @@ class Llama:
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
+        # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
         for batch in batches:
             self._process_batch(batch, logits_all=False)
         
@@ -1742,6 +1745,7 @@ class Llama:
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
+        # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
         for batch in batches:
             self._process_batch(batch, logits_all=False)
         
@@ -1858,6 +1862,7 @@ class Llama:
         batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
+        # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
         for batch in batches:
             self._process_batch(batch, logits_all=False)
         
@@ -1911,15 +1916,10 @@ class Llama:
         n_tokens_tg: Optional[int] = None,
         n_runs: Optional[int] = None
     ) -> list[dict]:
-        # TODO: onelinify this
-        if n_tokens_pp is None:
-            n_tokens_pp = self.n_batch()
-        if n_tokens_tg is None:
-            n_tokens_tg = 10
-        if n_runs is None:
-            n_runs = 3
         
-        log_if_verbose('starting benchmark')
+        n_tokens_pp = n_tokens_pp if n_tokens_pp is not None else self.n_batch()
+        n_tokens_tg = n_tokens_tg if n_tokens_tg is not None else 10
+        n_runs = n_runs if n_runs is not None else 3
 
         results = []
         total_pp_time_ns = 0
@@ -1927,25 +1927,20 @@ class Llama:
 
         for i in range(1, n_runs+1):
 
-            log_if_verbose(
-                f'starting run {i}/{n_runs}:'
-                f' -- n_tokens_pp: {n_tokens_pp} -- n_tokens_tg: {n_tokens_tg}'
-            )
-            log_if_verbose(f'... please wait ...')
+            log_if_verbose(f'benchmark: starting run {i}/{n_runs}:')
 
+            log_if_verbose(f'benchmark: -- n_tokens_pp: {n_tokens_pp} ... please wait ...')            
             with suppress_output():
-                
-                # reset the model state to invalidate prompt cache
                 self.reset()
-
-                # process 2 full batches of tokens to determine the prompt processing speed (pp)
                 self.eval(input_tokens=[0] * n_tokens_pp)
                 pp_ns = self._stopwatch.get_elapsed_time_pp()
                 total_pp_time_ns += pp_ns
-
-                # generate new tokens to determine the text generation speed (tg)
+            
+            log_if_verbose(f'benchmark: -- n_tokens_tg: {n_tokens_tg} ... please wait ...')
+            with suppress_output():
+                self.reset()
                 self.generate(
-                    input_tokens=[0] * n_tokens_pp,
+                    input_tokens=[0],
                     n_predict=n_tokens_tg,
                     stop_tokens=[],
                     sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
@@ -1969,15 +1964,14 @@ class Llama:
         avg_pp_tok_per_sec = n_tokens_pp / (avg_pp_time_ns / 1e9)
         avg_tg_tok_per_sec = n_tokens_tg / (avg_tg_time_ns / 1e9)
 
-        if get_verbose():
-            log(
-                f'average pp speed for {n_tokens_pp:>7} tokens over {n_runs} runs: '
-                f'{avg_pp_time_ms:>13.3f}ms ({avg_pp_tok_per_sec:10.2f} tok/s)', 4
-            )
-            log(
-                f'average tg speed for {n_tokens_tg:>7} tokens over {n_runs} runs: '
-                f'{avg_tg_time_ms:>13.3f}ms ({avg_tg_tok_per_sec:10.2f} tok/s)', 4
-            )
+        log_if_verbose(
+            f'average pp speed for {n_tokens_pp:>7} tokens over {n_runs} runs: '
+            f'{avg_pp_time_ms:>13.3f}ms ({avg_pp_tok_per_sec:10.2f} tok/s)', 4
+        )
+        log_if_verbose(
+            f'average tg speed for {n_tokens_tg:>7} tokens over {n_runs} runs: '
+            f'{avg_tg_time_ms:>13.3f}ms ({avg_tg_tok_per_sec:10.2f} tok/s)', 4
+        )
 
         return results
     
