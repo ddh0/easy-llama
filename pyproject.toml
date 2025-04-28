@@ -39,11 +39,11 @@ Homepage = "https://github.com/ddh0/easy-llama/"
 Documentation = "https://github.com/ddh0/easy-llama/blob/main/DOCS.md"
 
 [tool.setuptools]
-packages = ["easy_llama", "easy_llama.assets"]
+packages = ["easy_llama", "easy_llama.webui"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"easy_llama.assets" = [
+"easy_llama.webui" = [
     "*.ico",
     "*.png",
     "*.html",

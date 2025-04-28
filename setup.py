@@ -18,9 +18,9 @@ setup(
     author_email='dylanhalladay02@icloud.com',
     license='MIT',
     include_package_data=True,
-    packages=['easy_llama', 'easy_llama.assets'],
+    packages=['easy_llama', 'easy_llama.webui'],
     package_data={
-        'easy_llama.assets': [
+        'easy_llama.webui': [
             '*.ico',
             '*.png',
             '*.html',
