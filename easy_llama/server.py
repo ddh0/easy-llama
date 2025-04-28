@@ -24,11 +24,25 @@ WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 class MessageModel(BaseModel):
     role: str
     content: str
-    timestamp: int # seconds since unix epoch when the message was sent
 
-class SendRequestModel(BaseModel):
-    message: MessageModel
-    model_config = ConfigDict(extra='allow') # other fields, like `n_tokens_input`, are optional
+class SendResponseModel(BaseModel):
+    role: str
+    content: str
+    n_input_tokens: int
+    n_output_tokens: int
+
+class SummaryResponseModel(BaseModel):
+    summary: str
+
+class InfoResponseModel(BaseModel):
+    model_name: str
+    model_n_params: int
+    model_bpw: float
+    n_tokens: int
+    n_ctx: int
+    n_ctx_train: int
+    n_thread_tokens: int
+    n_thread_messages: int
 
 class SamplerSettingsModel(BaseModel):
     seed:                  Optional[int]
@@ -55,25 +69,6 @@ class SamplerSettingsModel(BaseModel):
     mirostat_eta:          Optional[float]
     dry_sequence_breakers: Optional[list[str]]
     logit_bias:            Optional[dict[int, float]]
-
-class SendResponseModel(BaseModel):
-    role: str
-    content: str
-    n_input_tokens: int
-    n_output_tokens: int
-
-class InfoResponseModel(BaseModel):
-    model_name: str
-    model_n_params: int
-    model_bpw: float
-    n_tokens: int
-    n_ctx: int
-    n_ctx_train: int
-    n_thread_tokens: int
-    n_thread_messages: int
-
-class SummaryResponseModel(BaseModel):
-    summary: str
 
 class Server:
     """The easy-llama FastAPI server, providing a WebUI and an API router"""
@@ -123,12 +118,12 @@ class Server:
     def setup_api_endpoints(self):
 
         @self.api_router.post("/send", response_model=SendResponseModel)
-        async def send(request: SendRequestModel = Body(...)) -> dict[str, Union[str, int]]:
+        async def send(message: MessageModel = Body(...)) -> dict[str, Union[str, int]]:
             """Send a message in this thread as the user and return the generated response.
             This adds your message and the bot's message to the thread."""
             self.thread.messages.append({
-                'role': 'user',
-                'content': request.message.content
+                'role': message.role,
+                'content': message.content
             })
             input_toks = self.thread.get_input_ids(role='bot')
             response_toks = self.thread.llama.generate(

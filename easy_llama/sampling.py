@@ -91,7 +91,7 @@ class SamplerParams:
         seed:               int   = -1,    # the seed used to initialize llama_sampler; if <= 0, use random seed
         top_k:              int   = -1,    # <= 0 to disable
         top_p:              float = 1.0,   # 1.0 to disable
-        min_p:              float = 0.1,   # 0.0 to disable
+        min_p:              float = 0.0,   # 0.0 to disable
         xtc_probability:    float = 0.0,   # 0.0 to disable
         xtc_threshold:      float = 0.1,   # > 0.5 to disable
         typical_p:          float = 1.0,   # 1.0 to disable
@@ -107,7 +107,7 @@ class SamplerParams:
         dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
         dry_penalty_last_n: int   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
         mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat v1, 2 = mirostat v2
-        top_n_sigma:        float = -1.0,  # -1.0 to disable
+        top_n_sigma:        float = 1.0,   # -1.0 to disable
         mirostat_tau:       float = 5.0,   # target entropy
         mirostat_eta:       float = 0.1,   # learning rate
 
@@ -436,7 +436,7 @@ class SamplerPreset:
         seed:               int   = -1,    # the seed used to initialize llama_sampler; if <= 0, use random seed
         top_k:              int   = -1,    # <= 0 to disable
         top_p:              float = 1.0,   # 1.0 to disable
-        min_p:              float = 0.1,   # 0.0 to disable
+        min_p:              float = 0.0,   # 0.0 to disable
         xtc_probability:    float = 0.0,   # 0.0 to disable
         xtc_threshold:      float = 0.1,   # > 0.5 to disable
         typical_p:          float = 1.0,   # 1.0 to disable
@@ -452,7 +452,7 @@ class SamplerPreset:
         dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
         dry_penalty_last_n: int   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
         mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat v1, 2 = mirostat v2
-        top_n_sigma:        float = -1.0,  # -1.0 to disable
+        top_n_sigma:        float = 1.0,   # -1.0 to disable
         mirostat_tau:       float = 5.0,   # target entropy
         mirostat_eta:       float = 0.1,   # learning rate
 
@@ -599,6 +599,28 @@ class SamplerPresets:
     )
     """Nucleus sampling as described in https://arxiv.org/abs/1904.09751 (more random)"""
 
+    TopNSigma = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.0,
+        temp = 1.0,
+        top_n_sigma = 1.0
+    )
+    """Top-nσ as described on [arXiv](https://arxiv.org/pdf/2411.07641) and
+    in [llama.cpp#11223](https://github.com/ggml-org/llama.cpp/pull/11223)"""
+
+    TopNSigmaRandom = SamplerPreset(
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.0,
+        temp = 1_000_000.0,
+        top_n_sigma = 1.0
+    )
+    """Top-nσ as described on [arXiv](https://arxiv.org/pdf/2411.07641) and
+    in [llama.cpp#11223](https://github.com/ggml-org/llama.cpp/pull/11223), except that
+    `temp = 1_000_000.0` to randomly select any token that is determined to be valid
+    by Top-nσ."""
+
     #
     # Samplers below this line are for specific models / model families
     #
@@ -658,3 +680,19 @@ class SamplerPresets:
     )
     """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
     (unofficial, but recommended)"""
+
+    Qwen3_Think = SamplerPreset(
+        top_k = 20,
+        top_p = 0.95,
+        min_p = 0.0,
+        temp = 0.6
+    )
+    """[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B/blob/main/README.md)"""
+
+    Qwen3_NoThink = SamplerPreset(
+        top_k = 20,
+        top_p = 0.8,
+        min_p = 0.0,
+        temp = 0.7
+    )
+    """[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B/blob/main/README.md)"""

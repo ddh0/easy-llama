@@ -164,6 +164,16 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
         else:
             return rounded
 
+def split_tokens_into_batches(tokens: list[int], n_batch: int) -> list[list[int]]:
+    """Split a list of tokens into smaller batches"""
+    batch_splits = range(0, len(tokens), n_batch)
+    batches: list[list[int]] = []
+    for i in batch_splits:
+        batch_tokens = tokens[i : i + n_batch]
+        if len(batch_tokens) > 0:
+            batches.append(batch_tokens)
+    return batches
+
 #
 # Exceptions and other classes
 #
@@ -1464,17 +1474,6 @@ class Llama:
                 break
         return i
     
-    @staticmethod
-    def split_tokens_into_batches(tokens: list[int], n_batch: int) -> list[list[int]]:
-        # split the input into batches of tokens
-        batch_splits = range(0, len(tokens), n_batch)
-        batches: list[list[int]] = []
-        for i in batch_splits:
-            batch_tokens = tokens[i : i + n_batch]
-            if len(batch_tokens) > 0:
-                batches.append(batch_tokens)
-        return batches
-    
     def _set_context(self, input_tokens: list[int]) -> list[int]:
         """Prepare the KV cache for the next llama_decode, by finding the longest prefix match
         from the tokens in the cache and the tokens you provide here.
@@ -1605,7 +1604,7 @@ class Llama:
         if n_actual_input_tokens == 0:
             return self.get_logits()
 
-        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
+        batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
         if logits_all:
@@ -1666,7 +1665,7 @@ class Llama:
             f'{n_actual_input_tokens} tokens to eval ...'
         )
 
-        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
+        batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
         # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
@@ -1742,7 +1741,7 @@ class Llama:
                 f'Llama.generate: predicting up to {n_predict} new tokens ...'
             )
 
-        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
+        batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
         # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
@@ -1859,7 +1858,7 @@ class Llama:
                 f'Llama.stream: predicting up to {n_predict} new tokens ...'
             )
 
-        batches = self.split_tokens_into_batches(actual_input_tokens, self._n_batch)
+        batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
         # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
