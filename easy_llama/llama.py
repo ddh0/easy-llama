@@ -20,8 +20,8 @@ import numpy as np
 from .utils    import (
     null_ptr_check, softmax, suppress_output, _SupportsWriteAndFlush, ptr, log, ez_decode
 )
+from typing    import Optional, Iterable, Union, Literal
 from .sampling import SamplerParams, SamplerPreset
-from typing    import Optional, Iterable, Union
 from .libllama import _internals, GGUFValueType
 from io        import BufferedReader
 
@@ -61,9 +61,9 @@ def get_verbose() -> bool:
     global _internal_verbose
     return _internal_verbose
 
-def log_if_verbose(text: str) -> None:
+def log_if_verbose(text: str, level: Literal[1,2,3,4] = 1) -> None:
     if get_verbose():
-        log(text)
+        log(text, level)
 
 def _init_backend_if_needed() -> None:
 
