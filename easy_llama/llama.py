@@ -1928,14 +1928,14 @@ class Llama:
 
             log_if_verbose(f'benchmark: starting run {i}/{n_runs}:')
 
-            log_if_verbose(f'benchmark: -- n_tokens_pp: {n_tokens_pp} ... please wait ...')            
+            log_if_verbose(f'benchmark: processing {n_tokens_pp} tokens ... please wait ...')            
             with suppress_output():
                 self.reset()
                 self.eval(input_tokens=[0] * n_tokens_pp)
                 pp_ns = self._stopwatch.get_elapsed_time_pp()
                 total_pp_time_ns += pp_ns
             
-            log_if_verbose(f'benchmark: -- n_tokens_tg: {n_tokens_tg} ... please wait ...')
+            log_if_verbose(f'benchmark: generating {n_tokens_tg} tokens ... please wait ...')
             with suppress_output():
                 self.reset()
                 self.generate(
@@ -2016,19 +2016,21 @@ class Llama:
             logit_bias            = sampler_preset.logit_bias
         )
 
-    def sample(self, params: Optional[SamplerParams] = None) -> int:
+    def sample(self, sampler_params: Optional[SamplerParams] = None) -> int:
         """Sample a token using the current context
 
         - params:
             The `sampling.SamplerParams` object which defines the sampling
             parameters to use. If this parameter is None, the default sampler
             paramater values will be used."""
-        params = params if params is not None else self._default_sampler_params
+        sampler_params = sampler_params if sampler_params is not None else (
+            self._default_sampler_params
+        )
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.sample')
-        id = lib.llama_sampler_sample(params.smpl, self._ctx.ctx, -1)
+        id = lib.llama_sampler_sample(sampler_params.smpl, self._ctx.ctx, -1)
         # llama_sampler_sample internally calls llama_sampler_accept.
         # uncomment the next line if this changes
-        #lib.llama_sampler_accept(params.smpl, id)
+        #lib.llama_sampler_accept(sampler_params.smpl, id)
         return id
     
     def get_logits(self) -> np.ndarray:

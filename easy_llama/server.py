@@ -11,9 +11,9 @@ import easy_llama as ez
 
 from typing              import Optional, Union, Literal
 from fastapi             import FastAPI, APIRouter, Body
-from pydantic            import BaseModel, ConfigDict
 from easy_llama.utils    import assert_type
 from fastapi.staticfiles import StaticFiles
+from pydantic            import BaseModel
 
 WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 

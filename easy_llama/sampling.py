@@ -181,29 +181,32 @@ class SamplerParams:
                 logit_bias=logit_bias_arr
             ))
         
-        # Top-K (where k == 128)
-        #
-        # NOTE: This improves performance by greatly reducing the number of
-        #       tokens that the penalties and DRY samplers need to consider. It
-        #       should have absolutely no effect on the output except under the
-        #       strangest and most unlikely circumstances (like when temp > 10.0
-        #       and all other samplers are explicitly disabled).
-        #
-        #       If you really need to bypass this, you can construct your own
-        #       llama_sampler_chain manually. But you probably don't need to.
-        #
-        # if any([
-        #     any([penalty_last_n != 0, penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]),
-        #     dry_multiplier > 0.0
-        # ]):         
-        self._chain_str += 'top-k 128 -> '
-        lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=128))
+        penalty_last_n = penalty_last_n if penalty_last_n >= 0 else llama.n_ctx()
+        _penalties_sampler_active = penalty_last_n != 0 and any(
+            [penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]
+        )
+        _dry_sampler_active = dry_multiplier > 0.0
+        _use_topk128_cutoff = _penalties_sampler_active or _dry_sampler_active
+        
+        if _use_topk128_cutoff:
+        
+            # Top-K (where k == 128)
+            #
+            # NOTE: This improves performance by greatly reducing the number of
+            #       tokens that the DRY and penalties samplers need to consider. It
+            #       should have absolutely no effect on the output except under the
+            #       strangest and most unlikely circumstances (like when temp > 10.0
+            #       and all other samplers are explicitly disabled).
+            #
+            #       If you really need to bypass this, you can construct your own
+            #       llama_sampler_chain manually. But you probably don't need to.
+            #      
+            self._chain_str += 'top-k 128 -> '
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=128))
 
         # Penalties
 
-        penalty_last_n = penalty_last_n if penalty_last_n >= 0 else llama.n_ctx()
-
-        if penalty_last_n != 0 and any([penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]):
+        if _penalties_sampler_active:
             self._chain_str += f'penalty last:{penalty_last_n}'
             self._chain_str += f' repeat:{penalty_repeat:.3f}' if penalty_repeat != 1.0 else ''
             self._chain_str += f' presence:{penalty_present:.3f}' if penalty_present != 0.0 else ''
@@ -218,7 +221,7 @@ class SamplerParams:
         
         # DRY
         
-        if dry_multiplier > 0.0:
+        if _dry_sampler_active:
             self._chain_str += f'DRY x{dry_multiplier:.2f} base:{dry_base:.2f} '
             self._chain_str += f'len:{dry_allowed_length} -> '
             # dry == D.R.Y. ("Don't Repeat Yourself")
