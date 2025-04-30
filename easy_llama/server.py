@@ -20,6 +20,9 @@ from pydantic                 import BaseModel
 
 WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 
+STATUS_RESPONSE_SUCCESS = {'success': True}
+STATUS_RESPONSE_FAILURE = {'success': False}
+
 #
 # Pydantic Models for FastAPI
 #
@@ -109,6 +112,11 @@ class Server:
 
         router = self._router # the decorators look ugly without this
 
+        @router.post("/ping", response_model=StatusResponseModel)
+        async def ping() -> dict:
+            """Do nothing except return `STATUS_RESPONSE_SUCCESS`"""
+            return STATUS_RESPONSE_SUCCESS
+        
         @router.post("/send", response_model=MessageResponseModel)
         async def send(message: MessageModel = Body(...)) -> dict[str, Union[str, int]]:
             """Send a message in this thread as the user and return the generated response.
@@ -140,19 +148,20 @@ class Server:
         async def add_message(message: MessageModel = Body(...)) -> dict:
             """Add a message to the Thread without triggering a response"""
             self._thread.add_message(message.role, message.content)
-            return {'success': True}
+            return STATUS_RESPONSE_SUCCESS
         
         @router.post("/set_system_prompt", response_model=StatusResponseModel)
         async def set_system_prompt(request: SetSysPromptRequestModel = Body(...)) -> dict:
             """Set the system prompt on-the-fly"""
+            # TODO: finish this function
             if len(self._thread.messages) > 0:
                 try:
                     role = self._thread.messages[0]['role']
                 except (IndexError, KeyError) as exc:
                     self.log('failed to set system prompt (could not get role)')
-                    return {'success': True}
-            
-
+                    return STATUS_RESPONSE_FAILURE
+                
+        
         @router.post("/trigger", response_model=MessageResponseModel)
         async def trigger() -> dict[str, Union[str, int]]:
             """Trigger a new message to be generated"""
@@ -185,17 +194,17 @@ class Server:
             """Generate and return a summary of the thread content"""
             return {"summary": self._thread.summarize()}
 
-        @router.post("/cancel")
+        @router.post("/cancel", response_model=StatusResponseModel)
         async def cancel() -> dict:
             """If the model is currently generating, cancel it. Otherwise, do nothing."""
-            # TODO
-            return {"status": "not implemented"}
+            self.log('endpoint `/api/cancel` is not implemented yet!', 2)
+            return STATUS_RESPONSE_FAILURE
 
-        @router.post("/reset")
+        @router.post("/reset", response_model=StatusResponseModel)
         async def reset() -> dict:
             """Reset the thread to its default state"""
             self._thread.reset()
-            return {"status": "success"}
+            return STATUS_RESPONSE_SUCCESS
         
         @router.get("/info", response_model=InfoResponseModel)
         async def get_info() -> dict[str, Union[str, int, float]]:
@@ -330,12 +339,12 @@ class Server:
             }
     
     def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
-        ez.utils.log(f'[easy-llama.Server @ {self.host}:{self.port}] {text}', level=level)
+        ez.utils.log(f'[easy-llama.Server @ {self._host}:{self._port}] {text}', level=level)
 
     def start(self):
         self.log('starting uvicorn')
         try:
-            uvicorn.run(self.app, host=self.host, port=self.port)
+            uvicorn.run(self.app, host=self._host, port=self._port)
         except Exception as exc:
             self.log(f'exception in uvicorn: {type(exc).__name__}: {exc}', 3)
             raise exc
