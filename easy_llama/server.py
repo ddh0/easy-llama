@@ -4,6 +4,8 @@
 
 """The easy-llama FastAPI server, including an API endpoint and a WebUI"""
 
+# NOTE: This module is WIP.
+
 import os
 import uvicorn
 
