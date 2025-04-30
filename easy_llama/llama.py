@@ -1023,6 +1023,11 @@ class Llama:
         self._token_fim_rep         = self.token_fim_rep()
         self._token_fim_sep         = self.token_fim_sep()
 
+        self._bos_str = self.token_to_piece(self._token_bos, True).decode()
+        """String representation of the BOS token"""
+        self._eos_str = self.token_to_piece(self._token_eos, True).decode()
+        """String representation of the EOS token"""
+
         self.eog_tokens = [i for i in range(self._n_vocab) if self.token_is_eog(i)]
         """A list of all tokens in the vocab that are marked as EOG
         (End-Of-Generation)"""

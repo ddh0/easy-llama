@@ -5,6 +5,7 @@
 """This file provides functionality for multi-turn conversations with Llama models."""
 
 import sys
+import jinja2
 import contextlib
 
 from .utils    import (
@@ -22,7 +23,7 @@ def KeyboardInterruptHandler():
     try:
         yield
     except KeyboardInterrupt:
-        print(ANSI.MODE_RESET_ALL, end='\n\n', flush=True)
+        print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
 
 class Thread:
 
@@ -45,8 +46,7 @@ class Thread:
         llama._validate_model_state()
 
         self.llama = llama
-        self.prompt_format = prompt_format
-
+        self.prompt_format = prompt_format        
         self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
 
         self.messages: list[dict[str, str]] = []
@@ -77,6 +77,54 @@ class Thread:
             f"sampler_preset={self._sampler_preset!r}"
             f")"
         )
+
+    def _messages_in_jinja_format(self) -> list[dict]:
+        jinja_messages = []
+        for message in self.messages:
+            try:
+                role = message['role']
+            except KeyError:
+                log(f'skipping message with no role!', 2)
+                continue
+            try:
+                content = message['content']
+            except KeyError:
+                log(f'skipping message with no content!', 2)
+                continue
+            if role in Thread.valid_system_roles:
+                jinja_messages.append({'role': 'system', 'content': content})
+            elif role in Thread.valid_user_roles:
+                jinja_messages.append({'role': 'user', 'content': content})
+            elif role in Thread.valid_bot_roles:
+                jinja_messages.append({'role': 'assistant', 'content': content})
+            else:
+                log(f'skipping message with invalid role {role!r}!', 2)
+        return jinja_messages
+    
+    def _render_messages(self) -> str:
+        """Render the Jinja template with current messages"""
+        try:
+            template = jinja2.Template(
+                source=self.llama._chat_template,
+                undefined=jinja2.StrictUndefined
+            )
+            context = {
+                'messages': self._messages_in_jinja_format(),
+                'add_generation_prompt': False,
+                'bos_token': self.llama._bos_str,
+                'eos_token': self.llama._eos_str,
+                **self.template_context
+            }
+            return template.render(context)
+        except jinja2.exceptions.TemplateSyntaxError as e:
+            log(f"_render_messages: invalid chat template syntax: {e}", 3)
+            raise ValueError(f"_render_messages: invalid chat template syntax: {e}") from e
+        except jinja2.exceptions.UndefinedError as e:
+            log(f"_render_messages: missing template variable: {e}", 3)
+            raise ValueError(f"_render_messages: missing template variable: {e}") from e
+        except Exception as e:
+            log(f"_render_messages: template rendering error: {e}", 3)
+            raise ValueError(f"_render_messages: template rendering error: {e}") from e
     
     def get_input_ids(self, role: Optional[str] = 'bot') -> list[int]:
         """Get a list of token IDs in this thread, to be used for inference

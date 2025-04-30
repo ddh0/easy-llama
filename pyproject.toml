@@ -31,7 +31,8 @@ classifiers = [
 dependencies = [
     "numpy",
     "fastapi",
-    "uvicorn"
+    "uvicorn",
+    "jinja2"
 ]
 
 [project.urls]

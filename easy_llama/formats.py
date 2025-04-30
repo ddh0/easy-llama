@@ -189,3 +189,26 @@ class PromptFormats:
             bot_prefix='<start_of_turn>model\n',
             bot_suffix='<end_of_turn>\n'
         )
+    
+    # this is just ChatML, but we can't have "NoThinking" without "Thinking"
+    def Qwen3Thinking(system_prompt: Optional[str] = None) -> PromptFormat:
+        return PromptFormat(
+            system_prefix='<|im_start|>system\n',
+            system_prompt=system_prompt if system_prompt is not None else '',
+            system_suffix='<|im_end|>\n',
+            user_prefix='<|im_start|>user\n',
+            user_suffix='<|im_end|>\n',
+            bot_prefix='<|im_start|>assistant\n',
+            bot_suffix='<|im_end|>\n'
+        )
+    
+    def Qwen3NoThinking(system_prompt: Optional[str] = None) -> PromptFormat:
+        return PromptFormat(
+            system_prefix='<|im_start|>system\n/no_think\n',
+            system_prompt=system_prompt if system_prompt is not None else '',
+            system_suffix='<|im_end|>\n',
+            user_prefix='<|im_start|>user\n',
+            user_suffix='<|im_end|>\n',
+            bot_prefix='<|im_start|>assistant\n<think>\n\n</think>\n\n',
+            bot_suffix='<|im_end|>\n'
+        )

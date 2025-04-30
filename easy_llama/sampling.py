@@ -88,28 +88,28 @@ class SamplerParams:
         self,
         llama: Llama,    # some samplers require info about n_ctx_train, n_vocab, etc.
         
-        seed:               int   = -1,    # the seed used to initialize llama_sampler; if <= 0, use random seed
-        top_k:              int   = -1,    # <= 0 to disable
-        top_p:              float = 1.0,   # 1.0 to disable
-        min_p:              float = 0.0,   # 0.0 to disable
-        xtc_probability:    float = 0.0,   # 0.0 to disable
-        xtc_threshold:      float = 0.1,   # > 0.5 to disable
-        typical_p:          float = 1.0,   # 1.0 to disable
-        temp:               float = 1.0,   # <= 0.0 to sample greedily
-        dynatemp_delta:     float = 0.0,   # 0.0 to disable
-        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
-        penalty_last_n:     int   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
-        penalty_repeat:     float = 1.0,   # 1.0 to disable
-        penalty_freq:       float = 0.0,   # 0.0 to disable
-        penalty_present:    float = 0.0,   # 0.0 to disable
-        dry_multiplier:     float = 0.0,   # 0.0 to disable;      DRY repetition penalty for tokens extending repetition:
-        dry_base:           float = 1.75,  # 0.0 to disable;      multiplier * base ^ (length of sequence before token - allowed length)
+        seed:               int   = -1,    # random seed: <= 0
+        top_k:              int   = 40,    # neutral: <= 0
+        top_p:              float = 0.95,  # neutral: 1.0
+        min_p:              float = 0.05,  # neutral: 0.0
+        xtc_probability:    float = 0.0,   # neutral: 0.0
+        xtc_threshold:      float = 0.1,   # disable: > 0.5
+        typical_p:          float = 1.0,   # neutral: 1.0
+        temp:               float = 0.8,   # neutral: 1.0, greedy: <= 0.0
+        dynatemp_delta:     float = 0.0,   # neutral: <= 0.0
+        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to dynamic temperature
+        penalty_last_n:     int   = 64,    # disable: 0, n_ctx: -1, last n tokens to penalize
+        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1
+        penalty_freq:       float = 0.0,   # neutral: 0.0
+        penalty_present:    float = 0.0,   # neutral: 0.0
+        dry_multiplier:     float = 0.0,   # disable: 0.0, DRY repetition penalty for tokens extending repetition:
+        dry_base:           float = 1.75,  # disable: 0.0, multiplier * base ^ (length of sequence before token - allowed length)
         dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
-        dry_penalty_last_n: int   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
-        mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat v1, 2 = mirostat v2
-        top_n_sigma:        float = 1.0,   # -1.0 to disable
-        mirostat_tau:       float = 5.0,   # target entropy
-        mirostat_eta:       float = 0.1,   # learning rate
+        dry_penalty_last_n: int   = -1,    # disable: 0, n_ctx: -1, how many tokens to scan for repetitions
+        mirostat:           int   = 0,     # disable: 0, use v1: 1, use v2: 2
+        top_n_sigma:        float = -1.0,  # disable: -1.0
+        mirostat_tau:       float = 5.0,   # target entropy for mirostat
+        mirostat_eta:       float = 0.1,   # learning rate for mirostat
 
         dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
 
@@ -154,6 +154,9 @@ class SamplerParams:
         self.top_n_sigma        = top_n_sigma
         self.mirostat_tau       = mirostat_tau
         self.mirostat_eta       = mirostat_eta
+
+        # TODO
+        # self._validate_params() # show warnings/errors for nonsensical sampler values
         
         self.dry_sequence_breakers = dry_sequence_breakers
 
@@ -436,28 +439,28 @@ class SamplerPreset:
     def __init__(
         self,
 
-        seed:               int   = -1,    # the seed used to initialize llama_sampler; if <= 0, use random seed
-        top_k:              int   = -1,    # <= 0 to disable
-        top_p:              float = 1.0,   # 1.0 to disable
-        min_p:              float = 0.0,   # 0.0 to disable
-        xtc_probability:    float = 0.0,   # 0.0 to disable
-        xtc_threshold:      float = 0.1,   # > 0.5 to disable
-        typical_p:          float = 1.0,   # 1.0 to disable
-        temp:               float = 1.0,   # <= 0.0 to sample greedily
-        dynatemp_delta:     float = 0.0,   # 0.0 to disable
-        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to temperature in dynamic temperature sampler
-        penalty_last_n:     int   = 64,    # last n tokens to penalize (0 = disable penalty, -1 = context size)
-        penalty_repeat:     float = 1.0,   # 1.0 to disable
-        penalty_freq:       float = 0.0,   # 0.0 to disable
-        penalty_present:    float = 0.0,   # 0.0 to disable
-        dry_multiplier:     float = 0.0,   # 0.0 to disable;      DRY repetition penalty for tokens extending repetition:
-        dry_base:           float = 1.75,  # 0.0 to disable;      multiplier * base ^ (length of sequence before token - allowed length)
+        seed:               int   = -1,    # random seed: <= 0
+        top_k:              int   = 40,    # neutral: <= 0
+        top_p:              float = 0.95,  # neutral: 1.0
+        min_p:              float = 0.05,  # neutral: 0.0
+        xtc_probability:    float = 0.0,   # neutral: 0.0
+        xtc_threshold:      float = 0.1,   # disable: > 0.5
+        typical_p:          float = 1.0,   # neutral: 1.0
+        temp:               float = 0.8,   # neutral: 1.0, greedy: <= 0.0
+        dynatemp_delta:     float = 0.0,   # neutral: <= 0.0
+        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to dynamic temperature
+        penalty_last_n:     int   = 64,    # disable: 0, n_ctx: -1, last n tokens to penalize
+        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1
+        penalty_freq:       float = 0.0,   # neutral: 0.0
+        penalty_present:    float = 0.0,   # neutral: 0.0
+        dry_multiplier:     float = 0.0,   # disable: 0.0, DRY repetition penalty for tokens extending repetition:
+        dry_base:           float = 1.75,  # disable: 0.0, multiplier * base ^ (length of sequence before token - allowed length)
         dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
-        dry_penalty_last_n: int   = -1,    # how many tokens to scan for repetitions (0 = disable penalty, -1 = context size)
-        mirostat:           int   = 0,     # 0 = disabled, 1 = mirostat v1, 2 = mirostat v2
-        top_n_sigma:        float = 1.0,   # -1.0 to disable
-        mirostat_tau:       float = 5.0,   # target entropy
-        mirostat_eta:       float = 0.1,   # learning rate
+        dry_penalty_last_n: int   = -1,    # disable: 0, n_ctx: -1, how many tokens to scan for repetitions
+        mirostat:           int   = 0,     # disable: 0, use v1: 1, use v2: 2
+        top_n_sigma:        float = -1.0,  # disable: -1.0
+        mirostat_tau:       float = 5.0,   # target entropy for mirostat
+        mirostat_eta:       float = 0.1,   # learning rate for mirostat
 
         dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
 
@@ -623,6 +626,18 @@ class SamplerPresets:
     in [llama.cpp#11223](https://github.com/ggml-org/llama.cpp/pull/11223), except that
     `temp = 1_000_000.0` to randomly select any token that is determined to be valid
     by Top-nσ."""
+
+    DRY = SamplerPreset(dry_multiplier=0.8, dry_base=1.75, dry_allowed_length=2)
+    """https://github.com/oobabooga/text-generation-webui/pull/5677"""
+
+    XTC = SamplerPreset(
+        top_k=-1,
+        top_p=1.0,
+        min_p=0.02,
+        xtc_probability=0.5,
+        xtc_threshold=0.1
+    )
+    """https://github.com/oobabooga/text-generation-webui/pull/6335"""
 
     #
     # Samplers below this line are for specific models / model families

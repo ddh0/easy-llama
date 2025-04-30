@@ -9,11 +9,12 @@ import uvicorn
 
 import easy_llama as ez
 
-from typing              import Optional, Union, Literal
-from fastapi             import FastAPI, APIRouter, Body
-from easy_llama.utils    import assert_type
-from fastapi.staticfiles import StaticFiles
-from pydantic            import BaseModel
+from typing                   import Optional, Union, Literal
+from fastapi                  import FastAPI, APIRouter, Body
+from fastapi.middleware.cors  import CORSMiddleware
+from easy_llama.utils         import assert_type
+from fastapi.staticfiles      import StaticFiles
+from pydantic                 import BaseModel
 
 WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 
@@ -21,15 +22,21 @@ WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 # Pydantic Models for FastAPI
 #
 
+class StatusResponseModel(BaseModel):
+    success: bool
+
 class MessageModel(BaseModel):
     role: str
     content: str
 
-class SendResponseModel(BaseModel):
+class MessageResponseModel(BaseModel):
     role: str
     content: str
     n_input_tokens: int
     n_output_tokens: int
+
+class SetSysPromptRequestModel(BaseModel):
+    content: str
 
 class SummaryResponseModel(BaseModel):
     summary: str
@@ -80,60 +87,43 @@ class Server:
         port: int = 8080
     ):
         assert_type(thread, getattr(ez, 'Thread'), 'thread', 'Server.__init__')
-        self.thread = thread
-        self.host = host
-        self.port = port
-        self.app = FastAPI(title=f"[easy-llama.Server @ {host}:{port}]")
+        self._thread = thread
+        self._host = host
+        self._port = port
+        self._app = FastAPI(title=f"[easy-llama.Server @ {host}:{port}]")
+        self._router = APIRouter(prefix="/api")
 
         # add CORS middleware for WebUI compatibility
-        self.add_cors()
-
-        # set up API router
-        self.api_router = APIRouter(prefix="/api")
-        self.setup_api_endpoints()
-
-        # mount components
-        self.app.include_router(self.api_router)
-        self.app.mount(
-            "/",
-            StaticFiles(
-                directory=WEBUI_DIRECTORY,
-                html=True
-            ),
-            name=f"[easy-llama.Server (WebUI) @ {host}:{port}]"
-        )
-    
-    def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
-        ez.utils.log(f'[easy-llama.Server @ {self.host}:{self.port}] {text}', level=level)
-
-    def add_cors(self):
-        from fastapi.middleware.cors import CORSMiddleware
-        self.app.add_middleware(
+        self._app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        
+        #
+        # API endpoints
+        #
 
-    def setup_api_endpoints(self):
+        router = self._router # the decorators look ugly without this
 
-        @self.api_router.post("/send", response_model=SendResponseModel)
+        @router.post("/send", response_model=MessageResponseModel)
         async def send(message: MessageModel = Body(...)) -> dict[str, Union[str, int]]:
             """Send a message in this thread as the user and return the generated response.
             This adds your message and the bot's message to the thread."""
-            self.thread.messages.append({
+            self._thread.messages.append({
                 'role': message.role,
                 'content': message.content
             })
-            input_toks = self.thread.get_input_ids(role='bot')
-            response_toks = self.thread.llama.generate(
+            input_toks = self._thread.get_input_ids(role='bot')
+            response_toks = self._thread.llama.generate(
                 input_tokens=input_toks,
                 n_predict=-1,
-                stop_tokens=self.thread._stop_tokens,
-                sampler_preset=self.thread.sampler_preset
+                stop_tokens=self._thread._stop_tokens,
+                sampler_preset=self._thread.sampler_preset
             )
-            response_txt = self.thread.llama.detokenize(response_toks, special=False)
-            self.thread.messages.append({
+            response_txt = self._thread.llama.detokenize(response_toks, special=False)
+            self._thread.messages.append({
                 'role': 'bot',
                 'content': response_txt
             })
@@ -144,23 +134,35 @@ class Server:
                 'n_output_tokens': len(response_toks)
             }
 
-        @self.api_router.post("/add_message")
-        async def add_message(message: MessageModel = Body(...)) -> None:
+        @router.post("/add_message", response_model=StatusResponseModel)
+        async def add_message(message: MessageModel = Body(...)) -> dict:
             """Add a message to the Thread without triggering a response"""
-            self.thread.add_message(message.role, message.content)
+            self._thread.add_message(message.role, message.content)
+            return {'success': True}
+        
+        @router.post("/set_system_prompt", response_model=StatusResponseModel)
+        async def set_system_prompt(request: SetSysPromptRequestModel = Body(...)) -> dict:
+            """Set the system prompt on-the-fly"""
+            if len(self._thread.messages) > 0:
+                try:
+                    role = self._thread.messages[0]['role']
+                except (IndexError, KeyError) as exc:
+                    self.log('failed to set system prompt (could not get role)')
+                    return {'success': True}
+            
 
-        @self.api_router.post("/trigger", response_model=SendResponseModel)
+        @router.post("/trigger", response_model=MessageResponseModel)
         async def trigger() -> dict[str, Union[str, int]]:
             """Trigger a new message to be generated"""
-            input_toks = self.thread.get_input_ids(role='bot')
-            response_toks = self.thread.llama.generate(
+            input_toks = self._thread.get_input_ids(role='bot')
+            response_toks = self._thread.llama.generate(
                 input_tokens=input_toks,
                 n_predict=-1,
-                stop_tokens=self.thread._stop_tokens,
-                sampler_preset=self.thread.sampler_preset
+                stop_tokens=self._thread._stop_tokens,
+                sampler_preset=self._thread.sampler_preset
             )
-            response_txt = self.thread.llama.detokenize(response_toks, special=False)
-            self.thread.messages.append({
+            response_txt = self._thread.llama.detokenize(response_toks, special=False)
+            self._thread.messages.append({
                 'role': 'bot',
                 'content': response_txt
             })
@@ -171,12 +173,47 @@ class Server:
                 'n_output_tokens': len(response_toks)
             }
 
-        @self.api_router.get("/messages", response_model=list[MessageModel])
+        @router.get("/messages", response_model=list[MessageModel])
         async def messages() -> list[dict]:
             """Get a list of all messages in this thread"""
-            return self.thread.messages
+            return self._thread.messages
 
-        @self.api_router.post("/sampler", response_model=SamplerSettingsModel)
+        @router.get("/summarize", response_model=SummaryResponseModel)
+        async def summarize() -> dict[str, str]:
+            """Generate and return a summary of the thread content"""
+            return {"summary": self._thread.summarize()}
+
+        @router.post("/cancel")
+        async def cancel() -> dict:
+            """If the model is currently generating, cancel it. Otherwise, do nothing."""
+            # TODO
+            return {"status": "not implemented"}
+
+        @router.post("/reset")
+        async def reset() -> dict:
+            """Reset the thread to its default state"""
+            self._thread.reset()
+            return {"status": "success"}
+        
+        @router.get("/info", response_model=InfoResponseModel)
+        async def get_info() -> dict[str, Union[str, int, float]]:
+            """Return some info about the llama model and the thread"""
+            with ez.utils.suppress_output():
+                input_ids = self._thread.get_input_ids(role=None)
+            n_thread_tokens = len(input_ids)
+            n_ctx = self._thread.llama.n_ctx()
+            return {
+                'model_name': self._thread.llama.name(),
+                'model_n_params': self._thread.llama.n_params(),
+                'model_bpw': self._thread.llama.bpw(),
+                'n_tokens': self._thread.llama.pos,
+                'n_ctx': n_ctx,
+                'n_ctx_train': self._thread.llama.n_ctx_train(),
+                'n_thread_tokens': n_thread_tokens,
+                'n_thread_messages': len(self._thread.messages)
+            }
+        
+        @router.post("/sampler", response_model=SamplerSettingsModel)
         async def sampler(settings: SamplerSettingsModel = Body(...)) -> dict[
             str, Union[int, float, list[str], dict[int, float]]
         ]:
@@ -207,7 +244,7 @@ class Server:
             dry_sequence_breakers = settings.dry_sequence_breakers
             logit_bias            = settings.logit_bias
             
-            current = self.thread.sampler_preset
+            current = self._thread.sampler_preset
             
             # create new sampler preset with provided values or current values
             new_preset = ez.SamplerPreset(
@@ -260,7 +297,7 @@ class Server:
             )
             
             # update the current sampler preset
-            self.thread.sampler_preset = new_preset
+            self._thread.sampler_preset = new_preset
             
             # return all current values
             return {
@@ -289,46 +326,18 @@ class Server:
                 'dry_sequence_breakers' : new_preset.dry_sequence_breakers,
                 'logit_bias'            : new_preset.logit_bias
             }
+    
+    def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
+        ez.utils.log(f'[easy-llama.Server @ {self.host}:{self.port}] {text}', level=level)
 
-        @self.api_router.get("/summarize", response_model=SummaryResponseModel)
-        async def summarize() -> dict[str, str]:
-            """Generate and return a summary of the thread content"""
-            return {"summary": self.thread.summarize()}
-
-        @self.api_router.get("/info", response_model=InfoResponseModel)
-        async def get_info() -> dict[str, Union[str, int, float]]:
-            """Return some info about the llama model and the thread"""
-            with ez.utils.suppress_output():
-                input_ids = self.thread.get_input_ids(role=None)
-            n_thread_tokens = len(input_ids)
-            n_ctx = self.thread.llama.n_ctx()
-            c = (n_thread_tokens/n_ctx) * 100
-            return {
-                'model_name': self.thread.llama.name(),
-                'model_n_params': self.thread.llama.n_params(),
-                'model_bpw': self.thread.llama.bpw(),
-                'n_tokens': self.thread.llama.pos,
-                'n_ctx': n_ctx,
-                'n_ctx_train': self.thread.llama.n_ctx_train(),
-                'n_thread_tokens': n_thread_tokens,
-                'n_thread_messages': len(self.thread.messages)
-            }
-
-        @self.api_router.post("/cancel")
-        async def cancel() -> dict:
-            """If the model is currently generating, cancel it. Otherwise, do nothing."""
-            # TODO
-            return {"status": "success"}
-
-        @self.api_router.post("/reset")
-        async def reset() -> dict:
-            """Reset the thread to its default state"""
-            self.thread.reset()
-            return {"status": "success"}
-
-    def run(self):
-        self.log('starting uvicorn!')
+    def start(self):
+        self.log('starting uvicorn')
         try:
             uvicorn.run(self.app, host=self.host, port=self.port)
         except Exception as exc:
             self.log(f'exception in uvicorn: {type(exc).__name__}: {exc}', 3)
+            raise exc
+        except KeyboardInterrupt:
+            pass
+        
+        self.log(f'goodbye :)')

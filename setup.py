@@ -32,7 +32,8 @@ setup(
     install_requires=[
         'numpy',
         'fastapi',
-        'uvicorn'
+        'uvicorn',
+        'jinja2'
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
