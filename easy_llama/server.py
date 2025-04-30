@@ -344,7 +344,7 @@ class Server:
     def start(self):
         self.log('starting uvicorn')
         try:
-            uvicorn.run(self.app, host=self._host, port=self._port)
+            uvicorn.run(self._app, host=self._host, port=self._port)
         except Exception as exc:
             self.log(f'exception in uvicorn: {type(exc).__name__}: {exc}', 3)
             raise exc
