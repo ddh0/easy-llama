@@ -27,7 +27,7 @@ import faulthandler
 import numpy as np
 
 from enum   import IntEnum
-from typing import Optional
+from typing import Optional, Callable
 from .utils import ptr, log, ez_decode
 
 faulthandler.enable() # prints more helpful info if python crashes
@@ -321,19 +321,19 @@ class LlamaSplitMode(IntEnum):
 
 class llama_token_data(ctypes.Structure):
     _fields_ = [
-        ("id", ctypes.c_int32),    # token id
+        ("id",    ctypes.c_int32), # token id
         ("logit", ctypes.c_float), # log-odds of the token
-        ("p", ctypes.c_float),     # probability of the token
+        ("p",     ctypes.c_float)  # probability of the token
     ]
 
 llama_token_data_p = ctypes.POINTER(llama_token_data)
 
 class llama_token_data_array(ctypes.Structure):
     _fields_ = [
-        ("data", ctypes.POINTER(llama_token_data)),  # NOTE: this pointer can be modified by the samplers
-        ("size", ctypes.c_size_t),
-        ("selected", ctypes.c_int64),  # this is the index in the data array (i.e. not the token id)
-        ("sorted", ctypes.c_bool),
+        ("data",     ctypes.POINTER(llama_token_data)), # NOTE: this pointer can be modified by the samplers
+        ("size",     ctypes.c_size_t                 ),
+        ("selected", ctypes.c_int64                  ), # this is the index in the data array (i.e. not the token id)
+        ("sorted",   ctypes.c_bool                   )
     ]
 
 llama_token_data_array_p = ctypes.POINTER(llama_token_data_array)
@@ -342,30 +342,30 @@ class llama_batch(ctypes.Structure):
     _fields_ = [
         ("n_tokens", ctypes.c_int32),
 
-        ("token", ctypes.POINTER(llama_token)),       # the token ids of the input (used when embd is NULL)
-        ("embd", ctypes.POINTER(ctypes.c_float)),     # token embeddings (i.e. float vector of size n_embd) (used when token is NULL)
-        ("pos", ctypes.POINTER(llama_pos)),           # the positions of the respective token in the sequence
-        ("n_seq_id", ctypes.POINTER(ctypes.c_int32)), # the sequence to which the respective token belongs
-        ("seq_id", ctypes.POINTER(ctypes.POINTER(llama_seq_id))), # the sequence to which the respective token belongs
-        ("logits", ctypes.POINTER(ctypes.c_int8)),    # if zero, the logits (and/or the embeddings) for the respective token will not be output
+        ("token",    ctypes.POINTER(llama_token)                 ), # the token ids of the input (used when embd is NULL)
+        ("embd",     ctypes.POINTER(ctypes.c_float)              ), # token embeddings (i.e. float vector of size n_embd) (used when token is NULL)
+        ("pos",      ctypes.POINTER(llama_pos)                   ), # the positions of the respective token in the sequence
+        ("n_seq_id", ctypes.POINTER(ctypes.c_int32)              ), # the sequence to which the respective token belongs
+        ("seq_id",   ctypes.POINTER(ctypes.POINTER(llama_seq_id))), # the sequence to which the respective token belongs
+        ("logits",   ctypes.POINTER(ctypes.c_int8)               )  # if zero, the logits (and/or the embeddings) for the respective token will not be output
     ]
 
 llama_batch_p = ctypes.POINTER(llama_batch)
 
 class llama_model_kv_override_type(ctypes.Union):
     _fields_ = [
-        ("val_i64", ctypes.c_int64),
-        ("val_f64", ctypes.c_double),
-        ("val_bool", ctypes.c_bool),
-        ("val_str", ctypes.c_char * 128),
+        ("val_i64",  ctypes.c_int64     ),
+        ("val_f64",  ctypes.c_double    ),
+        ("val_bool", ctypes.c_bool      ),
+        ("val_str",  ctypes.c_char * 128)
     ]
 
 llama_model_kv_override_type_p = ctypes.POINTER(llama_model_kv_override_type)
 
 class llama_model_kv_override(ctypes.Structure):
     _fields_ = [
-        ("tag", ctypes.c_int),
-        ("key", ctypes.c_char * 128),
+        ("tag", ctypes.c_int                ),
+        ("key", ctypes.c_char * 128         ),
         ("val", llama_model_kv_override_type)
     ]
     _anonymous_ = ("val",) # make the `llama_model_kv_override_type` accessible anonymously
@@ -375,7 +375,7 @@ llama_model_kv_override_p = ctypes.POINTER(llama_model_kv_override)
 class llama_model_tensor_buft_override(ctypes.Structure):
     _fields_ = [
         ("pattern", ctypes.c_char_p), # pattern to match tensor names
-        ("buft", ctypes.c_void_p),    # pointer to buffer type (ggml_backend_buffer_type_t)
+        ("buft",    ctypes.c_void_p), # pointer to buffer type (ggml_backend_buffer_type_t)
     ]
 
 llama_model_tensor_buft_override_p = ctypes.POINTER(llama_model_tensor_buft_override)
@@ -384,19 +384,19 @@ dummy_progress_callback = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_float, ctypes
 
 class llama_model_params(ctypes.Structure):
     _fields_ = [
-        ("devices", ctypes.POINTER(ctypes.c_void_p)),
-        ("tensor_buft_overrides", llama_model_tensor_buft_override_p),
-        ("n_gpu_layers", ctypes.c_int32),
-        ("split_mode", ctypes.c_int),
-        ("main_gpu", ctypes.c_int32),
-        ("tensor_split", ctypes.POINTER(ctypes.c_float)),
-        ("progress_callback", dummy_progress_callback),
-        ("progress_callback_user_data", ctypes.c_void_p),
-        ("kv_overrides", ctypes.POINTER(llama_model_kv_override)),
-        ("vocab_only", ctypes.c_bool),
-        ("use_mmap", ctypes.c_bool),
-        ("use_mlock", ctypes.c_bool),
-        ("check_tensors", ctypes.c_bool),
+        ("devices",                     ctypes.POINTER(ctypes.c_void_p)        ),
+        ("tensor_buft_overrides",       llama_model_tensor_buft_override_p     ), # TODO: figure this out
+        ("n_gpu_layers",                ctypes.c_int32                         ),
+        ("split_mode",                  ctypes.c_int                           ),
+        ("main_gpu",                    ctypes.c_int32                         ),
+        ("tensor_split",                ctypes.POINTER(ctypes.c_float)         ),
+        ("progress_callback",           dummy_progress_callback                ),
+        ("progress_callback_user_data", ctypes.c_void_p                        ),
+        ("kv_overrides",                ctypes.POINTER(llama_model_kv_override)),
+        ("vocab_only",                  ctypes.c_bool                          ),
+        ("use_mmap",                    ctypes.c_bool                          ),
+        ("use_mlock",                   ctypes.c_bool                          ),
+        ("check_tensors",               ctypes.c_bool                          )
     ]
 
 llama_model_params_p = ctypes.POINTER(llama_model_params)
@@ -407,58 +407,52 @@ dummy_abort_callback = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p)
 
 class llama_context_params(ctypes.Structure):
     _fields_ = [
-        ("n_ctx", ctypes.c_uint32),          # text context, 0 = from model
-        ("n_batch", ctypes.c_uint32),        # logical maximum batch size that can be submitted to llama_decode
-        ("n_ubatch", ctypes.c_uint32),       # physical maximum batch size
-        ("n_seq_max", ctypes.c_uint32),      # max number of sequences (i.e. distinct states for recurrent models)
-        ("n_threads", ctypes.c_int32),       # number of threads to use for generation
-        ("n_threads_batch", ctypes.c_int32), # number of threads to use for batch processing
-
-        ("rope_scaling_type", ctypes.c_int), # RoPE scaling type, from `enum llama_rope_scaling_type`
-        ("pooling_type", ctypes.c_int),      # whether to pool (sum) embedding results by sequence id
-        ("attention_type", ctypes.c_int),    # attention type to use for embeddings
-
-        ("rope_freq_base", ctypes.c_float),   # RoPE base frequency, 0 = from model
-        ("rope_freq_scale", ctypes.c_float),  # RoPE frequency scaling factor, 0 = from model
-        ("yarn_ext_factor", ctypes.c_float),  # YaRN extrapolation mix factor, negative = from model
-        ("yarn_attn_factor", ctypes.c_float), # YaRN magnitude scaling factor
-        ("yarn_beta_fast", ctypes.c_float),   # YaRN low correction dim
-        ("yarn_beta_slow", ctypes.c_float),   # YaRN high correction dim
-        ("yarn_orig_ctx", ctypes.c_uint32),   # YaRN original context size
-        ("defrag_thold", ctypes.c_float),     # defragment the KV cache if holes/size > thold, < 0 disabled (default)
-
-        ("cb_eval", dummy_eval_callback),       # callback for eval
-        ("cb_eval_user_data", ctypes.c_void_p), # user data for eval callback
-
-        ("type_k", ctypes.c_int), # data type for K cache [EXPERIMENTAL]
-        ("type_v", ctypes.c_int), # data type for V cache [EXPERIMENTAL]
-
-        ("logits_all", ctypes.c_bool),  # the llama_decode() call computes all logits, not just the last one (DEPRECATED - set llama_batch.logits instead) # TODO: should this be removed?
-        ("embeddings", ctypes.c_bool),  # if true, extract embeddings (together with logits)
-        ("offload_kqv", ctypes.c_bool), # whether to offload the KQV ops (including the KV cache) to GPU
-        ("flash_attn", ctypes.c_bool),  # whether to use flash attention [EXPERIMENTAL]
-        ("no_perf", ctypes.c_bool),     # whether to measure performance timings
-
-        ("abort_callback", dummy_abort_callback), # callback for abort
-        ("abort_callback_data", ctypes.c_void_p), # user data for abort callback
+        ("n_ctx",               ctypes.c_uint32     ), # text context, 0 = from model
+        ("n_batch",             ctypes.c_uint32     ), # logical maximum batch size that can be submitted to llama_decode
+        ("n_ubatch",            ctypes.c_uint32     ), # physical maximum batch size (micro-batch size)
+        ("n_seq_max",           ctypes.c_uint32     ), # max number of sequences (i.e. distinct states for recurrent models)
+        ("n_threads",           ctypes.c_int32      ), # number of threads to use for generation
+        ("n_threads_batch",     ctypes.c_int32      ), # number of threads to use for batch processing
+        ("rope_scaling_type",   ctypes.c_int        ), # RoPE scaling type, from `enum llama_rope_scaling_type`
+        ("pooling_type",        ctypes.c_int        ), # whether to pool (sum) embedding results by sequence id
+        ("attention_type",      ctypes.c_int        ), # attention type to use for embeddings
+        ("rope_freq_base",      ctypes.c_float      ), # RoPE base frequency, 0 = from model
+        ("rope_freq_scale",     ctypes.c_float      ), # RoPE frequency scaling factor, 0 = from model
+        ("yarn_ext_factor",     ctypes.c_float      ), # YaRN extrapolation mix factor, negative = from model
+        ("yarn_attn_factor",    ctypes.c_float      ), # YaRN magnitude scaling factor
+        ("yarn_beta_fast",      ctypes.c_float      ), # YaRN low correction dim
+        ("yarn_beta_slow",      ctypes.c_float      ), # YaRN high correction dim
+        ("yarn_orig_ctx",       ctypes.c_uint32     ), # YaRN original context size
+        ("defrag_thold",        ctypes.c_float      ), # defragment the KV cache if holes/size > thold, < 0 disabled (default)
+        ("cb_eval",             dummy_eval_callback ), # callback for eval
+        ("cb_eval_user_data",   ctypes.c_void_p     ), # user data for eval callback
+        ("type_k",              ctypes.c_int        ), # data type for K cache [EXPERIMENTAL]
+        ("type_v",              ctypes.c_int        ), # data type for V cache [EXPERIMENTAL]
+        ("logits_all",          ctypes.c_bool       ), # the llama_decode() call computes all logits, not just the last one (DEPRECATED - set llama_batch.logits instead) # TODO: should this be removed?
+        ("embeddings",          ctypes.c_bool       ), # if true, extract embeddings (together with logits)
+        ("offload_kqv",         ctypes.c_bool       ), # whether to offload the KQV ops (including the KV cache) to GPU
+        ("flash_attn",          ctypes.c_bool       ), # whether to use flash attention [EXPERIMENTAL]
+        ("no_perf",             ctypes.c_bool       ), # whether to measure performance timings
+        ("abort_callback",      dummy_abort_callback), # callback for abort
+        ("abort_callback_data", ctypes.c_void_p     )  # user data for abort callback
     ]
 
 llama_context_params_p = ctypes.POINTER(llama_context_params)
 
 class llama_model_quantize_params(ctypes.Structure):
     _fields_ = [
-        ("nthread", ctypes.c_int32),               # number of threads to use for quantizing, if <=0 will use std::thread::hardware_concurrency()
-        ("ftype", ctypes.c_int),                   # quantize to this llama_ftype
-        ("output_tensor_type", ctypes.c_int),      # output tensor type
-        ("token_embedding_type", ctypes.c_int),    # token embeddings tensor type
-        ("allow_requantize", ctypes.c_bool),       # allow quantizing non-f32/f16 tensors
-        ("quantize_output_tensor", ctypes.c_bool), # quantize output.weight
-        ("only_copy", ctypes.c_bool),              # only copy tensors - ftype, allow_requantize and quantize_output_tensor are ignored
-        ("pure", ctypes.c_bool),                   # quantize all tensors to the default type
-        ("keep_split", ctypes.c_bool),             # quantize to the same number of shards
-        ("imatrix", ctypes.c_void_p),              # pointer to importance matrix data
-        ("kv_overrides", ctypes.c_void_p),         # pointer to vector containing overrides
-        ("tensor_types", ctypes.c_void_p),         # pointer to vector containing tensor types
+        ("nthread",                ctypes.c_int32 ), # number of threads to use for quantizing, if <=0 will use std::thread::hardware_concurrency()
+        ("ftype",                  ctypes.c_int   ), # quantize to this llama_ftype
+        ("output_tensor_type",     ctypes.c_int   ), # output tensor type
+        ("token_embedding_type",   ctypes.c_int   ), # token embeddings tensor type
+        ("allow_requantize",       ctypes.c_bool  ), # allow quantizing non-f32/f16 tensors
+        ("quantize_output_tensor", ctypes.c_bool  ), # quantize output.weight
+        ("only_copy",              ctypes.c_bool  ), # only copy tensors - ftype, allow_requantize and quantize_output_tensor are ignored
+        ("pure",                   ctypes.c_bool  ), # quantize all tensors to the default type
+        ("keep_split",             ctypes.c_bool  ), # quantize to the same number of shards
+        ("imatrix",                ctypes.c_void_p), # pointer to importance matrix data
+        ("kv_overrides",           ctypes.c_void_p), # pointer to vector containing overrides
+        ("tensor_types",           ctypes.c_void_p)  # pointer to vector containing tensor types
     ]
 
 llama_model_quantize_params_p = ctypes.POINTER(llama_model_quantize_params)
@@ -466,22 +460,22 @@ llama_model_quantize_params_p = ctypes.POINTER(llama_model_quantize_params)
 class llama_logit_bias(ctypes.Structure):
     _fields_ = [
         ("token", ctypes.c_int32),
-        ("bias", ctypes.c_float),
+        ("bias",  ctypes.c_float)
     ]
 
 llama_logit_bias_p = ctypes.POINTER(llama_logit_bias)
 
 class llama_sampler_chain_params(ctypes.Structure):
     _fields_ = [
-        ("no_perf", ctypes.c_bool), # whether to measure performance timings
+        ("no_perf", ctypes.c_bool) # whether to measure performance timings
     ]
 
 llama_sampler_chain_params_p = ctypes.POINTER(llama_sampler_chain_params)
 
 class llama_chat_message(ctypes.Structure):
     _fields_ = [
-        ("role", ctypes.c_char_p),
-        ("content", ctypes.c_char_p),
+        ("role",    ctypes.c_char_p),
+        ("content", ctypes.c_char_p)
     ]
 
 llama_chat_message_p = ctypes.POINTER(llama_chat_message)
@@ -548,6 +542,9 @@ def llama_backend_init() -> None:
 
     # initialize the built-in greedy sampler
     _internals.greedy_sampler = llama_sampler_init_greedy()
+
+    # initialize the built-in re-usable single-token batch
+    _internals.tg_batch = llama_batch_init(n_tokens=1, embd=False, n_seq_max=1)
 
     # don't let this function be called again
     _BACKEND_INIT = True
@@ -1812,10 +1809,16 @@ class _internals:
     greedy_sampler: Optional[llama_sampler]
     """This built-in greedy sampler will be initialized along with libllama."""
 
-    MAX_TOKEN_LENGTH = 256
+    tg_batch: Optional[llama_batch]
+    """This built-in `llama_batch` object is initialized along with libllama. It will be re-used
+    for all single-token non-embedding batches (i.e. normal autoregressive text generation).
+    This is done so that we don't have to initialize + free a new batch for every new token
+    generated."""
+
+    MAX_TOKEN_LENGTH = 256 # update this if you find a token that is > 256 bytes long
     """The maximum supported length of a single token's text, in bytes"""
 
-    class LogitBiasArray:
+    class LogitBiasArrayType:
         """Type hint for a `ctypes.Array[llama_logit_bias]` of arbitrary length"""
 
     def decode_pp(
@@ -1849,15 +1852,13 @@ class _internals:
         """### INTERNAL
 
         Decode with batch size == 1 (text generation)."""
-        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
-        batch.n_tokens = 1
-        batch.token[0] = token
-        batch.pos[0] = pos
-        batch.seq_id[0][0] = 0
-        batch.n_seq_id[0] = 1
-        batch.logits[0] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
+        _internals.tg_batch.n_tokens = 1
+        _internals.tg_batch.token[0] = token
+        _internals.tg_batch.pos[0] = pos
+        _internals.tg_batch.seq_id[0][0] = 0
+        _internals.tg_batch.n_seq_id[0] = 1
+        _internals.tg_batch.logits[0] = True
+        ret = llama_decode(ctx, _internals.tg_batch)
         if ret != 0:
             raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
 
@@ -1882,6 +1883,61 @@ class _internals:
         llama_batch_free(batch)
         if ret != 0:
             raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
+    
+    def decode_soft_prompt(
+        ctx: ptr[llama_context],
+        embeddings: np.ndarray,
+        pos: int, # starting position for the first embedding (usually 0)
+        seq_id: int = 0
+    ) -> Optional[np.ndarray]: # returns logits for the _next_ token (after soft prompt)
+        """### INTERNAL
+
+        Decode a batch of soft prompt embeddings.
+        """
+        n_prompt_tokens = embeddings.shape[0]
+        if n_prompt_tokens == 0:
+            return None
+
+        model = llama_get_model(ctx)
+        n_embd = llama_model_n_embd(model)
+        n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model))
+
+        if embeddings.shape[1] != n_embd:
+            raise ValueError(
+                f"decode_soft_prompt: embedding dimension mismatch: expected {n_embd}, got "
+                f"{embeddings.shape[1]}"
+            )
+
+        batch = llama_batch_init(n_tokens=n_prompt_tokens, embd=n_embd, n_seq_max=1)
+        batch.n_tokens = n_prompt_tokens
+        batch.token = NULL
+
+        ctypes.memmove(batch.embd, embeddings.ctypes.data, embeddings.nbytes)
+
+        for i in range(n_prompt_tokens):
+            batch.pos[i] = pos + i
+            batch.n_seq_id[i] = 1
+            batch.seq_id[i][0] = seq_id
+            batch.logits[i] = ctypes.c_int8(0) # by default, don't compute logits ...
+
+        # ... except for the last token
+        if n_prompt_tokens > 0:
+            batch.logits[n_prompt_tokens - 1] = ctypes.c_int8(1)
+
+        ret = llama_decode(ctx, batch)
+
+        logits = None
+        if n_prompt_tokens > 0 and batch.logits[n_prompt_tokens - 1]:
+             ctypes_logits_ptr = llama_get_logits(ctx)
+             if ctypes_logits_ptr: # TODO: ?
+                  logits = np.ctypeslib.as_array(ctypes_logits_ptr, shape=(1, n_vocab))[0]
+
+        llama_batch_free(batch)
+
+        if ret != 0:
+            raise RuntimeError(f'decode_soft_prompt: llama_decode failed with status code')
+
+        return logits # return the logits for the token immediately following the soft prompt
 
     def decode_tg_with_logits(
         ctx: ptr[llama_context],
@@ -1894,15 +1950,13 @@ class _internals:
         Decode with batch size == 1 (text generation).
         
         Return the logits for the inferred next token."""
-        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
-        batch.n_tokens = 1
-        batch.token[0] = token
-        batch.pos[0] = pos
-        batch.seq_id[0][0] = 0
-        batch.n_seq_id[0] = 1
-        batch.logits[0] = True
-        ret = llama_decode(ctx, batch)
-        llama_batch_free(batch)
+        _internals.tg_batch.n_tokens = 1
+        _internals.tg_batch.token[0] = token
+        _internals.tg_batch.pos[0] = pos
+        _internals.tg_batch.seq_id[0][0] = 0
+        _internals.tg_batch.n_seq_id[0] = 1
+        _internals.tg_batch.logits[0] = True
+        ret = llama_decode(ctx, _internals.tg_batch)
         if ret != 0:
             raise RuntimeError(
                 f'decode_tg_with_logits: llama_decode failed with status code {ret}'
@@ -2075,14 +2129,14 @@ class _internals:
             parse_special=parse_special
         )
     
-    def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArray:
+    def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArrayType:
         """### INTERNAL
 
         Create and return a ctypes array of `llama_logit_bias`"""
         if len(logit_biases) == 0:
             raise ValueError(f'logit_biases parameter cannot be empty')
-        LogitBiasArrayType = llama_logit_bias * len(logit_biases)
-        arr = LogitBiasArrayType()
+        LogitBiasArray = llama_logit_bias * len(logit_biases)
+        arr = LogitBiasArray()
         i = 0
         for k, v in logit_biases.items():
             arr[i].token = k
@@ -2097,13 +2151,13 @@ class _internals:
 class LlamaDeprecatedException(Exception):
     """Exception raised when calling functions marked with DEPRECATED in libllama"""
 
-def DEPRECATED(new_func_name: Optional[str] = None):
+def DEPRECATED(new_func: Optional[Callable] = None):
     """Decorator for functions that are marked with DEPRECATED in libllama"""
 
-    def decorator(func):
+    def decorator(func: Callable):
 
         def deprecator(*args, **kwargs):
-            if new_func_name is None:
+            if new_func is None:
                 raise LlamaDeprecatedException(
                     f"the function {func.__name__!r} is marked as deprecated. you cannot "
                     f"use it."
@@ -2111,241 +2165,241 @@ def DEPRECATED(new_func_name: Optional[str] = None):
             else:
                 raise LlamaDeprecatedException(
                     f"the function {func.__name__!r} is marked as deprecated. you cannot "
-                    f"use it. use {new_func_name!r} instead."
+                    f"use it. use {new_func.__name__!r} instead."
                 )
         
         return deprecator
     
     return decorator
 
-@DEPRECATED(new_func_name='llama_model_load_from_file')
+@DEPRECATED(new_func=llama_model_load_from_file)
 def llama_load_model_from_file(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_free')
+@DEPRECATED(new_func=llama_model_free)
 def llama_free_model(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_init_from_model')
+@DEPRECATED(new_func=llama_init_from_model)
 def llama_new_context_with_model(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_free')
+@DEPRECATED(new_func=llama_model_free)
 def llama_free_model(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_n_ctx_train')
+@DEPRECATED(new_func=llama_model_n_ctx_train)
 def llama_n_ctx_train(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_n_embd')
+@DEPRECATED(new_func=llama_model_n_embd)
 def llama_n_embd(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_n_layer')
+@DEPRECATED(new_func=llama_model_n_layer)
 def llama_n_layer(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_n_head')
+@DEPRECATED(new_func=llama_model_n_head)
 def llama_n_head(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_n_tokens')
+@DEPRECATED(new_func=llama_vocab_n_tokens)
 def llama_n_vocab(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_model_rope_freq_scale_train')
+@DEPRECATED(new_func=llama_model_rope_freq_scale_train)
 def llama_rope_freq_scale_train(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_adapter_lora_init')
+@DEPRECATED(new_func=llama_adapter_lora_init)
 def llama_lora_adapter_init(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_adapter_lora_set')
+@DEPRECATED(new_func=llama_adapter_lora_set)
 def llama_lora_adapter_set(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_rm_adapter_lora')
+@DEPRECATED(new_func=llama_rm_adapter_lora)
 def llama_lora_adapter_remove(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_adapter_lora_clear')
+@DEPRECATED(new_func=None)
 def llama_lora_adapter_clear(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_adapter_lora_free')
+@DEPRECATED(new_func=llama_adapter_lora_free)
 def llama_lora_adapter_free(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_apply_adapter_cvec')
+@DEPRECATED(new_func=llama_apply_adapter_cvec)
 def llama_control_vector_apply(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_n_tokens')
+@DEPRECATED(new_func=llama_kv_self_n_tokens)
 def llama_get_kv_cache_token_count(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_used_cells')
+@DEPRECATED(new_func=llama_kv_self_used_cells)
 def llama_get_kv_cache_used_cells(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_clear')
+@DEPRECATED(new_func=llama_kv_self_clear)
 def llama_kv_cache_clear(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_seq_rm')
+@DEPRECATED(new_func=llama_kv_self_seq_rm)
 def llama_kv_cache_seq_rm(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_seq_cp')
+@DEPRECATED(new_func=llama_kv_self_seq_cp)
 def llama_kv_cache_seq_cp(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_seq_keep')
+@DEPRECATED(new_func=llama_kv_self_seq_keep)
 def llama_kv_cache_seq_keep(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_seq_add')
+@DEPRECATED(new_func=llama_kv_self_seq_add)
 def llama_kv_cache_seq_add(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_seq_div')
+@DEPRECATED(new_func=llama_kv_self_seq_div)
 def llama_kv_cache_seq_div(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_seq_pos_max')
+@DEPRECATED(new_func=llama_kv_self_seq_pos_max)
 def llama_kv_cache_seq_pos_max(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_defrag')
+@DEPRECATED(new_func=llama_kv_self_defrag)
 def llama_kv_cache_defrag(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_update')
+@DEPRECATED(new_func=llama_kv_self_update)
 def llama_kv_cache_update(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_kv_self_can_shift')
+@DEPRECATED(new_func=llama_kv_self_can_shift)
 def llama_kv_cache_can_shift(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_state_get_size")
+@DEPRECATED(new_func=llama_state_get_size)
 def llama_get_state_size(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_state_get_data")
+@DEPRECATED(new_func=llama_state_get_data)
 def llama_copy_state_data(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_state_set_data")
+@DEPRECATED(new_func=llama_state_set_data)
 def llama_set_state_data(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_state_load_file")
+@DEPRECATED(new_func=llama_state_load_file)
 def llama_load_session_file(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_state_save_file")
+@DEPRECATED(new_func=llama_state_save_file)
 def llama_save_session_file(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_vocab_fim_pre")
+@DEPRECATED(new_func=llama_vocab_fim_pre)
 def llama_token_prefix(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_vocab_fim_mid")
+@DEPRECATED(new_func=llama_vocab_fim_mid)
 def llama_token_middle(*args):
     pass
 
-@DEPRECATED(new_func_name="llama_vocab_fim_suf")
+@DEPRECATED(new_func=llama_vocab_fim_suf)
 def llama_token_suffix(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_get_text')
+@DEPRECATED(new_func=llama_vocab_get_text)
 def llama_token_get_text(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_get_score')
+@DEPRECATED(new_func=llama_vocab_get_score)
 def llama_token_get_score(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_get_attr')
+@DEPRECATED(new_func=llama_vocab_get_attr)
 def llama_token_get_attr(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_is_eog')
+@DEPRECATED(new_func=llama_vocab_is_eog)
 def llama_token_is_eog(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_is_control')
+@DEPRECATED(new_func=llama_vocab_is_control)
 def llama_token_is_control(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_bos')
+@DEPRECATED(new_func=llama_vocab_bos)
 def llama_token_bos(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_eos')
+@DEPRECATED(new_func=llama_vocab_eos)
 def llama_token_eos(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_eot')
+@DEPRECATED(new_func=llama_vocab_eot)
 def llama_token_eot(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_bos')
+@DEPRECATED(new_func=llama_vocab_bos)
 def llama_token_cls(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_sep')
+@DEPRECATED(new_func=llama_vocab_sep)
 def llama_token_sep(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_nl')
+@DEPRECATED(new_func=llama_vocab_nl)
 def llama_token_nl(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_pad')
+@DEPRECATED(new_func=llama_vocab_pad)
 def llama_token_pad(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_get_add_bos')
+@DEPRECATED(new_func=llama_vocab_get_add_bos)
 def llama_add_bos_token(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_get_add_eos')
+@DEPRECATED(new_func=llama_vocab_get_add_eos)
 def llama_add_eos_token(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_fim_pre')
+@DEPRECATED(new_func=llama_vocab_fim_pre)
 def llama_token_fim_pre(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_fim_suf')
+@DEPRECATED(new_func=llama_vocab_fim_suf)
 def llama_token_fim_suf(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_fim_mid')
+@DEPRECATED(new_func=llama_vocab_fim_mid)
 def llama_token_fim_mid(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_fim_pad')
+@DEPRECATED(new_func=llama_vocab_fim_pad)
 def llama_token_fim_pad(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_fim_rep')
+@DEPRECATED(new_func=llama_vocab_fim_rep)
 def llama_token_fim_rep(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_vocab_fim_sep')
+@DEPRECATED(new_func=llama_vocab_fim_sep)
 def llama_token_fim_sep(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_sampler_init_dist')
+@DEPRECATED(new_func=llama_sampler_init_dist)
 def llama_sampler_init_softmax(*args):
     pass
 
-@DEPRECATED(new_func_name='llama_sampler_init_grammar_lazy_patterns')
+@DEPRECATED(new_func=llama_sampler_init_grammar_lazy_patterns)
 def llama_sampler_init_grammar_lazy(*args):
     pass

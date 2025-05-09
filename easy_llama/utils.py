@@ -278,11 +278,6 @@ def assert_type(
         exc.add_note(hint)
     raise exc
 
-def assert_only_ints(iterable: Iterable) -> None | NoReturn:
-    """Ensure that the given iterable contains only `int`s"""
-    if any(not isinstance(x, int) for x in iterable):
-        raise TypeError(f"assert_only_ints: some item in the given iterable is not an int")
-
 def null_ptr_check(ptr: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
     """Ensure that the given object `ptr` is not NULL / NULLPTR
 

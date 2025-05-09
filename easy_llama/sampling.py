@@ -399,7 +399,7 @@ class SamplerParams:
             f"penalty_repeat={self.penalty_repeat}, "
             f"penalty_freq={self.penalty_freq}, "
             f"penalty_present={self.penalty_present}, "
-            f"dry_multiplayer={self.dry_multiplier}, "
+            f"dry_multiplier={self.dry_multiplier}, "
             f"dry_base={self.dry_base}, "
             f"dry_allowed_length={self.dry_allowed_length}, "
             f"dry_penalty_last_n={self.dry_penalty_last_n}, "
@@ -423,6 +423,53 @@ class SamplerParams:
     def reset(self) -> None:
         null_ptr_check(self.smpl, 'self.smpl', 'SamplerParams.reset')
         lib.llama_sampler_reset(self.smpl)
+
+    def to_dict(self) -> dict:
+        """Returns the sampler parameters as a dictionary."""
+        return {
+            # not including "llama"
+            "seed"                  : self.seed,
+            "top_k"                 : self.top_k,
+            "top_p"                 : self.top_p,
+            "min_p"                 : self.min_p,
+            "xtc_probability"       : self.xtc_probability,
+            "xtc_threshold"         : self.xtc_threshold,
+            "typical_p"             : self.typical_p,
+            "temp"                  : self.temp,
+            "dynatemp_delta"        : self.dynatemp_delta,
+            "dynatemp_exponent"     : self.dynatemp_exponent,
+            "penalty_last_n"        : self.penalty_last_n,
+            "penalty_repeat"        : self.penalty_repeat,
+            "penalty_freq"          : self.penalty_freq,
+            "penalty_present"       : self.penalty_present,
+            "dry_multiplier"        : self.dry_multiplier,
+            "dry_base"              : self.dry_base,
+            "dry_allowed_length"    : self.dry_allowed_length,
+            "dry_penalty_last_n"    : self.dry_penalty_last_n,
+            "mirostat"              : self.mirostat,
+            "top_n_sigma"           : self.top_n_sigma,
+            "mirostat_tau"          : self.mirostat_tau,
+            "mirostat_eta"          : self.mirostat_eta,
+            "dry_sequence_breakers" : self.dry_sequence_breakers,
+            "logit_bias"            : self.logit_bias
+        }
+
+    @classmethod
+    def from_dict(cls, llama: Llama, params_dict: dict):
+        """Creates a SamplerParams instance from a dictionary.
+
+        Args:
+            llama: The Llama object associated with these parameters.
+            params_dict: A dictionary containing the sampler parameters.
+
+        Returns:
+            A new SamplerParams instance.
+        """
+        # Create a copy to avoid modifying the original dictionary
+        # and remove keys that are not constructor arguments (like 'llama' if present)
+        filtered_params = {k: v for k, v in params_dict.items() if k in SamplerPreset.__init__.__code__.co_varnames}
+        return cls(llama=llama, **filtered_params)
+
 
 class SamplerPreset:
     """A SamplerPreset object contains all the values necessary to construct a SamplerParams
@@ -512,7 +559,7 @@ class SamplerPreset:
             f"penalty_repeat={self.penalty_repeat}, "
             f"penalty_freq={self.penalty_freq}, "
             f"penalty_present={self.penalty_present}, "
-            f"dry_multiplayer={self.dry_multiplier}, "
+            f"dry_multiplier={self.dry_multiplier}, "
             f"dry_base={self.dry_base}, "
             f"dry_allowed_length={self.dry_allowed_length}, "
             f"dry_penalty_last_n={self.dry_penalty_last_n}, "
@@ -524,6 +571,51 @@ class SamplerPreset:
             f"logit_bias={self.logit_bias!r}"
             f")"
         )
+
+    def as_dict(self) -> dict:
+        """Returns the sampler parameters as a dictionary."""
+        return {
+            "seed"                  : self.seed,
+            "top_k"                 : self.top_k,
+            "top_p"                 : self.top_p,
+            "min_p"                 : self.min_p,
+            "xtc_probability"       : self.xtc_probability,
+            "xtc_threshold"         : self.xtc_threshold,
+            "typical_p"             : self.typical_p,
+            "temp"                  : self.temp,
+            "dynatemp_delta"        : self.dynatemp_delta,
+            "dynatemp_exponent"     : self.dynatemp_exponent,
+            "penalty_last_n"        : self.penalty_last_n,
+            "penalty_repeat"        : self.penalty_repeat,
+            "penalty_freq"          : self.penalty_freq,
+            "penalty_present"       : self.penalty_present,
+            "dry_multiplier"        : self.dry_multiplier,
+            "dry_base"              : self.dry_base,
+            "dry_allowed_length"    : self.dry_allowed_length,
+            "dry_penalty_last_n"    : self.dry_penalty_last_n,
+            "mirostat"              : self.mirostat,
+            "top_n_sigma"           : self.top_n_sigma,
+            "mirostat_tau"          : self.mirostat_tau,
+            "mirostat_eta"          : self.mirostat_eta,
+            "dry_sequence_breakers" : self.dry_sequence_breakers,
+            "logit_bias"            : self.logit_bias
+        }
+
+    @classmethod
+    def from_dict(cls, params_dict: dict):
+        """Creates a SamplerPreset instance from a dictionary.
+
+        Args:
+            params_dict: A dictionary containing the sampler parameters.
+
+        Returns:
+            A new SamplerPreset instance.
+        """
+        # Create a copy to avoid modifying the original dictionary
+        # and remove keys that are not constructor arguments
+        filtered_params = {k: v for k, v in params_dict.items() if k in cls.__init__.__code__.co_varnames}
+        return cls(**filtered_params)
+
 
 class SamplerPresets:
     """This class contains several ready-made `SamplerPreset` objects that can be used to

@@ -286,7 +286,7 @@ class Thread:
         
         return input_ids
     
-    def send(self, content: str) -> str:
+    def send(self, content: str, n_predict: Optional[int] = None) -> str:
         """Send a message in this thread and return the generated response. This adds your
         message and the bot's message to the thread."""
         self.messages.append({
@@ -295,7 +295,7 @@ class Thread:
         })
         response_toks = self.llama.generate(
             input_tokens=self.get_input_ids(role='bot'),
-            n_predict=-1,
+            n_predict=n_predict if n_predict is not None else -1,
             stop_tokens=self._stop_tokens,
             sampler_preset=self.sampler_preset
         )
@@ -421,7 +421,7 @@ class Thread:
                     print(f'\n{B}{response}{R}\n')
     
     def give_input_output_examples(self, examples: dict[str, str]) -> None:
-        """Provide examples for few-shot prompting"""
+        """Provide examples for few-shot prompting""" # TODO: this should be renamed or removed
         for input_msg_content, output_msg_content in examples.items():
             self.add_message('user', input_msg_content)
             self.add_message('bot', output_msg_content)

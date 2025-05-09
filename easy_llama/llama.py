@@ -153,7 +153,6 @@ def _calculate_rope_freq_base(
     return adjusted_rope_freq
 
 def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
-
     if n_ctx % 512 == 0:
         return n_ctx
     else:
@@ -775,7 +774,7 @@ class Llama:
         type_v: Optional[int] = None,
         offload_kqv: bool = False, # XXX: can you make this actually offload the whole KV cache, not just per-layer?
         flash_attn: bool = False,
-        warmup: bool = True,
+        warmup: bool = False,
         verbose: bool = True,
         **kwargs
     ):
@@ -1102,18 +1101,18 @@ class Llama:
             self._default_sampler_params = SamplerParams(self)
     
     def warmup(self) -> None:
-        """Warm-up the model. This clears the KV cache."""
+        """Warm-up the model. This has the side effect of clearing the KV cache."""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.warmup")
-
+        lib.llama_set_warmup(self._ctx.ctx, True)
         log_if_verbose('warmup: single token decode ...')
+        lib.llama_kv_self_clear(self._ctx.ctx)
         with self._lock:
-            lib.llama_kv_self_clear(self._ctx.ctx)
             _internals.decode_tg(self._ctx.ctx, 0, 0)
-        
-        log_if_verbose('warmup: full batch decode ...')
-        with self._lock:
-            lib.llama_kv_self_clear(self._ctx.ctx)
-            _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
+        # log_if_verbose('warmup: full batch decode ...')
+        # lib.llama_kv_self_clear(self._ctx.ctx)
+        # with self._lock:
+        #     _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
+        lib.llama_set_warmup(self._ctx.ctx, False)
         log_if_verbose('warmup: done')
     
     def name(self) -> str:
@@ -2087,4 +2086,3 @@ class Llama:
         self.kv_cache_clear()
         self.pos = 0
         self.context_tokens = []
-        log_if_verbose('model was reset')

@@ -212,3 +212,14 @@ class PromptFormats:
             bot_prefix='<|im_start|>assistant\n<think>\n\n</think>\n\n',
             bot_suffix='<|im_end|>\n'
         )
+    
+    def GLM4(system_prompt: Optional[str] = None) -> PromptFormat:
+        return PromptFormat(
+            system_prefix="[gMASK]<sop><|system|>\n",
+            system_prompt=system_prompt if system_prompt is not None else '',
+            system_suffix="",
+            user_prefix="<|user|>\n",
+            user_suffix="",
+            bot_prefix="<|assistant|>\n",
+            bot_suffix=""
+        )
