@@ -711,12 +711,12 @@ class SamplerPresets:
         top_k = -1,
         top_p = 1.0,
         min_p = 0.0,
-        temp = 1_000_000.0,
+        temp = 9999.9,
         top_n_sigma = 1.0
     )
     """Top-nσ as described on [arXiv](https://arxiv.org/pdf/2411.07641) and
     in [llama.cpp#11223](https://github.com/ggml-org/llama.cpp/pull/11223), except that
-    `temp = 1_000_000.0` to randomly select any token that is determined to be valid
+    `temp = 9999.9` to randomly select any token that is determined to be valid
     by Top-nσ."""
 
     DRY = SamplerPreset(dry_multiplier=0.8, dry_base=1.75, dry_allowed_length=2)
@@ -763,7 +763,7 @@ class SamplerPresets:
         top_k = -1,
         top_p = 0.9,
         min_p = 0.0,
-        temp = 0.9
+        temp = 1.2
     )
     """Llama3 preset with increased temperature (more random)"""
 

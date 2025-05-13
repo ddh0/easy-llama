@@ -585,16 +585,15 @@ class _LlamaCtx:
         yarn_beta_slow:      Optional[float]   = None,
         yarn_orig_ctx:       Optional[int]     = None,
         defrag_thold:        Optional[float]   = None,
-        cb_eval:             Optional[ptr]     = None,
-        cb_eval_user_data:   Optional[ptr]     = None,
+        # cb_eval & cb_eval_user_data are not supported by easy-llama
         type_k:              Optional[int]     = None,
         type_v:              Optional[int]     = None,
         embeddings:          Optional[bool]    = None,
         offload_kqv:         Optional[bool]    = None,
         flash_attn:          Optional[bool]    = None,
         no_perf:             Optional[bool]    = None,
-        abort_callback:      Optional[ptr]     = None,
-        abort_callback_data: Optional[ptr]     = None
+        # abort_callback & abort_callback_data are not supported by easy-llama
+        op_offload:          Optional[bool]    = None
     ):
         _init_backend_if_needed()
         self.params = lib.llama_context_default_params()
@@ -637,10 +636,16 @@ class _LlamaCtx:
             self.params.yarn_orig_ctx = yarn_orig_ctx
         if defrag_thold is not None:
             self.params.defrag_thold = defrag_thold
-        if cb_eval is not None:
-            self.params.cb_eval = cb_eval
-        if cb_eval_user_data is not None:
-            self.params.cb_eval_user_data = cb_eval_user_data
+        
+        def _py_eval_callback(is_eval_bool: bool, user_data_ptr: ptr) -> None:
+            return
+        
+        # create the ctypes function pointer instance and store it as an attribute of this
+        # `_LlamaCtx` to keep it alive
+        self._eval_callback_cfunc_instance = lib.eval_callback_functype(_py_eval_callback)
+        self.params.cb_eval = self._eval_callback_cfunc_instance
+        self.params.cb_eval_user_data = lib.NULLPTR
+
         _k = _DEFAULT_KV_TYPE
         if type_k is not None:
             self.params.type_k = _k = type_k
@@ -657,9 +662,7 @@ class _LlamaCtx:
         if _v not in _SUPPORTED_KV_TYPES:
             log(f'type_v value {_v} is unsupported; program may fail', 2)
         if (not flash_attn) and (_v not in [
-            lib.GGMLType.GGML_TYPE_F32,
-            lib.GGMLType.GGML_TYPE_F16,
-            lib.GGMLType.GGML_TYPE_BF16
+            lib.GGMLType.GGML_TYPE_F32, lib.GGMLType.GGML_TYPE_F16, lib.GGMLType.GGML_TYPE_BF16
         ]):
             log(f'V cache quantization requires flash_attn; program may fail', 2)
         if embeddings is not None:
@@ -670,10 +673,20 @@ class _LlamaCtx:
             self.params.flash_attn = flash_attn
         if no_perf is not None:
             self.params.no_perf = no_perf
-        if abort_callback is not None:
-            self.params.abort_callback = abort_callback
-        if abort_callback_data is not None:
-            self.params.abort_callback_data = abort_callback_data
+        if op_offload is not None:
+            self.params.op_offload = op_offload
+
+        # easy-llama does not currently support user-defined abort callbacks, but it does not
+        # need them, since KeyboardInterrupt can catch the code in between batches.
+
+        def _py_abort_callback(user_data_ptr: ptr) -> ctypes.c_bool:
+            return False
+
+        # create the ctypes function pointer instance and store it as an attribute of this
+        # `_LlamaCtx` to keep it alive
+        self._abort_callback_cfunc_instance = lib.abort_callback_functype(_py_abort_callback)
+        self.params.abort_callback = self._abort_callback_cfunc_instance
+        self.params.abort_callback_data = lib.NULLPTR
         
         null_ptr_check(model.model, "model.model", "_LlamaCtx.__init__")
         with suppress_output(disable=get_verbose()):
@@ -920,7 +933,7 @@ class Llama:
             n_ctx               = _n_ctx,
             n_batch             = kwargs.get('n_batch'),
             n_ubatch            = kwargs.get('n_ubatch'),
-            # n_seq_max           = None,
+            # n_seq_max           = kwargs.get('n_seq_max'), # uncomment this if n_seq_max gets supported
             n_threads           = _n_threads,
             n_threads_batch     = _n_threads_batch,
             rope_scaling_type   = kwargs.get('rope_scaling_type'),
@@ -934,16 +947,12 @@ class Llama:
             yarn_beta_slow      = kwargs.get('yarn_beta_slow'),
             yarn_orig_ctx       = kwargs.get('yarn_orig_ctx'),
             defrag_thold        = kwargs.get('defrag_thold'),
-            cb_eval             = kwargs.get('cb_eval'),
-            cb_eval_user_data   = kwargs.get('cb_eval_user_data'),
             type_k              = type_k,
             type_v              = type_v,
             embeddings          = kwargs.get('embeddings'),
             offload_kqv         = offload_kqv,
             flash_attn          = flash_attn,
-            no_perf             = kwargs.get('no_perf'),
-            abort_callback      = kwargs.get('abort_callback'),
-            abort_callback_data = kwargs.get('abort_callback_data')
+            no_perf             = kwargs.get('no_perf')
         )
 
         #
@@ -1101,11 +1110,11 @@ class Llama:
             self._default_sampler_params = SamplerParams(self)
     
     def warmup(self) -> None:
-        """Warm-up the model. This has the side effect of clearing the KV cache."""
+        """Warm-up the model. This also clears the KV cache."""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.warmup")
+        lib.llama_kv_self_clear(self._ctx.ctx)
         lib.llama_set_warmup(self._ctx.ctx, True)
         log_if_verbose('warmup: single token decode ...')
-        lib.llama_kv_self_clear(self._ctx.ctx)
         with self._lock:
             _internals.decode_tg(self._ctx.ctx, 0, 0)
         # log_if_verbose('warmup: full batch decode ...')
@@ -1113,6 +1122,7 @@ class Llama:
         # with self._lock:
         #     _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
         lib.llama_set_warmup(self._ctx.ctx, False)
+        lib.llama_kv_self_clear(self._ctx.ctx)
         log_if_verbose('warmup: done')
     
     def name(self) -> str:

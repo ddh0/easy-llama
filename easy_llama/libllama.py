@@ -374,7 +374,7 @@ llama_model_kv_override_p = ctypes.POINTER(llama_model_kv_override)
 
 class llama_model_tensor_buft_override(ctypes.Structure):
     _fields_ = [
-        ("pattern", ctypes.c_char_p), # pattern to match tensor names
+        ("pattern", ctypes.c_char_p), # regex pattern to match tensor names
         ("buft",    ctypes.c_void_p), # pointer to buffer type (ggml_backend_buffer_type_t)
     ]
 
@@ -383,6 +383,8 @@ llama_model_tensor_buft_override_p = ctypes.POINTER(llama_model_tensor_buft_over
 dummy_progress_callback = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_float, ctypes.c_void_p)
 
 class llama_model_params(ctypes.Structure):
+    # NOTE: These fields need to be aligned with struct llama_model_params {...} !!!
+    #       If they are not aligned, you might get crashes that are very hard to debug !!!
     _fields_ = [
         ("devices",                     ctypes.POINTER(ctypes.c_void_p)        ),
         ("tensor_buft_overrides",       llama_model_tensor_buft_override_p     ), # TODO: figure this out
@@ -401,40 +403,42 @@ class llama_model_params(ctypes.Structure):
 
 llama_model_params_p = ctypes.POINTER(llama_model_params)
 
-dummy_eval_callback = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_bool, ctypes.c_void_p)
+eval_callback_functype = ctypes.CFUNCTYPE(None, ctypes.c_bool, ctypes.c_void_p)
 
-dummy_abort_callback = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p)
+abort_callback_functype = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
 
 class llama_context_params(ctypes.Structure):
+    # NOTE: These fields need to be aligned with struct llama_context_params {...} !!!
+    #       If they are not aligned, you might get crashes that are very hard to debug !!!
     _fields_ = [
-        ("n_ctx",               ctypes.c_uint32     ), # text context, 0 = from model
-        ("n_batch",             ctypes.c_uint32     ), # logical maximum batch size that can be submitted to llama_decode
-        ("n_ubatch",            ctypes.c_uint32     ), # physical maximum batch size (micro-batch size)
-        ("n_seq_max",           ctypes.c_uint32     ), # max number of sequences (i.e. distinct states for recurrent models)
-        ("n_threads",           ctypes.c_int32      ), # number of threads to use for generation
-        ("n_threads_batch",     ctypes.c_int32      ), # number of threads to use for batch processing
-        ("rope_scaling_type",   ctypes.c_int        ), # RoPE scaling type, from `enum llama_rope_scaling_type`
-        ("pooling_type",        ctypes.c_int        ), # whether to pool (sum) embedding results by sequence id
-        ("attention_type",      ctypes.c_int        ), # attention type to use for embeddings
-        ("rope_freq_base",      ctypes.c_float      ), # RoPE base frequency, 0 = from model
-        ("rope_freq_scale",     ctypes.c_float      ), # RoPE frequency scaling factor, 0 = from model
-        ("yarn_ext_factor",     ctypes.c_float      ), # YaRN extrapolation mix factor, negative = from model
-        ("yarn_attn_factor",    ctypes.c_float      ), # YaRN magnitude scaling factor
-        ("yarn_beta_fast",      ctypes.c_float      ), # YaRN low correction dim
-        ("yarn_beta_slow",      ctypes.c_float      ), # YaRN high correction dim
-        ("yarn_orig_ctx",       ctypes.c_uint32     ), # YaRN original context size
-        ("defrag_thold",        ctypes.c_float      ), # defragment the KV cache if holes/size > thold, < 0 disabled (default)
-        ("cb_eval",             dummy_eval_callback ), # callback for eval
-        ("cb_eval_user_data",   ctypes.c_void_p     ), # user data for eval callback
-        ("type_k",              ctypes.c_int        ), # data type for K cache [EXPERIMENTAL]
-        ("type_v",              ctypes.c_int        ), # data type for V cache [EXPERIMENTAL]
-        ("logits_all",          ctypes.c_bool       ), # the llama_decode() call computes all logits, not just the last one (DEPRECATED - set llama_batch.logits instead) # TODO: should this be removed?
-        ("embeddings",          ctypes.c_bool       ), # if true, extract embeddings (together with logits)
-        ("offload_kqv",         ctypes.c_bool       ), # whether to offload the KQV ops (including the KV cache) to GPU
-        ("flash_attn",          ctypes.c_bool       ), # whether to use flash attention [EXPERIMENTAL]
-        ("no_perf",             ctypes.c_bool       ), # whether to measure performance timings
-        ("abort_callback",      dummy_abort_callback), # callback for abort
-        ("abort_callback_data", ctypes.c_void_p     )  # user data for abort callback
+        ("n_ctx",               ctypes.c_uint32        ), # text context, 0 = from model
+        ("n_batch",             ctypes.c_uint32        ), # logical maximum batch size that can be submitted to llama_decode
+        ("n_ubatch",            ctypes.c_uint32        ), # physical maximum batch size (micro-batch size)
+        ("n_seq_max",           ctypes.c_uint32        ), # max number of sequences (i.e. distinct states for recurrent models)
+        ("n_threads",           ctypes.c_int32         ), # number of threads to use for generation
+        ("n_threads_batch",     ctypes.c_int32         ), # number of threads to use for batch processing
+        ("rope_scaling_type",   ctypes.c_int           ), # RoPE scaling type, from `enum llama_rope_scaling_type`
+        ("pooling_type",        ctypes.c_int           ), # whether to pool (sum) embedding results by sequence id
+        ("attention_type",      ctypes.c_int           ), # attention type to use for embeddings
+        ("rope_freq_base",      ctypes.c_float         ), # RoPE base frequency, 0 = from model
+        ("rope_freq_scale",     ctypes.c_float         ), # RoPE frequency scaling factor, 0 = from model
+        ("yarn_ext_factor",     ctypes.c_float         ), # YaRN extrapolation mix factor, negative = from model
+        ("yarn_attn_factor",    ctypes.c_float         ), # YaRN magnitude scaling factor
+        ("yarn_beta_fast",      ctypes.c_float         ), # YaRN low correction dim
+        ("yarn_beta_slow",      ctypes.c_float         ), # YaRN high correction dim
+        ("yarn_orig_ctx",       ctypes.c_uint32        ), # YaRN original context size
+        ("defrag_thold",        ctypes.c_float         ), # defragment the KV cache if holes/size > thold, < 0 disabled (default)
+        ("cb_eval",             eval_callback_functype ), # callback for eval
+        ("cb_eval_user_data",   ctypes.c_void_p        ), # user data for eval callback
+        ("type_k",              ctypes.c_int           ), # data type for K cache [EXPERIMENTAL]
+        ("type_v",              ctypes.c_int           ), # data type for V cache [EXPERIMENTAL]
+        ("abort_callback",      abort_callback_functype), # callback for abort
+        ("abort_callback_data", ctypes.c_void_p        ), # user data for abort callback
+        ("embeddings",          ctypes.c_bool          ), # if true, extract embeddings (together with logits)
+        ("offload_kqv",         ctypes.c_bool          ), # whether to offload the KQV ops (including the KV cache) to GPU
+        ("flash_attn",          ctypes.c_bool          ), # whether to use flash attention [EXPERIMENTAL]
+        ("no_perf",             ctypes.c_bool          ), # whether to measure performance timings
+        ("op_offload",          ctypes.c_bool          )  # whether to offload host tensor operations to device
     ]
 
 llama_context_params_p = ctypes.POINTER(llama_context_params)
@@ -489,10 +493,13 @@ llama_adapter_lora_p = ctypes.POINTER(llama_adapter_lora)
 # libllama initialization
 #
 
+_PATH: Optional[str] = None
+"""If libllama is loaded, this is the path it was loaded from."""
+
 def llama_backend_init() -> None:
     """Initialize the libllama backend. This function needs to be called before any other
     libllama functions can be used."""
-    global _BACKEND_INIT, libllama
+    global _BACKEND_INIT, libllama, _PATH
     
     if _BACKEND_INIT:
         return
@@ -530,7 +537,7 @@ def llama_backend_init() -> None:
     try:
         libllama = ctypes.CDLL(lib_path)
     except Exception as exc:
-        log(f'failed to load libllama: {exc}', 3)
+        log(f'failed to load libllama from {lib_path}: {type(exc).__name__}: {exc}', 3)
         raise exc
     else:
         log(f'loaded libllama from {lib_path}')
@@ -539,6 +546,8 @@ def llama_backend_init() -> None:
     libllama.llama_backend_init.argtypes = []
     libllama.llama_backend_init.restype = None
     libllama.llama_backend_init()
+
+    _PATH = lib_path
 
     # initialize the built-in greedy sampler
     _internals.greedy_sampler = llama_sampler_init_greedy()
@@ -1456,12 +1465,12 @@ def llama_chat_builtin_templates(output: ptr[ctypes.c_char_p], len: int):
 
 class llama_sampler_i(ctypes.Structure):
     _fields_ = [
-        ("name", ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_void_p)),  # can be NULL
+        ("name",   ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_void_p)),  # can be NULL
         ("accept", ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int32)),  # can be NULL
-        ("apply", ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.POINTER(llama_token_data_array))),  # required
-        ("reset", ctypes.CFUNCTYPE(None, ctypes.c_void_p)),  # can be NULL
-        ("clone", ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p)),  # can be NULL if ctx is NULL
-        ("free", ctypes.CFUNCTYPE(None, ctypes.c_void_p)),  # can be NULL if ctx is NULL
+        ("apply",  ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.POINTER(llama_token_data_array))),  # required
+        ("reset",  ctypes.CFUNCTYPE(None, ctypes.c_void_p)),  # can be NULL
+        ("clone",  ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p)),  # can be NULL if ctx is NULL
+        ("free",   ctypes.CFUNCTYPE(None, ctypes.c_void_p)),  # can be NULL if ctx is NULL
     ]
 
 llama_sampler_i_p = ctypes.POINTER(llama_sampler_i)
@@ -1892,8 +1901,7 @@ class _internals:
     ) -> Optional[np.ndarray]: # returns logits for the _next_ token (after soft prompt)
         """### INTERNAL
 
-        Decode a batch of soft prompt embeddings.
-        """
+        Decode a batch of soft prompt embeddings."""
         n_prompt_tokens = embeddings.shape[0]
         if n_prompt_tokens == 0:
             return None
@@ -1935,7 +1943,9 @@ class _internals:
         llama_batch_free(batch)
 
         if ret != 0:
-            raise RuntimeError(f'decode_soft_prompt: llama_decode failed with status code')
+            raise RuntimeError(
+                f'decode_soft_prompt: llama_decode failed with status code {ret}'
+            )
 
         return logits # return the logits for the token immediately following the soft prompt
 
@@ -2053,7 +2063,7 @@ class _internals:
         del tokens_buf
         return ret
 
-    # this buffer is re-used every time llama_token_to_piece() is called
+    # this buffer is re-used every time _internals.token_to_piece() is called
     # it is only 256 bytes, so OK to keep in memory
     detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
 
