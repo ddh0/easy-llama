@@ -4,6 +4,8 @@
 
 """This file provides a high-level Python interface to LLAMA_API ("libllama")."""
 
+# TODO: support saving/loading llama state
+
 from ._version import __version__
 
 import re
@@ -321,7 +323,7 @@ class _LlamaStopwatch:
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
-
+    
     # the GGUF format versions that this class supports
     SUPPORTED_GGUF_VERSIONS = [2, 3]
     
@@ -473,6 +475,60 @@ class QuickGGUFReader:
         return metadata
 
 #
+# InferenceLock
+#
+
+class InferenceLockException(Exception):
+    pass
+
+class _InferenceLock:
+    """A context manager which is used to prevent an `ez.Llama` instance from accepting
+    more than one generation at a time, which is not supported and can cause a hard crash.
+
+    - Safe if only used synchronously (`__enter__`/`__exit__`)
+    - Safe if only used asynchronously (`__aenter__`/`__aexit__`)
+    - Not safe for concurrent sync/async"""
+    
+    def __init__(self):
+        self._locked = False
+        self._sync_lock = threading.Lock()  # for thread safety
+        self._async_lock = asyncio.Lock()   # for async safety
+
+    def __enter__(self):
+        with self._sync_lock:
+            if self._locked:
+                raise InferenceLockException(
+                    'sync: failed to acquire InferenceLock (already locked)'
+                )
+            self._locked = True
+        return self
+
+    def __exit__(self, *_):
+        with self._sync_lock:
+            if not self._locked:
+                raise InferenceLockException(
+                    'sync: tried to release InferenceLock that is not acquired'
+                )
+            self._locked = False
+
+    async def __aenter__(self):
+        async with self._async_lock:
+            if self._locked:
+                raise InferenceLockException(
+                    'async: failed to acquire InferenceLock (already locked)'
+                )
+            self._locked = True
+        return self
+
+    async def __aexit__(self, *_):
+        async with self._async_lock:
+            if not self._locked:
+                raise InferenceLockException(
+                    'async: tried to release InferenceLock that is not acquired'
+                )
+            self._locked = False
+
+#
 # Simple python wrappers
 #
 
@@ -560,7 +616,6 @@ class _LlamaModel:
                 lib.llama_model_free(self.model)
             self.model = None
 
-
 class _LlamaCtx:
     """Low-level Python wrapper over `llama_context`"""
 
@@ -637,7 +692,7 @@ class _LlamaCtx:
         if defrag_thold is not None:
             self.params.defrag_thold = defrag_thold
         
-        def _py_eval_callback(is_eval_bool: bool, user_data_ptr: ptr) -> None:
+        def _py_eval_callback(is_eval: bool, user_data: ptr) -> None:
             return
         
         # create the ctypes function pointer instance and store it as an attribute of this
@@ -679,7 +734,7 @@ class _LlamaCtx:
         # easy-llama does not currently support user-defined abort callbacks, but it does not
         # need them, since KeyboardInterrupt can catch the code in between batches.
 
-        def _py_abort_callback(user_data_ptr: ptr) -> ctypes.c_bool:
+        def _py_abort_callback(user_data: ptr) -> ctypes.c_bool:
             return False
 
         # create the ctypes function pointer instance and store it as an attribute of this
@@ -701,60 +756,6 @@ class _LlamaCtx:
             with suppress_output(disable=get_verbose()):
                 lib.llama_free(self.ctx)
             self.ctx = None
-
-#
-# InferenceLock
-#
-
-class InferenceLockException(Exception):
-    pass
-
-class _InferenceLock:
-    """A context manager which is used to prevent an `ez.Llama` instance from accepting
-    more than one generation at a time, which is not supported and can cause a hard crash.
-
-    - Safe if only used synchronously (`__enter__`/`__exit__`)
-    - Safe if only used asynchronously (`__aenter__`/`__aexit__`)
-    - Not safe for concurrent sync/async"""
-    
-    def __init__(self):
-        self._locked = False
-        self._sync_lock = threading.Lock()  # for thread safety
-        self._async_lock = asyncio.Lock()   # for async safety
-
-    def __enter__(self):
-        with self._sync_lock:
-            if self._locked:
-                raise InferenceLockException(
-                    'sync: failed to acquire InferenceLock (already locked)'
-                )
-            self._locked = True
-        return self
-
-    def __exit__(self, *_):
-        with self._sync_lock:
-            if not self._locked:
-                raise InferenceLockException(
-                    'sync: tried to release InferenceLock that is not acquired'
-                )
-            self._locked = False
-
-    async def __aenter__(self):
-        async with self._async_lock:
-            if self._locked:
-                raise InferenceLockException(
-                    'async: failed to acquire InferenceLock (already locked)'
-                )
-            self._locked = True
-        return self
-
-    async def __aexit__(self, *_):
-        async with self._async_lock:
-            if not self._locked:
-                raise InferenceLockException(
-                    'async: tried to release InferenceLock that is not acquired'
-                )
-            self._locked = False
 
 #
 # Llama
@@ -833,8 +834,8 @@ class Llama:
         - flash_attn:
             Whether to use Flash Attention, which decreases memory usage and
             can increase both prompt processing and text generation speed,
-            especially at long context lengths. Default is False. Recommended
-            to set to True if possible.
+            especially at long context lengths. Default is False for compatability reasons.
+            Recommended to set to True if possible.
         - warmup:
             Whether to warm-up the model with an empty run. This reduces the
             latency of the first generation at the cost of a slower load time.
@@ -929,30 +930,30 @@ class Llama:
         #
         
         self._ctx = _LlamaCtx(
-            model               = self._model,
-            n_ctx               = _n_ctx,
-            n_batch             = kwargs.get('n_batch'),
-            n_ubatch            = kwargs.get('n_ubatch'),
-            # n_seq_max           = kwargs.get('n_seq_max'), # uncomment this if n_seq_max gets supported
-            n_threads           = _n_threads,
-            n_threads_batch     = _n_threads_batch,
-            rope_scaling_type   = kwargs.get('rope_scaling_type'),
-            pooling_type        = kwargs.get('pooling_type'),
-            attention_type      = kwargs.get('attention_type'),
-            rope_freq_base      = _rope_freq_base,
-            rope_freq_scale     = kwargs.get('rope_freq_scale'),
-            yarn_ext_factor     = kwargs.get('yarn_ext_factor'),
-            yarn_attn_factor    = kwargs.get('yarn_attn_factor'),
-            yarn_beta_fast      = kwargs.get('yarn_beta_fast'),
-            yarn_beta_slow      = kwargs.get('yarn_beta_slow'),
-            yarn_orig_ctx       = kwargs.get('yarn_orig_ctx'),
-            defrag_thold        = kwargs.get('defrag_thold'),
-            type_k              = type_k,
-            type_v              = type_v,
-            embeddings          = kwargs.get('embeddings'),
-            offload_kqv         = offload_kqv,
-            flash_attn          = flash_attn,
-            no_perf             = kwargs.get('no_perf')
+            model             = self._model,
+            n_ctx             = _n_ctx,
+            n_batch           = kwargs.get('n_batch'),
+            n_ubatch          = kwargs.get('n_ubatch'),
+            # n_seq_max         = kwargs.get('n_seq_max'), # uncomment this if n_seq_max gets supported
+            n_threads         = _n_threads,
+            n_threads_batch   = _n_threads_batch,
+            rope_scaling_type = kwargs.get('rope_scaling_type'),
+            pooling_type      = kwargs.get('pooling_type'),
+            attention_type    = kwargs.get('attention_type'),
+            rope_freq_base    = _rope_freq_base,
+            rope_freq_scale   = kwargs.get('rope_freq_scale'),
+            yarn_ext_factor   = kwargs.get('yarn_ext_factor'),
+            yarn_attn_factor  = kwargs.get('yarn_attn_factor'),
+            yarn_beta_fast    = kwargs.get('yarn_beta_fast'),
+            yarn_beta_slow    = kwargs.get('yarn_beta_slow'),
+            yarn_orig_ctx     = kwargs.get('yarn_orig_ctx'),
+            defrag_thold      = kwargs.get('defrag_thold'),
+            type_k            = type_k,
+            type_v            = type_v,
+            embeddings        = kwargs.get('embeddings'),
+            offload_kqv       = offload_kqv,
+            flash_attn        = flash_attn,
+            no_perf           = kwargs.get('no_perf')
         )
 
         #
@@ -1052,20 +1053,6 @@ class Llama:
         self._lock = _InferenceLock()
 
         if warmup:
-            #
-            # Here, we are warming up the model by calling `llama_decode` with a dummy batch
-            # which has `n_batch` tokens (as opposed to llama.cpp, which decodes a batch of only
-            # one token).
-            #
-            # The model might often be very large compared to the host's VRAM or even system
-            # RAM. In this case, decoding small batches might work fine, but the program may
-            # crash or be killed by OOM when decoding large batches.
-            #
-            # By decoding a full batch right after the model loads, we prevent unexpected
-            # crashes or OOMs later on during execution, by "stress-testing" with a full batch.
-            #
-            # This adds a few seconds to the Llama load time.
-            #
             self.warmup()
 
         # End of Llama.__init__
@@ -1601,7 +1588,7 @@ class Llama:
             
             log_if_verbose(f'Llama.eval: {n_input_tokens} tokens to eval ...')
 
-            self.reset()
+            self.reset() # TODO: REWORK_CTX
             actual_input_tokens = input_tokens
             n_actual_input_tokens = len(input_tokens)
         else:
@@ -2093,6 +2080,6 @@ class Llama:
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""
-        self.kv_cache_clear()
+        self.kv_cache_clear() # TODO: REWORK_CTX
         self.pos = 0
         self.context_tokens = []

@@ -553,7 +553,7 @@ def llama_backend_init() -> None:
     _internals.greedy_sampler = llama_sampler_init_greedy()
 
     # initialize the built-in re-usable single-token batch
-    _internals.tg_batch = llama_batch_init(n_tokens=1, embd=False, n_seq_max=1)
+    _internals.tg_batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
 
     # don't let this function be called again
     _BACKEND_INIT = True
