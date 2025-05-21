@@ -749,8 +749,9 @@ class _LlamaCtx:
             self.params.no_perf = no_perf
         if op_offload is not None:
             self.params.op_offload = op_offload
-        if swa_full is not None:
-            self.params.swa_full = False # default to ENABLE proper SWA (not disable)
+
+        # enable proper SWA support unless explicitly disabled
+        self.params.swa_full = False if swa_full is None else swa_full
 
         # easy-llama does not currently support user-defined abort callbacks, but it does not
         # need them, since KeyboardInterrupt can catch the code in between batches.
@@ -974,7 +975,9 @@ class Llama:
             embeddings        = kwargs.get('embeddings'),
             offload_kqv       = offload_kqv,
             flash_attn        = flash_attn,
-            no_perf           = kwargs.get('no_perf')
+            no_perf           = kwargs.get('no_perf'),
+            op_offload        = kwargs.get('op_offload'),
+            swa_full          = kwargs.get('swa_full')
         )
 
         #
