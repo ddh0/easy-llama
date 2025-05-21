@@ -666,7 +666,8 @@ class _LlamaCtx:
         flash_attn:          Optional[bool]    = None,
         no_perf:             Optional[bool]    = None,
         # abort_callback & abort_callback_data are not supported by easy-llama
-        op_offload:          Optional[bool]    = None
+        op_offload:          Optional[bool]    = None,
+        swa_full:            Optional[bool]    = None
     ):
         _init_backend_if_needed()
         self.params = lib.llama_context_default_params()
@@ -748,6 +749,8 @@ class _LlamaCtx:
             self.params.no_perf = no_perf
         if op_offload is not None:
             self.params.op_offload = op_offload
+        if swa_full is not None:
+            self.params.swa_full = False # default to ENABLE proper SWA (not disable)
 
         # easy-llama does not currently support user-defined abort callbacks, but it does not
         # need them, since KeyboardInterrupt can catch the code in between batches.
