@@ -6,15 +6,15 @@
 in `llama.cpp/include/llama.h`.
 
 This file was last updated to match `llama.cpp/include/llama.h` as of this commit:
-- Full SHA: `71e90e8813f90097701e62f7fce137d96ddf41e2`
-- Commit message: `quantize: Handle user-defined quantization levels for additional tensors (#12511)`
-- Date: 2025-04-13
+- Full SHA: `a4090d1174aed22dde5cacce2a4c27656b987a2f`
+- Commit message: `llama : remove llama_kv_cache_view API + remove deprecated (#13653)`
+- Date: 2025-05-20
 
 This file's status with respect to the above commit is:
-- Synchronized
+- WIP
 
 Helpful references:
-- `libllama` changelog:
+- `libllama` API changelog:
     [llama.cpp/issues/9289](https://github.com/ggml-org/llama.cpp/issues/9289)
 - `llama.h` at master:
     [llama.cpp/blob/master/include/llama.h](https://github.com/ggml-org/llama.cpp/blob/master/include/llama.h)"""
@@ -72,8 +72,8 @@ class GGMLType(IntEnum):
     GGML_TYPE_F16     = 1
     GGML_TYPE_Q4_0    = 2
     GGML_TYPE_Q4_1    = 3
-    # GGML_TYPE_Q4_2  = 4 # support has been removed
-    # GGML_TYPE_Q4_3  = 5 # support has been removed
+    # GGML_TYPE_Q4_2 = 4 -- support has been removed
+    # GGML_TYPE_Q4_3 = 5 -- support has been removed
     GGML_TYPE_Q5_0    = 6
     GGML_TYPE_Q5_1    = 7
     GGML_TYPE_Q8_0    = 8
@@ -99,7 +99,7 @@ class GGMLType(IntEnum):
     GGML_TYPE_F64     = 28
     GGML_TYPE_IQ1_M   = 29
     GGML_TYPE_BF16    = 30
-    # GGML_TYPE_Q4_0_4_4 = 31 # support has been removed from gguf files
+    # GGML_TYPE_Q4_0_4_4 = 31 -- support has been removed from gguf files
     # GGML_TYPE_Q4_0_4_8 = 32
     # GGML_TYPE_Q4_0_8_8 = 33
     GGML_TYPE_TQ1_0   = 34,
@@ -220,6 +220,8 @@ class LlamaVocabPreType(IntEnum):
     LLAMA_VOCAB_PRE_TYPE_TRILLION       = 31
     LLAMA_VOCAB_PRE_TYPE_BAILINGMOE     = 32
     LLAMA_VOCAB_PRE_TYPE_LLAMA4         = 33
+    LLAMA_VOCAB_PRE_TYPE_PIXTRAL        = 34
+    LLAMA_VOCAB_PRE_TYPE_SEED_CODER     = 35
 
 class LlamaRopeType(IntEnum):
     LLAMA_ROPE_TYPE_NONE   = -1
@@ -256,9 +258,9 @@ class LlamaFType(IntEnum):
     LLAMA_FTYPE_MOSTLY_F16           = 1  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q4_0          = 2  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q4_1          = 3  # except 1d tensors
-    # LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16 = 4, # support has been removed
-    # LLAMA_FTYPE_MOSTLY_Q4_2          = 5, # support has been removed
-    # LLAMA_FTYPE_MOSTLY_Q4_3          = 6, # support has been removed
+    # LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16 = 4 -- support has been removed
+    # LLAMA_FTYPE_MOSTLY_Q4_2          = 5 -- support has been removed
+    # LLAMA_FTYPE_MOSTLY_Q4_3          = 6 -- support has been removed
     LLAMA_FTYPE_MOSTLY_Q8_0          = 7  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q5_0          = 8  # except 1d tensors
     LLAMA_FTYPE_MOSTLY_Q5_1          = 9  # except 1d tensors
@@ -285,9 +287,9 @@ class LlamaFType(IntEnum):
     LLAMA_FTYPE_MOSTLY_IQ4_XS        = 30 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_IQ1_M         = 31 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_BF16          = 32 # except 1d tensors
-    # LLAMA_FTYPE_MOSTLY_Q4_0_4_4      = 33 # removed from gguf files, use Q4_0 and runtime repack
-    # LLAMA_FTYPE_MOSTLY_Q4_0_4_8      = 34 # removed from gguf files, use Q4_0 and runtime repack
-    # LLAMA_FTYPE_MOSTLY_Q4_0_8_8      = 35 # removed from gguf files, use Q4_0 and runtime repack
+    # LLAMA_FTYPE_MOSTLY_Q4_0_4_4 = 33 -- removed from gguf files, use Q4_0 and runtime repack
+    # LLAMA_FTYPE_MOSTLY_Q4_0_4_8 = 34 -- removed from gguf files, use Q4_0 and runtime repack
+    # LLAMA_FTYPE_MOSTLY_Q4_0_8_8 = 35 -- removed from gguf files, use Q4_0 and runtime repack
     LLAMA_FTYPE_MOSTLY_TQ1_0         = 36 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_TQ2_0         = 37 # except 1d tensors
 
@@ -372,10 +374,12 @@ class llama_model_kv_override(ctypes.Structure):
 
 llama_model_kv_override_p = ctypes.POINTER(llama_model_kv_override)
 
+ggml_backend_buffer_type_t = ctypes.c_void_p # opaque pointer type
+
 class llama_model_tensor_buft_override(ctypes.Structure):
     _fields_ = [
-        ("pattern", ctypes.c_char_p), # regex pattern to match tensor names
-        ("buft",    ctypes.c_void_p), # pointer to buffer type (ggml_backend_buffer_type_t)
+        ("pattern", ctypes.c_char_p           ), # regex pattern to match tensor names
+        ("buft",    ggml_backend_buffer_type_t)  # pointer to buffer type
     ]
 
 llama_model_tensor_buft_override_p = ctypes.POINTER(llama_model_tensor_buft_override)
@@ -386,19 +390,19 @@ class llama_model_params(ctypes.Structure):
     # NOTE: These fields need to be aligned with struct llama_model_params {...} !!!
     #       If they are not aligned, you might get crashes that are very hard to debug !!!
     _fields_ = [
-        ("devices",                     ctypes.POINTER(ctypes.c_void_p)        ),
-        ("tensor_buft_overrides",       llama_model_tensor_buft_override_p     ), # TODO: figure this out
-        ("n_gpu_layers",                ctypes.c_int32                         ),
-        ("split_mode",                  ctypes.c_int                           ),
-        ("main_gpu",                    ctypes.c_int32                         ),
-        ("tensor_split",                ctypes.POINTER(ctypes.c_float)         ),
-        ("progress_callback",           dummy_progress_callback                ),
-        ("progress_callback_user_data", ctypes.c_void_p                        ),
-        ("kv_overrides",                ctypes.POINTER(llama_model_kv_override)),
-        ("vocab_only",                  ctypes.c_bool                          ),
-        ("use_mmap",                    ctypes.c_bool                          ),
-        ("use_mlock",                   ctypes.c_bool                          ),
-        ("check_tensors",               ctypes.c_bool                          )
+        ("devices",                     ctypes.POINTER(ctypes.c_void_p)                 ),
+        ("tensor_buft_overrides",       ctypes.POINTER(llama_model_tensor_buft_override)),
+        ("n_gpu_layers",                ctypes.c_int32                                  ),
+        ("split_mode",                  ctypes.c_int                                    ),
+        ("main_gpu",                    ctypes.c_int32                                  ),
+        ("tensor_split",                ctypes.POINTER(ctypes.c_float)                  ),
+        ("progress_callback",           dummy_progress_callback                         ),
+        ("progress_callback_user_data", ctypes.c_void_p                                 ),
+        ("kv_overrides",                ctypes.POINTER(llama_model_kv_override)         ),
+        ("vocab_only",                  ctypes.c_bool                                   ),
+        ("use_mmap",                    ctypes.c_bool                                   ),
+        ("use_mlock",                   ctypes.c_bool                                   ),
+        ("check_tensors",               ctypes.c_bool                                   )
     ]
 
 llama_model_params_p = ctypes.POINTER(llama_model_params)
@@ -406,6 +410,51 @@ llama_model_params_p = ctypes.POINTER(llama_model_params)
 eval_callback_functype = ctypes.CFUNCTYPE(None, ctypes.c_bool, ctypes.c_void_p)
 
 abort_callback_functype = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+
+    # // NOTE: changing the default values of parameters marked as [EXPERIMENTAL] may cause crashes or incorrect results in certain configurations
+    # //       https://github.com/ggml-org/llama.cpp/pull/7544
+    # struct llama_context_params {
+    #     uint32_t n_ctx;             // text context, 0 = from model
+    #     uint32_t n_batch;           // logical maximum batch size that can be submitted to llama_decode
+    #     uint32_t n_ubatch;          // physical maximum batch size
+    #     uint32_t n_seq_max;         // max number of sequences (i.e. distinct states for recurrent models)
+    #     int32_t  n_threads;         // number of threads to use for generation
+    #     int32_t  n_threads_batch;   // number of threads to use for batch processing
+
+    #     enum llama_rope_scaling_type rope_scaling_type; // RoPE scaling type, from `enum llama_rope_scaling_type`
+    #     enum llama_pooling_type      pooling_type;      // whether to pool (sum) embedding results by sequence id
+    #     enum llama_attention_type    attention_type;    // attention type to use for embeddings
+
+    #     // ref: https://github.com/ggml-org/llama.cpp/pull/2054
+    #     float    rope_freq_base;   // RoPE base frequency, 0 = from model
+    #     float    rope_freq_scale;  // RoPE frequency scaling factor, 0 = from model
+    #     float    yarn_ext_factor;  // YaRN extrapolation mix factor, negative = from model
+    #     float    yarn_attn_factor; // YaRN magnitude scaling factor
+    #     float    yarn_beta_fast;   // YaRN low correction dim
+    #     float    yarn_beta_slow;   // YaRN high correction dim
+    #     uint32_t yarn_orig_ctx;    // YaRN original context size
+    #     float    defrag_thold;     // defragment the KV cache if holes/size > thold, <= 0 disabled (default)
+
+    #     ggml_backend_sched_eval_callback cb_eval;
+    #     void * cb_eval_user_data;
+
+    #     enum ggml_type type_k; // data type for K cache [EXPERIMENTAL]
+    #     enum ggml_type type_v; // data type for V cache [EXPERIMENTAL]
+
+    #     // Abort callback
+    #     // if it returns true, execution of llama_decode() will be aborted
+    #     // currently works only with CPU execution
+    #     ggml_abort_callback abort_callback;
+    #     void *              abort_callback_data;
+
+    #     // Keep the booleans together and at the end of the struct to avoid misalignment during copy-by-value.
+    #     bool embeddings;  // if true, extract embeddings (together with logits)
+    #     bool offload_kqv; // offload the KQV ops (including the KV cache) to GPU
+    #     bool flash_attn;  // use flash attention [EXPERIMENTAL]
+    #     bool no_perf;     // measure performance timings
+    #     bool op_offload;  // offload host tensor operations to device
+    #     bool swa_full;    // use full-size SWA cache (https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+    # };
 
 class llama_context_params(ctypes.Structure):
     # NOTE: These fields need to be aligned with struct llama_context_params {...} !!!
@@ -438,7 +487,8 @@ class llama_context_params(ctypes.Structure):
         ("offload_kqv",         ctypes.c_bool          ), # whether to offload the KQV ops (including the KV cache) to GPU
         ("flash_attn",          ctypes.c_bool          ), # whether to use flash attention [EXPERIMENTAL]
         ("no_perf",             ctypes.c_bool          ), # whether to measure performance timings
-        ("op_offload",          ctypes.c_bool          )  # whether to offload host tensor operations to device
+        ("op_offload",          ctypes.c_bool          ), # whether to offload host tensor operations to device
+        ("swa_full",            ctypes.c_bool          )  # use full-size SWA cache (https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
     ]
 
 llama_context_params_p = ctypes.POINTER(llama_context_params)
@@ -630,6 +680,12 @@ def llama_model_load_from_splits(paths: list[str], n_paths: int, params: llama_m
     libllama.llama_model_load_from_splits.restype = llama_model_p
     c_paths = (ctypes.c_char_p * n_paths)(*[p.encode("utf-8") for p in paths])
     return libllama.llama_model_load_from_splits(c_paths, n_paths, params)
+
+def llama_model_save_to_file(model: ptr[llama_model], path_model: str) -> None:
+    """Save a llama model to a file."""
+    libllama.llama_model_save_to_file.argtypes = [llama_model_p, ctypes.c_char_p]
+    libllama.llama_model_save_to_file.restype = None
+    libllama.llama_model_save_to_file(model, path_model.encode('utf-8'))
 
 def llama_model_free(model: ptr[llama_model]) -> None:
     """Free a model"""
@@ -943,57 +999,6 @@ def llama_apply_adapter_cvec(ctx: llama_context, data: ctypes.c_void_p, len: int
 # KV cache
 #
 
-class llama_kv_cache_view_cell(ctypes.Structure):
-    _fields_ = [
-        ("pos", ctypes.c_int32), # The position for this cell. Takes KV cache shifts into account.
-    ]
-
-llama_kv_cache_view_cell_p = ctypes.POINTER(llama_kv_cache_view_cell)
-
-class llama_kv_cache_view(ctypes.Structure):
-    _fields_ = [
-        ("n_cells", ctypes.c_int32),                         # Number of KV cache cells. This will be the same as the context size.
-        ("n_seq_max", ctypes.c_int32),                       # Maximum number of sequences that can exist in a cell. It's not an error
-        ("token_count", ctypes.c_int32),                     # Number of tokens in the cache. For example, if there are two populated
-        ("used_cells", ctypes.c_int32),                      # Number of populated cache cells.
-        ("max_contiguous", ctypes.c_int32),                  # Maximum contiguous empty slots in the cache.
-        ("max_contiguous_idx", ctypes.c_int32),              # Index to the start of the max_contiguous slot range. Can be negative
-        ("cells", ctypes.POINTER(llama_kv_cache_view_cell)), # Information for an individual cell.
-        ("cells_sequences", ctypes.POINTER(ctypes.c_int32))  # The sequences for each cell. There will be n_seq_max items per cell.
-    ]
-
-llama_kv_cache_view_p = ctypes.POINTER(llama_kv_cache_view)
-
-def llama_kv_cache_view_init(ctx: llama_context, n_seq_max: int) -> ptr[llama_kv_cache_view]:
-    """
-    DEBUG ONLY
-
-    Create an empty KV cache view (use only for debugging purposes)
-    """
-    libllama.llama_kv_cache_view_init.argtypes = [llama_context_p, ctypes.c_int]
-    libllama.llama_kv_cache_view_init.restype = llama_kv_cache_view_p
-    return libllama.llama_kv_cache_view_init(ctx, n_seq_max)
-
-def llama_kv_cache_view_free(view: llama_kv_cache_view) -> None:
-    """
-    DEBUG ONLY
-
-    Free a KV cache view
-    """
-    libllama.llama_kv_cache_view_free.argtypes = [llama_kv_cache_view_p]
-    libllama.llama_kv_cache_view_free.restype = None
-    libllama.llama_kv_cache_view_free(view)
-
-def llama_kv_cache_view_update(ctx: llama_context, view: llama_kv_cache_view) -> None:
-    """
-    DEBUG ONLY
-    
-    Update a KV cache view with the current state of the KV cache
-    """
-    libllama.llama_kv_cache_view_update.argtypes = [llama_context_p, llama_kv_cache_view_p]
-    libllama.llama_kv_cache_view_update.restype = None
-    libllama.llama_kv_cache_view_update(ctx, view)
-
 def llama_kv_self_n_tokens(ctx: ptr[llama_context]) -> int:
     """
     DEBUG ONLY, SLOW
@@ -1009,6 +1014,8 @@ def llama_kv_self_used_cells(ctx: ptr[llama_context]) -> int:
     libllama.llama_kv_self_used_cells.argtypes = [llama_context_p]
     libllama.llama_kv_self_used_cells.restype = ctypes.c_int32
     return libllama.llama_kv_self_used_cells(ctx)
+
+# TODO: technically the type hints should all be updated to `ctx: ptr[llama_context]`
 
 def llama_kv_self_clear(ctx: llama_context) -> None:
     """Clear the KV cache"""
@@ -1046,10 +1053,18 @@ def llama_kv_self_seq_div(ctx: llama_context, seq_id: int, p0: int, p1: int, d: 
     libllama.llama_kv_self_seq_div.restype = None
     libllama.llama_kv_self_seq_div(ctx, seq_id, p0, p1, d)
 
+def llama_kv_self_seq_pos_min(ctx: llama_context, seq_id: int) -> int:
+    """Returns the smallest position present in the KV cache for the specified sequence. This is
+    typically non-zero only for SWA caches. Return -1 if the sequence is empty."""
+    libllama.llama_kv_self_seq_pos_min.argtypes = [llama_context_p, llama_seq_id]
+    libllama.llama_kv_self_seq_pos_min.restype = llama_pos
+    return libllama.llama_kv_self_seq_pos_min(ctx, seq_id)
+
 def llama_kv_self_seq_pos_max(ctx: llama_context, seq_id: int) -> int:
-    """Get the maximum position of a sequence in the KV cache"""
-    libllama.llama_kv_self_seq_pos_max.argtypes = [llama_context_p, ctypes.c_int]
-    libllama.llama_kv_self_seq_pos_max.restype = ctypes.c_int
+    """Get the maximum position of a sequence in the KV cache. Return -1 if the sequence is
+    empty."""
+    libllama.llama_kv_self_seq_pos_max.argtypes = [llama_context_p, llama_seq_id]
+    libllama.llama_kv_self_seq_pos_max.restype = llama_pos
     return libllama.llama_kv_self_seq_pos_max(ctx, seq_id)
 
 def llama_kv_self_defrag(ctx: llama_context) -> None:
@@ -1174,13 +1189,26 @@ def llama_batch_free(batch: llama_batch) -> None:
 #
 
 def llama_encode(ctx: llama_context, batch: llama_batch) -> int:
-    """Process a batch of tokens with the encoder part of the encoder-decoder model"""
+    """Process a batch of tokens.
+    In contrast to llama_decode() - this call does not use KV cache.
+    For encoder-decoder contexts, processes the batch using the encoder.
+    Can store the encoder output internally for later use by the decoder's cross-attention
+    layers.
+    Returns:
+    - 0:
+        success
+    - < 0:
+        error. the KV cache state is restored to the state before this call"""
     libllama.llama_encode.argtypes = [llama_context_p, llama_batch_p]
-    libllama.llama_encode.restype = ctypes.c_int
+    libllama.llama_encode.restype = ctypes.c_int32
     return libllama.llama_encode(ctx, batch)
 
 def llama_decode(ctx: llama_context, batch: llama_batch) -> int:
-    """Process a batch of tokens with the decoder part of the encoder-decoder model
+    """Process a batch of tokens.
+    Requires KV cache.
+    For encoder-decoder contexts, processes the batch using the decoder.
+    Positive return values does not mean a fatal error, but rather a warning.
+    Upon non-zero return values, the KV cache state is restored to the state before this call
 
     Returns:
     - 0:
@@ -1188,9 +1216,12 @@ def llama_decode(ctx: llama_context, batch: llama_batch) -> int:
     - 1:
         could not find a KV slot for the batch (try reducing the size of
         the batch or increase the context)
-    - < 0:
-        error. the KV cache state is restored to the state before this
-        call"""
+    - 2:
+        aborted
+    - -1:
+        invalid input batch
+    - < -1:
+        error"""
     libllama.llama_decode.argtypes = [llama_context_p, llama_batch]
     libllama.llama_decode.restype = ctypes.c_int32
     return libllama.llama_decode(ctx, batch)
@@ -1584,7 +1615,7 @@ def llama_sampler_init_dist(seed: int) -> llama_sampler:
     return libllama.llama_sampler_init_dist(seed)
 
 def llama_sampler_init_top_k(k: int) -> llama_sampler:
-    """Initialize a top-K sampler"""
+    """Initialize a top-K sampler. Setting k <= 0 makes this a no-op."""
     libllama.llama_sampler_init_top_k.argtypes = [ctypes.c_int]
     libllama.llama_sampler_init_top_k.restype = llama_sampler_p
     return libllama.llama_sampler_init_top_k(k)
@@ -1808,6 +1839,8 @@ def llama_perf_sampler_reset(smpl: llama_sampler) -> None:
     libllama.llama_perf_sampler_reset.argtypes = [llama_sampler_p]
     libllama.llama_perf_sampler_reset.restype = None
     libllama.llama_perf_sampler_reset(smpl)
+
+# TODO: add training?
 
 #
 # End of LLAMA_API
@@ -2244,54 +2277,6 @@ def llama_lora_adapter_free(*args):
 
 @DEPRECATED(new_func=llama_apply_adapter_cvec)
 def llama_control_vector_apply(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_n_tokens)
-def llama_get_kv_cache_token_count(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_used_cells)
-def llama_get_kv_cache_used_cells(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_clear)
-def llama_kv_cache_clear(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_seq_rm)
-def llama_kv_cache_seq_rm(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_seq_cp)
-def llama_kv_cache_seq_cp(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_seq_keep)
-def llama_kv_cache_seq_keep(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_seq_add)
-def llama_kv_cache_seq_add(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_seq_div)
-def llama_kv_cache_seq_div(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_seq_pos_max)
-def llama_kv_cache_seq_pos_max(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_defrag)
-def llama_kv_cache_defrag(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_update)
-def llama_kv_cache_update(*args):
-    pass
-
-@DEPRECATED(new_func=llama_kv_self_can_shift)
-def llama_kv_cache_can_shift(*args):
     pass
 
 @DEPRECATED(new_func=llama_state_get_size)

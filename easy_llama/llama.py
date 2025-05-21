@@ -12,6 +12,7 @@ import re
 import os
 import sys
 import time
+import tqdm
 import struct
 import ctypes
 import asyncio
@@ -32,6 +33,12 @@ from . import libllama as lib
 #
 # Constants, etc.
 #
+
+# show a tqdm progress bar if processing at least this many batches in one loop
+PROGRESS_BAR_N_BATCHES = 16
+
+# show a tqdm progress bar if processing at least this many tokens in one loop
+PROGRESS_BAR_N_TOKENS = 20480
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -164,6 +171,17 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
             return n_ctx_train
         else:
             return rounded
+
+def _batches_with_progress_bar(batches: list[list[int]]) -> Union[tqdm.tqdm, list[list[int]]]:
+    """Wrap this around an iterable of batches to show a progress bar if there are over
+    `PROGRESS_BAR_N_BATCHES` batches or `PROGRESS_BAR_N_TOKENS` tokens."""
+
+    n_batches = len(batches)
+    n_tokens = sum(len(batch) for batch in batches)
+
+    if n_tokens > PROGRESS_BAR_N_TOKENS or n_batches > PROGRESS_BAR_N_BATCHES:
+        return tqdm.tqdm(batches, desc='processing input batches')
+    return batches
 
 def split_tokens_into_batches(tokens: list[int], n_batch: int) -> list[list[int]]:
     """Split a list of tokens into smaller batches"""
@@ -1032,11 +1050,6 @@ class Llama:
         self._token_fim_rep         = self.token_fim_rep()
         self._token_fim_sep         = self.token_fim_sep()
 
-        self._bos_str = self.token_to_piece(self._token_bos, True).decode()
-        """String representation of the BOS token"""
-        self._eos_str = self.token_to_piece(self._token_eos, True).decode()
-        """String representation of the EOS token"""
-
         self.eog_tokens = [i for i in range(self._n_vocab) if self.token_is_eog(i)]
         """A list of all tokens in the vocab that are marked as EOG
         (End-Of-Generation)"""
@@ -1045,7 +1058,7 @@ class Llama:
         self._default_sampler_params = SamplerParams(self)
 
         self.pos = 0
-        """The current position of the model within the context"""
+        """The current position of the model within the context window"""
 
         self.context_tokens = []
         """A list of all tokens currently in the context window"""
@@ -1081,35 +1094,58 @@ class Llama:
         null_ptr_check(self._model.model, 'self._model.model', '_validate_model_state')
         null_ptr_check(self._vocab,       'self._vocab',       '_validate_model_state')
         null_ptr_check(self._ctx.ctx,     'self._ctx.ctx',     '_validate_model_state')
-
-        def _fail(txt: str):
-            log(f'Llama: validation failed: {txt}', 3)
-            raise RuntimeError(f'Llama: validation failed: {txt}')
         
-        if self.pos < 0:
-            _fail(f'self.pos value {self.pos} is negative')
-        if self.pos != len(self.context_tokens):
-            _fail(
-                f'self.pos value {self.pos} is not equal to the length of '
-                f'self.context_tokens {len(self.context_tokens)}'
+        _n_context_tokens = len(self.context_tokens)
+        _pos = self.pos
+
+        if _pos < 0:
+            self.pos = 0
+            self.context_tokens = []
+            log_if_verbose(
+                f'self.pos value was {self.pos} - clamping to 0. the KV cache has been reset.',
+                2
+            )
+        elif _pos != _n_context_tokens:
+            self.pos = 0
+            self.context_tokens = []
+            log_if_verbose(
+                f'n_context_tokens {_n_context_tokens} did not match self.pos {_pos}. the KV '
+                f'cache has been reset.', 2
             )
         if not hasattr(self, '_default_sampler_params'):
             self._default_sampler_params = SamplerParams(self)
+            log_if_verbose(
+                "Llama._default_sampler_params was destroyed but has been recreated", 2
+            )
     
     def warmup(self) -> None:
         """Warm-up the model. This also clears the KV cache."""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.warmup")
-        lib.llama_kv_self_clear(self._ctx.ctx)
+
+        with suppress_output(disable=get_verbose()):
+            self.reset()
+
         lib.llama_set_warmup(self._ctx.ctx, True)
+
         log_if_verbose('warmup: single token decode ...')
         with self._lock:
             _internals.decode_tg(self._ctx.ctx, 0, 0)
+        
+        # This section decodes a full batch of tokens, but is probably unnecessary.
+        #
+        # with suppress_output(disable=get_verbose()):
+        #     self.reset()
+        # 
         # log_if_verbose('warmup: full batch decode ...')
-        # lib.llama_kv_self_clear(self._ctx.ctx)
         # with self._lock:
         #     _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
+
         lib.llama_set_warmup(self._ctx.ctx, False)
-        lib.llama_kv_self_clear(self._ctx.ctx)
+
+        with suppress_output(disable=get_verbose()):
+            self.reset()
+        
+        self.pos = 0
         log_if_verbose('warmup: done')
     
     def name(self) -> str:
@@ -1474,7 +1510,7 @@ class Llama:
             else:
                 break
         return i
-    
+
     def _set_context(self, input_tokens: list[int]) -> list[int]:
         """Prepare the KV cache for the next llama_decode, by finding the longest prefix match
         from the tokens in the cache and the tokens you provide here.
@@ -1504,7 +1540,7 @@ class Llama:
         self.context_tokens = input_tokens[:self.pos]
 
         return actual_input_tokens
-    
+
     def _process_batch(
         self,
         batch_tokens: list[int],
@@ -1610,14 +1646,12 @@ class Llama:
         # process each batch one-by-one
         if logits_all:
             all_logits = []
-            # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
-            for batch in batches:
+            for batch in _batches_with_progress_bar(batches):
                 batch_logits = self._process_batch(batch, logits_all=True)
                 all_logits.append(batch_logits)
             final_logits = np.concatenate(all_logits, axis=0)
         else:
-            # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
-            for batch in batches:
+            for batch in _batches_with_progress_bar(batches):
                 final_logits = self._process_batch(batch, logits_all=False)
 
         self._stopwatch.stop_wall_time()
@@ -1669,8 +1703,7 @@ class Llama:
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
-        # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
-        for batch in batches:
+        for batch in _batches_with_progress_bar(batches):
             self._process_batch(batch, logits_all=False)
         
         self._stopwatch.stop_wall_time()
@@ -1744,60 +1777,45 @@ class Llama:
 
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
-        # process each batch one-by-one
-        # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
-        for batch in batches:
+        # process each input batch one-by-one
+        for batch in _batches_with_progress_bar(batches):
             self._process_batch(batch, logits_all=False)
         
         if n_predict == 0:
             return []
         
-        all_logits = []
+        predicted_logits = []
         predicted_tokens = []
         n_predicted = 0
+
+        try:
+            while (n_predicted < n_predict) if n_predict >= 0 else True:
+
+                logits_or_none = self._process_batch([self._id], logits_all=return_logits)
+
+                if logits_or_none is not None:
+                    predicted_logits.append(logits_or_none)
+
+                self._id = self.sample(sampler_params)
+                
+                self.context_tokens.append(self._id)
+                predicted_tokens.append(self._id)
+                n_predicted += 1
+
+                if self._id in stops:
+                    eog_str = ez_decode(self.token_to_piece(self._id, special=True))
+                    log_if_verbose(f'emitted stop token: {self._id} {eog_str!r}')
         
-        # continue generating until n_predict or n_ctx is reached
-        while (n_predicted < n_predict) if n_predict >= 0 else (self.pos < self._n_ctx):
+        finally:
+
+            self._stopwatch.stop_wall_time()
+
+            if get_verbose():
+                self._stopwatch.print_stats()
+
             if return_logits:
-                with self._lock:
-                    self._stopwatch.start_tg()
-                    token_logits = _internals.decode_tg_with_logits(
-                        self._ctx.ctx, self.pos, self.context_tokens[-1], self._n_vocab
-                    )
-                    self._stopwatch.stop_tg()
-                all_logits.append(token_logits)
-            else:
-                with self._lock:
-                    self._stopwatch.start_tg()
-                    _internals.decode_tg(self._ctx.ctx, self.pos, self.context_tokens[-1])
-                    self._stopwatch.stop_tg()
-            
-            self._stopwatch.increment_tg_tokens(1)
-            self.pos += 1
-
-            id = self.sample(sampler_params)
-
-            self.context_tokens.append(id)
-            predicted_tokens.append(id)
-            n_predicted += 1
-
-            if id in stops:
-                self._stopwatch.stop_wall_time()
-                eog_str = ez_decode(self.token_to_piece(id, special=True))
-                log_if_verbose(f'emitted stop token: {id} {eog_str!r}')
-                if get_verbose():
-                    self._stopwatch.print_stats()
-                if return_logits:
-                    return np.stack(all_logits, axis=0)
-                return predicted_tokens
-        
-        self._stopwatch.stop_wall_time()
-        if get_verbose():
-            self._stopwatch.print_stats()
-        if return_logits:
-            return np.stack(all_logits, axis=0)
-        
-        return predicted_tokens
+                return np.stack(predicted_logits, axis=0)
+            return predicted_tokens
 
     def stream(
         self,
@@ -1862,8 +1880,7 @@ class Llama:
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
         # process each batch one-by-one
-        # TODO: if there's more than EZ_N_BATCHES_PROGRESS batches, show a message and a progress bar
-        for batch in batches:
+        for batch in _batches_with_progress_bar(batches):
             self._process_batch(batch, logits_all=False)
         
         if n_predict == 0:
@@ -2080,6 +2097,6 @@ class Llama:
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""
-        self.kv_cache_clear() # TODO: REWORK_CTX
+        with suppress_output(disable=get_verbose()):
+            self.kv_cache_clear()
         self.pos = 0
-        self.context_tokens = []
