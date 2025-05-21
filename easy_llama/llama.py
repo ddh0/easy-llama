@@ -180,7 +180,7 @@ def _batches_with_progress_bar(batches: list[list[int]]) -> Union[tqdm.tqdm, lis
     n_tokens = sum(len(batch) for batch in batches)
 
     if n_tokens > PROGRESS_BAR_N_TOKENS or n_batches > PROGRESS_BAR_N_BATCHES:
-        return tqdm.tqdm(batches, desc='processing input batches')
+        return tqdm.tqdm(batches, desc='processing input batches', unit="batch")
     return batches
 
 def split_tokens_into_batches(tokens: list[int], n_batch: int) -> list[list[int]]:
