@@ -8,14 +8,14 @@ import sys
 import jinja2
 import contextlib
 
-from .utils    import (
-    _SupportsWriteAndFlush, ANSI, log, assert_type, ez_encode, ez_decode, suppress_output,
-)
 from typing    import Optional
 from .formats  import PromptFormat
 from .sampling import SamplerPreset
+from .utils    import (
+    _SupportsWriteAndFlush, ANSI, log, assert_type, ez_encode, ez_decode, suppress_output,
+)
 
-from . import llama as _llama
+from . import llama as _llama # avoid confusion with Thread.llama attribute
 
 @contextlib.contextmanager
 def KeyboardInterruptHandler():
@@ -84,12 +84,12 @@ class Thread:
             try:
                 role = message['role']
             except KeyError:
-                log(f'skipping message with no role!', 2)
+                log(f'_messages_in_jinja_format: skipping message with no role!', 2)
                 continue
             try:
                 content = message['content']
             except KeyError:
-                log(f'skipping message with no content!', 2)
+                log(f'_messages_in_jinja_format: skipping message with no content!', 2)
                 continue
             if role in Thread.valid_system_roles:
                 jinja_messages.append({'role': 'system', 'content': content})
@@ -98,10 +98,17 @@ class Thread:
             elif role in Thread.valid_bot_roles:
                 jinja_messages.append({'role': 'assistant', 'content': content})
             else:
-                log(f'skipping message with invalid role {role!r}!', 2)
+                log(
+                    f'_messages_in_jinja_format: skipping message with invalid role {role!r}!',
+                    2
+                )
         return jinja_messages
     
-    def _render_messages(self) -> str:
+    def _render_messages(
+        self,
+        add_generation_prompt: bool = True,
+        **kwargs
+    ) -> str:
         """Render the Jinja template with current messages"""
         try:
             template = jinja2.Template(
@@ -110,10 +117,8 @@ class Thread:
             )
             context = {
                 'messages': self._messages_in_jinja_format(),
-                'add_generation_prompt': False,
-                'bos_token': self.llama._bos_str,
-                'eos_token': self.llama._eos_str,
-                **self.template_context
+                'add_generation_prompt': add_generation_prompt,
+                **kwargs
             }
             return template.render(context)
         except jinja2.exceptions.TemplateSyntaxError as e:
@@ -369,11 +374,11 @@ class Thread:
             while True:
                 user_input = input(f'{R}  > {G}')
                 print(R, end='\n', flush=True)
-
+                
                 if stream:
                     self.messages.append({'role': 'user', 'content': user_input})
                     input_ids = self.get_input_ids()
-
+                    
                     tok_gen = self.llama.stream(
                         input_tokens=input_ids,
                         n_predict=-1,

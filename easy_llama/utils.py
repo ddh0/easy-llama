@@ -4,7 +4,7 @@
 
 """Submodule containing convenience functions used throughout easy_llama"""
 
-from ._version import __version__
+from . import __version__
 
 import os
 import sys
@@ -79,6 +79,11 @@ class ANSI:
 
 NoneType: type = type(None)
 
+_VERBOSE = True
+
+_DEBUG = False
+"""Package-wide debug flag"""
+
 class _ArrayLike(Iterable):
     """Anything that can be interpreted as a numpy array"""
 
@@ -102,6 +107,16 @@ T = TypeVar('T')
 class ptr(Generic[T]):
     """Generic type hint representing any ctypes pointer. Optionally subscriptable with any
     type."""
+
+def set_verbose(state: bool) -> None:
+    """Enable or disable verbose terminal output from easy-llama"""
+    global _VERBOSE
+    _VERBOSE = state
+
+def get_verbose() -> bool:
+    """Return `True` if verbose terminal output is enabled in easy-llama, `False` otherwise"""
+    global _VERBOSE
+    return _VERBOSE
 
 def log(
     text: str,
@@ -130,6 +145,14 @@ def log(
         file=sys.stdout if level in [1,4] else sys.stderr,
         flush=True
     )
+
+def log_if_verbose(text: str, level: Literal[1,2,3,4] = 1) -> None:
+    if get_verbose():
+        log(text, level)
+
+def log_if_debug(text: str, level: Literal[1,2,3,4] = 1) -> None:
+    if _DEBUG:
+        log('[DEBUG] ' + text, level)
 
 def softmax(
     z: _ArrayLike, T: Optional[float] = None, dtype: Optional[np.dtype] = None

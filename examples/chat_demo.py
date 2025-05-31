@@ -19,6 +19,6 @@ Thread = ez.Thread(
 
 ez.set_verbose(False)
 ez.utils.cls()
-Thread.interact(stream=True)
+Thread.interact()
 print('-' * 80)
 Thread.print_stats()

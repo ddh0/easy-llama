@@ -2,7 +2,7 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-"""The easy-llama FastAPI server, including an API endpoint and a WebUI"""
+"""The easy-llama FastAPI server, including an API endpoint and a simple WebUI"""
 
 # NOTE: This module is WIP.
 
@@ -29,7 +29,7 @@ Y = ANSI.FG_BRIGHT_YELLOW
 R = ANSI.MODE_RESET_ALL
 
 #
-# Pydantic Models for FastAPI
+# Pydantic models for FastAPI
 #
 
 class StatusResponseModel(BaseModel):
@@ -218,16 +218,15 @@ class Server:
             """
             content = request.content
             new_sys_msg = {'role': 'system', 'content': content}
-            messages = self._thread.messages # Access via internal thread
+            messages = self._thread.messages
 
             if messages and messages[0]['role'].lower() in self._thread.valid_system_roles:
                 self.log("Updating existing system prompt.")
-                messages[0]['content'] = content # Update existing
+                messages[0]['content'] = content
             else:
                 self.log("Prepending new system prompt.")
-                messages.insert(0, new_sys_msg) # Prepend new one
+                messages.insert(0, new_sys_msg)
 
-            # Also update the original messages for reset behavior
             orig_messages = self._thread._orig_messages
             if orig_messages and orig_messages[0]['role'].lower() in self._thread.valid_system_roles:
                  orig_messages[0]['content'] = content
@@ -238,12 +237,11 @@ class Server:
 
         @router.post("/trigger", response_model=MessageResponseModel, tags=["Chat"])
         async def trigger() -> dict[str, Union[str, int]]:
-            """
-            Trigger the bot to generate a response based on the current history,
-            without adding a user message first. Appends the bot's response.
-            """
+            """Trigger the bot to generate a response based on the current history,
+            without adding a user message first. Appends the bot's response."""
             self.log("/trigger request received")
             if not self._thread.messages:
+                 # TODO: this is incorrect
                  self.log("Cannot trigger response: No messages in history.", level=2)
                  raise HTTPException(status_code=400, detail="Cannot trigger response with empty history")
 
@@ -256,7 +254,8 @@ class Server:
             elif last_message_role in self._thread.valid_user_roles:
                  self.log("Last message was user, triggering bot response.", level=1)
 
-            # Prepare for generation
+            # prepare for generation
+
             try:
                 input_toks = self._thread.get_input_ids(role='bot')
             except ez.llama.ExceededContextLengthException as exc:
@@ -266,7 +265,8 @@ class Server:
                  self.log(f"Error getting input IDs: {exc}", level=3)
                  raise HTTPException(status_code=500, detail=f"Internal error preparing generation: {exc}")
 
-            # Generate response
+            # generate response
+
             try:
                  response_toks = self._thread.llama.generate(
                      input_tokens=input_toks,
@@ -299,6 +299,7 @@ class Server:
             """Get the current list of messages in the thread history."""
             self.log("/messages request received")
             return self._thread.messages
+
 
         @router.get("/summarize", response_model=SummaryResponseModel, tags=["Chat"])
         async def summarize() -> dict[str, str]:

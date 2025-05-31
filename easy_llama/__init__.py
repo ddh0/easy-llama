@@ -2,14 +2,19 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-from ._version import __version__
-
-"""Text generation in Python, as easy as possible
+"""This is easy-llama, a Python package which serves as a wrapper over the C/C++ API 
+(`libllama`) provided by [`llama.cpp`](https://github.com/ggml-org/llama.cpp). It is primarily
+intended for developers and machine learning hobbyists seeking to integrate on-device language
+models (LLMs) into their applications.
 
 For more information, visit the project's GitHub repository:
 https://github.com/ddh0/easy-llama"""
 
-# all submodules
+# package version (pyproject.toml reads from here)
+
+__version__ = '0.2.0'
+
+# submodules
 
 from . import libllama
 from . import sampling

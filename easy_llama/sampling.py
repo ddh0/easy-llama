@@ -211,9 +211,9 @@ class SamplerParams:
 
         if _penalties_sampler_active:
             self._chain_str += f'penalty last:{penalty_last_n}'
-            self._chain_str += f' repeat:{penalty_repeat:.3f}' if penalty_repeat != 1.0 else ''
-            self._chain_str += f' presence:{penalty_present:.3f}' if penalty_present != 0.0 else ''
-            self._chain_str += f' frequency:{penalty_freq:.3f}' if penalty_freq != 0.0 else ''
+            self._chain_str += f' rept:{penalty_repeat:.3f}' if penalty_repeat != 1.0 else ''
+            self._chain_str += f' pres:{penalty_present:.3f}' if penalty_present != 0.0 else ''
+            self._chain_str += f' freq:{penalty_freq:.3f}' if penalty_freq != 0.0 else ''
             self._chain_str += f' -> '
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_penalties(
                 penalty_last_n=penalty_last_n,
@@ -327,7 +327,9 @@ class SamplerParams:
         elif mirostat == 0:
             if top_n_sigma >= 0.0:
                 # ... -> top-k -> temp -> top-n-sigma -> ...
-                self._chain_str += f'top-k {top_k} -> temp {temp:.2f} -> top-n-sigma {top_n_sigma:.2f} -> '
+                self._chain_str += (
+                    f'top-k {top_k} -> temp {temp:.2f} -> top-n-sigma {top_n_sigma:.2f} -> '
+                )
                 lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
                 lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
                 lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_n_sigma(n=top_n_sigma)) 
@@ -413,6 +415,7 @@ class SamplerParams:
         )
     
     def print_chain(self) -> None:
+        """Print the active sampler chain."""
         log(f'sampler chain: {self._chain_str}')
     
     def free(self) -> None:
@@ -425,7 +428,7 @@ class SamplerParams:
         lib.llama_sampler_reset(self.smpl)
 
     def to_dict(self) -> dict:
-        """Returns the sampler parameters as a dictionary."""
+        """Return the sampler parameters as a dictionary."""
         return {
             # not including "llama"
             "seed"                  : self.seed,
@@ -786,7 +789,7 @@ class SamplerPresets:
         top_k = -1,
         top_p = 0.9,
         min_p = 0.1,
-        temp = 1.0
+        temp = 1.1
     )
     """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
     (unofficial, but recommended)"""
