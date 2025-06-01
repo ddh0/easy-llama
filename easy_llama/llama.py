@@ -4,8 +4,6 @@
 
 """This file provides a high-level Python interface to LLAMA_API ("libllama")."""
 
-# TODO: support saving/loading llama state
-
 from . import __version__
 
 import re
@@ -1017,6 +1015,7 @@ class Llama:
         self._n_head                = self.n_head()
         self._n_head_kv             = self.n_head_kv()
         self._pooling_type          = self.pooling_type()
+        self._n_swa                 = self.n_swa()
         self._vocab_type            = self.vocab_type()
         self._rope_type             = self.rope_type()
         self._rope_freq_scale_train = self.rope_freq_scale_train()
@@ -1139,18 +1138,6 @@ class Llama:
         
         self.pos = 0
         log_verbose('warmup: done')
-    
-    def name(self) -> str:
-        """Get the name of the model from the GGUF file name"""
-        # '/path/to/my-model.gguf' --> 'my-model'
-        model_file_basename = os.path.basename(self._model.path_model).removesuffix('.gguf')
-        # 'my-model-00001-of-99999' --> 'my-model'
-        model_file_basename = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
-        return model_file_basename
-    
-    def bpw(self) -> float:
-        """Get the average bits per weight of the model"""
-        return (self._model_size_bytes * 8) / self._n_params
 
     def n_ctx(self) -> int:
         """Get the current context length"""
@@ -1206,6 +1193,11 @@ class Llama:
         """Get the pooling type used by the context"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.pooling_type")
         return lib.llama_pooling_type(self._ctx.ctx)
+
+    def n_swa(self) -> int:
+        """Get the sliding window size, for models which use SWA."""
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_swa")
+        return lib.llama_model_n_swa(self._model.model)
 
     def vocab_type(self) -> int:
         """Get the vocab type"""
@@ -1285,21 +1277,17 @@ class Llama:
         """Integer division of the positions by factor of `d > 1`"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div")
         lib.llama_kv_self_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
+    
+    def kv_cache_seq_pos_min(self, seq_id: int) -> int:
+        """Returns the earliest valid position in the KV cache for the specified sequence
+        (relevant for models which use SWA)"""
+        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max")
+        return lib.llama_kv_self_seq_pos_min(self._ctx.ctx, seq_id)
 
     def kv_cache_seq_pos_max(self, seq_id: int) -> int:
         """Returns the largest position present in the KV cache for the specified sequence"""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max")
         return lib.llama_kv_self_seq_pos_max(self._ctx.ctx, seq_id)
-
-    def kv_cache_defrag(self) -> None:
-        """Defragment the KV cache"""
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_defrag")
-        lib.llama_kv_self_defrag(self._ctx.ctx)
-
-    def kv_cache_update(self) -> None:
-        """Apply the KV cache updates (K-shifts, defragmentation, etc.)"""
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_update")
-        lib.llama_kv_self_update(self._ctx.ctx)
 
     def kv_cache_can_shift(self) -> bool:
         """Check if the context supports KV cache shifting"""
@@ -1700,7 +1688,7 @@ class Llama:
         if get_verbose():
             self._stopwatch.print_stats()
 
-        if return_logits:
+        if return_logits: # TODO: this is inefficient, it decodes the last token again. replace.
             return self.get_logits()
 
         return self.sample(sampler_params)
@@ -1756,7 +1744,7 @@ class Llama:
 
         log_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, {n_actual_input_tokens} '
-            f'tokens to eval'
+            f'tokens to eval ...'
         )
 
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
@@ -1866,7 +1854,7 @@ class Llama:
 
         log_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, {n_actual_input_tokens} '
-            f'tokens to eval'
+            f'tokens to eval ...'
         )
 
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
@@ -2088,6 +2076,84 @@ class Llama:
             print(f"{id:>7} -> {repr(bytes)} ({bytes.hex(':')})", file=file)
             #print(f"{id:>7} -> {str(txt)}", file=file)
         print(f"Total number of tokens: {len(token_mapping)}", file=file, flush=True)
+    
+    def name(self) -> str:
+        """Get the name of the model from the GGUF metadata"""
+        # '/path/to/my-model.gguf' --> 'my-model'
+        model_file_basename = os.path.basename(self._model.path_model).removesuffix('.gguf')
+        # 'my-model-00001-of-99999' --> 'my-model'
+        model_file_basename = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
+        # TODO: get from metadata instead, fallback to using filename
+        return model_file_basename
+    
+    def bpw(self) -> float:
+        """Get the average bits per weight of the model"""
+        return (self._model_size_bytes * 8) / self._n_params
+    
+    def save_state(self, file_path: str) -> None:
+        """Save the current state of the context to a file"""
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.save_state')
+
+        state_size_bytes = lib.llama_state_get_size(self._ctx.ctx)
+        state_size_mib = int(state_size_bytes / (1024 * 1024)) # approximate
+
+        log(f'Llama.save_state: state size: {state_size_mib} MiB ({state_size_bytes} bytes)')
+        log(f'Llama.save_state: saving to {file_path} ...')
+
+        if os.path.exists(file_path):
+            log(f'Llama.save_state: file exists, will be overwritten', 2)
+
+        # save the llama state
+        with suppress_output(disable=get_verbose()):
+            success = lib.llama_state_save_file(self._ctx.ctx, file_path, self.context_tokens)
+
+        if success:
+            log(f'Llama.save_state: successfully saved state')
+        else:
+            raise RuntimeError(f'Llama.save_state: failed to save state')
+
+    def load_state(self, file_path: str) -> None:
+        """Load a previously saved context state from a file"""
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.load_state')
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f'Llama.load_state: file_path {file_path} does not exist')
+        
+        if os.path.isdir(file_path):
+            raise IsADirectoryError(f'Llama.load_state: file_path {file_path} is a directory')
+        
+        # reset the current context before loading the new one
+        self.reset()
+
+        n_ctx = self.n_ctx()
+        loaded_tokens_buf = (lib.llama_token * n_ctx)()
+        n_loaded_tokens_p = ctypes.c_size_t(0)
+
+        log(f'Llama.load_state: loading from {file_path} ...')
+
+        # load the llama state
+        with suppress_output(disable=get_verbose()):
+            success = lib.llama_state_load_file(
+                ctx=self._ctx.ctx,
+                path_session=file_path,
+                tokens_out=loaded_tokens_buf,
+                n_token_capacity=n_ctx,
+                n_token_count_out=ctypes.byref(n_loaded_tokens_p)
+            )
+        
+        if success:
+            n_loaded_tokens = n_loaded_tokens_p.value
+
+            self.context_tokens = list(loaded_tokens_buf[:n_loaded_tokens])
+            self.pos = n_loaded_tokens
+
+            state_size_bytes = lib.llama_state_get_size(self._ctx.ctx)
+            state_size_mib = int(state_size_bytes / (1024 * 1024)) # approximate
+
+            log(f'Llama.load_state: state size: {state_size_mib} MiB ({state_size_bytes} bytes)')
+            log(f'Llama.load_state: successfully loaded state ({n_loaded_tokens} tokens)')
+        else:
+            raise RuntimeError(f'Llama.load_state: failed to load state')
 
     def reset(self) -> None:
         """Reset the position of the model and clear the KV cache"""

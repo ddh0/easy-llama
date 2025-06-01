@@ -1080,17 +1080,29 @@ def llama_state_set_data(ctx: ptr[llama_context], src: ctypes.c_void_p, size: in
     libllama.llama_state_set_data.restype = ctypes.c_size_t
     return libllama.llama_state_set_data(ctx, src, size)
 
-def llama_state_load_file(ctx: ptr[llama_context], path_session: str, tokens_out: ptr[ctypes.c_int], n_token_capacity: int, n_token_count_out: ptr[ctypes.c_int]) -> bool:
-    """Load a state from a file"""
-    libllama.llama_state_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
-    libllama.llama_state_load_file.restype = ctypes.c_bool
-    return libllama.llama_state_load_file(ctx, path_session.encode('utf-8'), tokens_out, n_token_capacity, n_token_count_out)
+def llama_state_load_file(ctx: ptr[llama_context], path_session: str, tokens_out: ptr[llama_token], n_token_capacity: int, n_token_count_out: ptr[ctypes.c_size_t]) -> bool:
+    """Load the context state and session tokens from a file.
 
-def llama_state_save_file(ctx: ptr[llama_context], path_session: str, tokens: ptr[ctypes.c_int], n_token_count: int) -> bool:
-    """Save a state to a file"""
-    libllama.llama_state_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+    :param path_session: The path to the session file
+    :param tokens_out: A buffer to receive the loaded session tokens
+    :param n_token_capacity: The maximum capacity of the `tokens_out` buffer
+    :param n_token_count_out: A pointer to store the actual number of tokens loaded
+    :return: True on success, False on failure"""
+    libllama.llama_state_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.POINTER(llama_token), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+    libllama.llama_state_load_file.restype = ctypes.c_bool
+    return libllama.llama_state_load_file(ctx, path_session.encode('utf-8'), tokens_out, ctypes.c_size_t(n_token_capacity), n_token_count_out)
+
+def llama_state_save_file(ctx: ptr[llama_context], path_session: str, tokens: list[int]) -> bool:
+    """Save the context state and current tokens to a file.
+
+    :param path_session: The path to save the session file
+    :param tokens: A list of tokens representing the current prompt/session
+    :param n_token_count: The number of tokens in the `tokens` list
+    :return: True on success, False on failure"""
+    libllama.llama_state_save_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.POINTER(llama_token), ctypes.c_size_t]
     libllama.llama_state_save_file.restype = ctypes.c_bool
-    return libllama.llama_state_save_file(ctx, path_session.encode('utf-8'), tokens, n_token_count)
+    n_token_count = len(tokens)
+    return libllama.llama_state_save_file(ctx, path_session.encode('utf-8'), (llama_token * n_token_count)(*tokens), ctypes.c_size_t(n_token_count))
 
 def llama_state_seq_get_size(ctx: ptr[llama_context], llama_seq_id: int) -> int:
     """Get the exact size needed to copy the KV cache of a single sequence"""
