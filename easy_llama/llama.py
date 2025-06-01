@@ -22,7 +22,7 @@ import numpy as np
 
 from .utils    import (
     null_ptr_check, softmax, suppress_output, _SupportsWriteAndFlush, ptr, log, ez_decode,
-    log_if_verbose, log_if_debug, set_verbose, get_verbose
+    log_verbose, log_debug, set_verbose, get_verbose
 )
 from .sampling import SamplerParams, SamplerPreset
 from .libllama import _internals, GGUFValueType
@@ -65,14 +65,14 @@ def _init_backend_if_needed() -> None:
     if lib._BACKEND_INIT:
         return
     
-    log_if_verbose(f'easy_llama package version: {__version__}')
+    log_verbose(f'easy_llama package version: {__version__}')
     
     global _cpu_count
     _cpu_count = int(os.cpu_count())
     
     # most cases
     if sys.byteorder == 'little':
-        log_if_verbose("host is little-endian")
+        log_verbose("host is little-endian")
     # rare
     elif sys.byteorder == 'big':
         log("host is big-endian, please ensure your GGUF file is also big-endian", 2)
@@ -899,7 +899,7 @@ class Llama:
         # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
 
         if n_ctx <= 0:
-            log_if_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
+            log_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
             _n_ctx = int(n_ctx_train)
         else:
             _n_ctx = int(n_ctx)
@@ -1093,20 +1093,20 @@ class Llama:
         if _pos < 0:
             self.pos = 0
             self.context_tokens = []
-            log_if_verbose(
+            log_verbose(
                 f'self.pos value was {self.pos} - clamping to 0. the KV cache has been reset.',
                 2
             )
         elif _pos != _n_context_tokens:
             self.pos = 0
             self.context_tokens = []
-            log_if_verbose(
+            log_verbose(
                 f'n_context_tokens {_n_context_tokens} did not match self.pos {_pos}. the KV '
                 f'cache has been reset.', 2
             )
         if not hasattr(self, '_default_sampler_params'):
             self._default_sampler_params = SamplerParams(self)
-            log_if_verbose(
+            log_verbose(
                 "Llama._default_sampler_params was destroyed but has been recreated", 2
             )
     
@@ -1119,7 +1119,7 @@ class Llama:
 
         lib.llama_set_warmup(self._ctx.ctx, True)
 
-        log_if_verbose('warmup: single token decode ...')
+        log_verbose('warmup: single token decode ...')
         with self._lock:
             _internals.decode_tg(self._ctx.ctx, 0, 0)
         
@@ -1128,7 +1128,7 @@ class Llama:
         # with suppress_output(disable=get_verbose()):
         #     self.reset()
         # 
-        # log_if_verbose('warmup: full batch decode ...')
+        # log_verbose('warmup: full batch decode ...')
         # with self._lock:
         #     _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
 
@@ -1138,7 +1138,7 @@ class Llama:
             self.reset()
         
         self.pos = 0
-        log_if_verbose('warmup: done')
+        log_verbose('warmup: done')
     
     def name(self) -> str:
         """Get the name of the model from the GGUF file name"""
@@ -1543,7 +1543,7 @@ class Llama:
 
         batch_logits = None
         n_batch_tokens = len(batch_tokens)
-        log_if_debug(f'Llama._process_batch: processing {batch_tokens}')
+        log_debug(f'Llama._process_batch: processing {batch_tokens}')
 
         if n_batch_tokens > self._n_batch:
             raise ValueError(
@@ -1611,7 +1611,7 @@ class Llama:
                     f'for all tokens in the input', 2
                 )
             
-            log_if_verbose(f'Llama.eval: {n_input_tokens} tokens to eval ...')
+            log_verbose(f'Llama.eval: {n_input_tokens} tokens to eval ...')
 
             self.reset()
             actual_input_tokens = input_tokens
@@ -1622,7 +1622,7 @@ class Llama:
             n_actual_input_tokens = len(actual_input_tokens)
             n_cache_hit_tokens = n_input_tokens - n_actual_input_tokens
 
-            log_if_verbose(
+            log_verbose(
                 f'Llama.eval: {n_cache_hit_tokens} tokens in cache, '
                 f'{n_actual_input_tokens} tokens to eval ...'
             )
@@ -1684,7 +1684,7 @@ class Llama:
         if get_verbose():
             sampler_params.print_chain()
         
-        log_if_verbose(
+        log_verbose(
             f'Llama.generate_single: {n_cache_hit_tokens} tokens in cache, '
             f'{n_actual_input_tokens} tokens to eval ...'
         )
@@ -1754,20 +1754,20 @@ class Llama:
 
         _n_predict = n_predict if n_predict >= 0 else self._n_ctx - self.pos
 
-        log_if_verbose(
+        log_verbose(
             f'Llama.generate: {n_cache_hit_tokens} tokens in cache, {n_actual_input_tokens} '
             f'tokens to eval'
         )
 
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
-        log_if_debug('Llama.generate: start processing input batches')
+        log_debug('Llama.generate: start processing input batches')
 
         # process each input batch one-by-one
         for batch in _batches_with_progress_bar(batches):
             self._process_batch(batch, logits_all=False)
 
-        log_if_debug('Llama.generate: done processing input batches')
+        log_debug('Llama.generate: done processing input batches')
         
         if _n_predict == 0:
             self._stopwatch.stop_wall_time()
@@ -1780,8 +1780,8 @@ class Llama:
             predicted_logits = []
         n_predicted = 0
 
-        log_if_verbose(f'Llama.generate: predicting up to {_n_predict} new tokens ...')
-        log_if_debug(f'Llama.generate: enter while loop')
+        log_verbose(f'Llama.generate: predicting up to {_n_predict} new tokens ...')
+        log_debug(f'Llama.generate: enter while loop')
 
         while n_predicted < _n_predict:
             # sample a token from the latest logits
@@ -1808,7 +1808,7 @@ class Llama:
         
         # done generating, show stopwatch stats and return
         self._stopwatch.stop_wall_time()
-        log_if_debug(f'Llama.generate: exited while loop')
+        log_debug(f'Llama.generate: exited while loop')
         if get_verbose():
             self._stopwatch.print_stats()
         if return_logits:
@@ -1864,20 +1864,20 @@ class Llama:
 
         _n_predict = n_predict if n_predict >= 0 else self._n_ctx - self.pos
 
-        log_if_verbose(
+        log_verbose(
             f'Llama.stream: {n_cache_hit_tokens} tokens in cache, {n_actual_input_tokens} '
             f'tokens to eval'
         )
 
         batches = split_tokens_into_batches(actual_input_tokens, self._n_batch)
 
-        log_if_debug('Llama.stream: start processing input batches')
+        log_debug('Llama.stream: start processing input batches')
 
         # process each input batch one-by-one
         for batch in _batches_with_progress_bar(batches):
             self._process_batch(batch, logits_all=False)
         
-        log_if_debug('Llama.stream: done processing input batches')
+        log_debug('Llama.stream: done processing input batches')
         
         if _n_predict == 0:
             self._stopwatch.stop_wall_time()
@@ -1887,8 +1887,8 @@ class Llama:
         
         n_predicted = 0
 
-        log_if_verbose(f'Llama.stream: predicting up to {_n_predict} new tokens ...')
-        log_if_debug(f'Llama.stream: enter while loop')
+        log_verbose(f'Llama.stream: predicting up to {_n_predict} new tokens ...')
+        log_debug(f'Llama.stream: enter while loop')
 
         while n_predicted < _n_predict:
             # sample a token from the latest logits
@@ -1918,7 +1918,7 @@ class Llama:
         
         # done generating, show stopwatch stats
         self._stopwatch.stop_wall_time()
-        log_if_debug(f'Llama.stream: exited while loop')
+        log_debug(f'Llama.stream: exited while loop')
         if get_verbose():
             self._stopwatch.print_stats()
     
@@ -1940,16 +1940,16 @@ class Llama:
 
         for i in range(1, n_runs+1):
 
-            log_if_verbose(f'benchmark: starting run {i}/{n_runs}:')
+            log_verbose(f'benchmark: starting run {i}/{n_runs}:')
 
-            log_if_verbose(f'benchmark: processing {n_tokens_pp} tokens ... please wait ...')            
+            log_verbose(f'benchmark: processing {n_tokens_pp} tokens ... please wait ...')            
             with suppress_output():
                 self.reset()
                 self.eval(input_tokens=[0] * n_tokens_pp)
                 pp_ns = self._stopwatch.get_elapsed_time_pp()
                 total_pp_time_ns += pp_ns
             
-            log_if_verbose(f'benchmark: generating {n_tokens_tg} tokens ... please wait ...')
+            log_verbose(f'benchmark: generating {n_tokens_tg} tokens ... please wait ...')
             with suppress_output():
                 self.reset()
                 self.generate(
@@ -1977,11 +1977,11 @@ class Llama:
         avg_pp_tok_per_sec = n_tokens_pp / (avg_pp_time_ns / 1e9)
         avg_tg_tok_per_sec = n_tokens_tg / (avg_tg_time_ns / 1e9)
 
-        log_if_verbose(
+        log_verbose(
             f'average pp speed for {n_tokens_pp:>7} tokens over {n_runs} runs: '
             f'{avg_pp_time_ms:>13.3f}ms ({avg_pp_tok_per_sec:10.2f} tok/s)', 4
         )
-        log_if_verbose(
+        log_verbose(
             f'average tg speed for {n_tokens_tg:>7} tokens over {n_runs} runs: '
             f'{avg_tg_time_ms:>13.3f}ms ({avg_tg_tok_per_sec:10.2f} tok/s)', 4
         )

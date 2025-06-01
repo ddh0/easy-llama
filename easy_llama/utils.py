@@ -118,6 +118,14 @@ def get_verbose() -> bool:
     global _VERBOSE
     return _VERBOSE
 
+@contextlib.contextmanager
+def KeyboardInterruptHandler():
+    log_verbose('Press CTRL+C to exit')
+    try:
+        yield
+    except KeyboardInterrupt:
+        print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
+
 def log(
     text: str,
     level: Literal[1, 2, 3, 4] = 1,
@@ -146,53 +154,32 @@ def log(
         flush=True
     )
 
-def log_if_verbose(text: str, level: Literal[1,2,3,4] = 1) -> None:
+def log_verbose(text: str, level: Literal[1,2,3,4] = 1) -> None:
     if get_verbose():
         log(text, level)
 
-def log_if_debug(text: str, level: Literal[1,2,3,4] = 1) -> None:
+def log_debug(text: str, level: Literal[1,2,3,4] = 1) -> None:
     if _DEBUG:
         log('[DEBUG] ' + text, level)
 
-def softmax(
-    z: _ArrayLike, T: Optional[float] = None, dtype: Optional[np.dtype] = None
-) -> np.ndarray:
-    """Compute softmax over values in z, where z is array-like.
-    Also apply temperature `T`, if specified.
-
-    Any floating-point value for temperature `T` is valid, including 0.0 and
-    negative numbers.
-
-    If `dtype` is not specified, `np.float32` is used if available."""
-    if dtype is None:
-        if hasattr(np, 'float32'):
-            _dtype = np.float32
-        else:
-            _dtype = float
-    else:
-        assert_type(
-            dtype,
-            type,
-            'dtype',
-            'softmax',
-            'dtype should be a floating type, such as `np.float32`'
-        )
-        _dtype = dtype
-    
-    _z = np.asarray(z, dtype=_dtype)
-    if T is None or T == 1.0:
-        # simple formula with no temperature
-        e_z = np.exp(_z - np.max(_z), dtype=_dtype)
-        return e_z / np.sum(e_z, axis=0, dtype=_dtype)
-    assert_type(T, float, "temperature value 'T'", 'softmax')
+def softmax(z, T=1.0):
+    """Numerically stable softmax over all dimensions of an arbitrarily shaped array in
+    float32 precision."""
+    z_arr = np.array(z, dtype=np.float32)
+    if z_arr.size == 0:
+        return z_arr
     if T == 0.0:
-        # Return an array where the maximum value in _z is 1.0 and all others are 0.0
-        max_index = np.argmax(_z)
-        result = np.zeros_like(_z, dtype=_dtype)
-        result[max_index] = 1.0
+        result = np.zeros_like(z_arr)
+        flat = z_arr.ravel()
+        result.flat[np.argmax(flat)] = 1.0
         return result
-    e_z = np.exp(np.divide(_z, T, dtype=_dtype), dtype=_dtype)
-    return e_z / np.sum(e_z, axis=0, dtype=_dtype)
+    if T < 0:
+        z_arr = -z_arr
+        T = -T
+    max_val = np.max(z_arr)
+    scaled = (z_arr - max_val) / T
+    exp_vals = np.exp(scaled)
+    return exp_vals / np.sum(exp_vals)
 
 def cls() -> None:
     """Clear the terminal"""

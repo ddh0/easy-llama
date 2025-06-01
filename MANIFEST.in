@@ -1,6 +1,0 @@
-include easy_llama/assets/*.ico
-include easy_llama/assets/*.png
-include easy_llama/assets/*.html
-include easy_llama/assets/*.css
-include easy_llama/assets/*.js
-include easy_llama/assets/*.webmanifest

@@ -11,7 +11,7 @@ This file was last updated to match `llama.cpp/include/llama.h` as of this commi
 - Date: 2025-05-31
 
 This file's status with respect to the above commit is:
-- WIP
+- Synchronized
 
 Helpful references:
 - `libllama` API changelog:

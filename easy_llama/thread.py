@@ -6,24 +6,17 @@
 
 import sys
 import jinja2
-import contextlib
 
 from typing    import Optional
 from .formats  import PromptFormat
 from .sampling import SamplerPreset
 from .utils    import (
     _SupportsWriteAndFlush, ANSI, log, assert_type, ez_encode, ez_decode, suppress_output,
+    KeyboardInterruptHandler
 )
 
 from . import llama as _llama # avoid confusion with Thread.llama attribute
 
-@contextlib.contextmanager
-def KeyboardInterruptHandler():
-    _llama.log_if_verbose('Press CTRL+C to exit')
-    try:
-        yield
-    except KeyboardInterrupt:
-        print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
 
 class Thread:
 
