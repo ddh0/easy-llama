@@ -59,7 +59,7 @@ cmake --build build --config Release -j
 
 </details>
 
-Once llama.cpp is compiled, you will find compiled shared library file under `llama.cpp/build/bin`, e.g. `libllama.so` for Linux, `libllama.dylib` for macOS, or `llama.dll` for Windows.
+Once llama.cpp is compiled, you will find the compiled shared library file under `llama.cpp/build/bin`, e.g. `libllama.so` for Linux, `libllama.dylib` for macOS, or `llama.dll` for Windows.
 
 > [!NOTE]
 > Alternatively, you can download pre-compiled shared library from llama.cpp's [automated releases](https://github.com/ggml-org/llama.cpp/releases) page, but in some cases it may be worthwhile to build it yourself for hardware-specific optimizations.
