@@ -2036,9 +2036,10 @@ class Llama:
         return id
     
     def get_logits(self) -> np.ndarray:
-        """Compute the raw logits for the last token in the context, which are the predictions
-         for the next token. The returned array has shape `(n_vocab,)`."""
-        return self.eval(self.context_tokens)
+        """Return the raw logits for the last token in the context, which are the predictions
+        for the next token. The returned array has shape `(n_vocab,)`."""
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.get_logits')
+        return _internals.get_logits(self._ctx.ctx, self._n_vocab)
 
     def get_scores(self, temp: Optional[float] = None) -> np.ndarray:
         """Compute the logits for the last token in the context, normalized with softmax.
@@ -2049,7 +2050,7 @@ class Llama:
 
         The returned array has shape `(n_vocab,)`."""
         logits = self.get_logits()
-        return softmax(logits, T=temp)
+        return softmax(logits, T=temp if temp is not None else 1.0)
     
     def get_tokenization_mapping(self, tokens: list[int]) -> list[tuple[int, bytes]]:
         """Given some tokens, return a list of tuples where the first item in the

@@ -42,6 +42,9 @@ NULLPTR = ctypes.c_void_p(NULL)
 C_FALSE = ctypes.c_int8(0)
 C_TRUE = ctypes.c_int8(1)
 
+MAX_TOKEN_LENGTH = 256 # update this if you find a token that is > 256 bytes long
+"""The maximum supported length of a single token's text, in bytes"""
+
 # maximum value for int32, it is used as the value for n_gpu_layers
 # when all layers should be offloaded
 MAX_OFFLOAD_LAYERS = 0x7FFFFFFF
@@ -1271,7 +1274,7 @@ def llama_get_logits(ctx: ptr[llama_context]) -> ptr[ctypes.c_float]:
 
 def llama_get_logits_ith(ctx: ptr[llama_context], i: int) -> ptr[ctypes.c_float]:
     """Get the logits for the ith token"""
-    libllama.llama_get_logits_ith.argtypes = [llama_context_p, ctypes.c_int]
+    libllama.llama_get_logits_ith.argtypes = [llama_context_p, ctypes.c_int32]
     libllama.llama_get_logits_ith.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_logits_ith(ctx, i)
 
@@ -1842,9 +1845,6 @@ class _internals:
     This is done so that we don't have to initialize + free a new batch for every new token
     generated."""
 
-    MAX_TOKEN_LENGTH = 256 # update this if you find a token that is > 256 bytes long
-    """The maximum supported length of a single token's text, in bytes"""
-
     # this buffer is re-used every time _internals.token_to_piece() is called
     # it is only 256 bytes, so OK to keep in memory
     detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
@@ -1925,8 +1925,8 @@ class _internals:
             raise RuntimeError(
                 f'decode_pp_with_logits: llama_decode failed with status code {ret}'
             )
-        ctypes_logits = llama_get_logits(ctx)
-        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(n_tokens, n_vocab))
+        c_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(c_logits, shape=(n_tokens, n_vocab))
         return logits
 
     def decode_tg_with_logits(
@@ -1951,9 +1951,17 @@ class _internals:
             raise RuntimeError(
                 f'decode_tg_with_logits: llama_decode failed with status code {ret}'
             )
-        ctypes_logits = llama_get_logits(ctx)
-        logits: np.ndarray = np.ctypeslib.as_array(ctypes_logits, shape=(1, n_vocab))[0]
+        c_logits = llama_get_logits(ctx)
+        logits: np.ndarray = np.ctypeslib.as_array(c_logits, shape=(1, n_vocab))[0]
         return logits
+
+    def get_logits(ctx: ptr[llama_context], n_vocab: int) -> np.ndarray:
+        """### INTERNAL
+        
+        Get the logits for the last token decoded."""
+        c_last_token_logits = llama_get_logits_ith(ctx, -1)
+        last_token_logits = np.ctypeslib.as_array(c_last_token_logits, shape=(1, n_vocab))[0]
+        return last_token_logits
     
     # def decode_soft_prompt(
     #     ctx: ptr[llama_context],
@@ -2070,15 +2078,15 @@ class _internals:
             vocab=vocab,
             token=token,
             buf=_internals.detok_buffer,
-            length=_internals.MAX_TOKEN_LENGTH,
+            length=MAX_TOKEN_LENGTH,
             lstrip=0, # skip up to 'lstrip' leading spaces
             special=special
         )
-        if n_bytes > _internals.MAX_TOKEN_LENGTH:
+        if n_bytes > MAX_TOKEN_LENGTH:
             raise ValueError(
                 f"token_to_piece: the token with ID {token} requires a "
                 f"buffer of size {n_bytes}, but the maximum buffer size is "
-                f"{_internals.MAX_TOKEN_LENGTH}"
+                f"{MAX_TOKEN_LENGTH}"
             )
         # NOTE: do not just do buf.value.decode() because the token could
         #       possibly be a part of a utf-8 bytestring, but not a valid utf-8
@@ -2103,14 +2111,14 @@ class _internals:
                 vocab=vocab,
                 token=token,
                 buf=_internals.detok_buffer,
-                length=_internals.MAX_TOKEN_LENGTH,
+                length=MAX_TOKEN_LENGTH,
                 lstrip=0, # skip up to 'lstrip' leading spaces
                 special=special
             )
-            if n_bytes > _internals.MAX_TOKEN_LENGTH:
+            if n_bytes > MAX_TOKEN_LENGTH:
                 raise ValueError(
                     f"detokenize: the token with ID {token} requires a buffer of size "
-                    f"{n_bytes}, but the maximum buffer size is {_internals.MAX_TOKEN_LENGTH}"
+                    f"{n_bytes}, but the maximum buffer size is {MAX_TOKEN_LENGTH}"
                 )
             detok_bytes += _internals.detok_buffer.raw[:n_bytes]
         return ez_decode(detok_bytes)

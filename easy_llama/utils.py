@@ -13,7 +13,7 @@ import contextlib
 
 import numpy as np
 
-from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn, Literal
+from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn, Literal, Union
 
 class ANSI:
     """ANSI codes for terminal emulators"""
@@ -162,7 +162,7 @@ def log_debug(text: str, level: Literal[1,2,3,4] = 1) -> None:
     if _DEBUG:
         log('[DEBUG] ' + text, level)
 
-def softmax(z, T=1.0):
+def softmax(z, T: float = 1.0):
     """Numerically stable softmax over all dimensions of an arbitrarily shaped array in
     float32 precision."""
     z_arr = np.array(z, dtype=np.float32)
@@ -250,7 +250,7 @@ def suppress_output(disable: bool = False):
 
 def assert_type(
     obj: object,
-    expected_type: type | tuple[type],
+    expected_type: Union[type, tuple[type]],
     obj_name: str,
     code_location: str,
     hint: Optional[str] = None

@@ -794,7 +794,7 @@ class SamplerPresets:
     """[Qwen/Qwen2.5-14B-Instruct/](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct/) 
     (unofficial, but recommended)"""
 
-    Qwen3_Think = SamplerPreset(
+    Qwen3Thinking = SamplerPreset(
         top_k = 20,
         top_p = 0.95,
         min_p = 0.0,
@@ -802,7 +802,7 @@ class SamplerPresets:
     )
     """[Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B/blob/main/README.md)"""
 
-    Qwen3_NoThink = SamplerPreset(
+    Qwen3NoThinking = SamplerPreset(
         top_k = 20,
         top_p = 0.8,
         min_p = 0.0,

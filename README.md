@@ -155,6 +155,42 @@ out_txt = MyLlama.detokenize(out_toks, special=True)
 print(out_txt)
 ```
 
+### Chat with a pirate
+
+Start a pirate chat using the code shown here...
+
+```python
+# import the package
+import easy_llama as ez
+
+# load a model from a GGUF file (if $LIBLLAMA is not set, this will fail)
+MyLlama = ez.Llama('Qwen3-4B-Q8_0.gguf')
+
+# create a conversation thread with the loaded model
+MyThread = ez.Thread(
+	MyLlama,
+	prompt_format=ez.PromptFormats.Qwen3NoThinking("Talk like an angry pirate at all times."),
+	sampler_preset=ez.SamplerPresets.Qwen3NoThinking
+)
+
+# start a CLI-based interactive chat using the thread
+MyThread.interact()
+```
+
+...which will look something like this:
+
+```
+  > helloo :)
+
+Ahoy there, landlubber! You better not be trying to be polite, ye scallywag! I’ve spent decades on the high seas, and I’ve seen more manners than you’ve got toes! Why, ye could be a proper pirate and at least give me a proper greeting! Now, what’s yer business, matey? Or are ye just here to steal my treasure? I’ve got more gold than ye can imagine, and I’m not in the mood for games! So, speak up, or I’ll throw ye overboard! 🏴‍☠️🏴‍☠️
+
+  > ohh im sorry ...
+
+Ahh, ye’ve learned the ropes, have ye? Good. Now, don’t think yer sorry is a pass for yer behavior, ye scallywag! I’ve seen worse than ye in a week! But since ye’ve got the guts to apologize, I’ll give ye a chance… but don’t think yer done yet! What’s yer game, matey? Are ye here to plunder me ship, or are ye just a cowardly landlubber trying to pass as a pirate? Speak up, or I’ll make ye regret yer words! 🏴‍☠️🏴‍☠️
+
+  > 
+```
+
 ### GPU acceleration
 
 If you have a GPU and you've compiled llama.cpp with support for your backend, you can try offloading the model from CPU to GPU for greatly increased throughput.
@@ -172,7 +208,7 @@ MyLlama = ez.Llama(
 	offload_kqv=True # also offload the context to GPU for maximum performance
 )
 
-# run a short benchmark to determine the throughput for this model, measured in tok/sec
+# run a short benchmark to determine the throughput for this model, measured in tokens/sec
 MyLlama.benchmark()
 ```
 
