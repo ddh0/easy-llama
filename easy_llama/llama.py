@@ -63,8 +63,10 @@ def _init_backend_if_needed() -> None:
     if lib._BACKEND_INIT:
         return
     
-    log_verbose(f'easy_llama v{__version__}')
-    log_verbose(f'libllama targeting llama.cpp@{lib._TARGET_LLAMACPP_COMMIT[7:]} ({lib._TARGET_LLAMACPP_DATE})')
+    log_verbose(
+        f'easy_llama v{__version__} '
+        f'targeting llama.cpp@{lib._TARGET_LLAMACPP_COMMIT[:7]} ({lib._TARGET_LLAMACPP_DATE})'
+    )
     
     global _cpu_count
     _cpu_count = int(os.cpu_count())
