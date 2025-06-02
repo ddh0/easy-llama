@@ -63,7 +63,8 @@ def _init_backend_if_needed() -> None:
     if lib._BACKEND_INIT:
         return
     
-    log_verbose(f'easy_llama package version: {__version__}')
+    log_verbose(f'easy_llama v{__version__}')
+    log_verbose(f'libllama targeting llama.cpp@{lib._TARGET_LLAMACPP_COMMIT[7:]} ({lib._TARGET_LLAMACPP_DATE})')
     
     global _cpu_count
     _cpu_count = int(os.cpu_count())
@@ -1931,23 +1932,21 @@ class Llama:
             log_verbose(f'benchmark: starting run {i}/{n_runs}:')
 
             log_verbose(f'benchmark: processing {n_tokens_pp} tokens ... please wait ...')            
-            with suppress_output():
-                self.reset()
-                self.eval(input_tokens=[0] * n_tokens_pp)
-                pp_ns = self._stopwatch.get_elapsed_time_pp()
-                total_pp_time_ns += pp_ns
+            self.reset()
+            self.eval(input_tokens=[0] * n_tokens_pp)
+            pp_ns = self._stopwatch.get_elapsed_time_pp()
+            total_pp_time_ns += pp_ns
             
             log_verbose(f'benchmark: generating {n_tokens_tg} tokens ... please wait ...')
-            with suppress_output():
-                self.reset()
-                self.generate(
-                    input_tokens=[0],
-                    n_predict=n_tokens_tg,
-                    stop_tokens=[],
-                    sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
-                )
-                tg_ns = self._stopwatch.get_elapsed_time_tg()
-                total_tg_time_ns += tg_ns
+            self.reset()
+            self.generate(
+                input_tokens=[0],
+                n_predict=n_tokens_tg,
+                stop_tokens=[],
+                sampler_preset=SamplerPreset(seed=42, top_k=1, temp=0.0)
+            )
+            tg_ns = self._stopwatch.get_elapsed_time_tg()
+            total_tg_time_ns += tg_ns
 
             results.append({
                 'n_tokens_pp' : n_tokens_pp,

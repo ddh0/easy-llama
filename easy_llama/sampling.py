@@ -5,6 +5,8 @@
 """This file provides functionality for defining the sampler parameters used to control
 text generation."""
 
+# TODO: implement grammar, implement custom sampling chains
+
 import os
 import sys
 import ctypes

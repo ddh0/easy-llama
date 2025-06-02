@@ -1,14 +1,21 @@
 # libllama.py
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
+# -------------------------------------------------------------------------------------------- #
+# Manually update these constants to reflect the currently targeted version of llama.cpp:
+# -------------------------------------------------------------------------------------------- #
+# llama.cpp commit OID
+_TARGET_LLAMACPP_COMMIT = "803f8baf4f741d2f0465c46c33f285886b97a071"
+# YYYY-MM-DD, the date of the above commit
+_TARGET_LLAMACPP_DATE   = "2025-05-31"
+# -------------------------------------------------------------------------------------------- #
 
-"""This file provides a Python interface to LLAMA_API ("libllama"), which is originally defined
+f"""This file provides a Python interface to LLAMA_API ("libllama"), which is originally defined
 in `llama.cpp/include/llama.h`.
 
 This file was last updated to match `llama.cpp/include/llama.h` as of this commit:
-- Full SHA: `803f8baf4f741d2f0465c46c33f285886b97a071`
-- Commit message: `llama : deprecate explicit kv_self defrag/update calls (#13921)`
-- Date: 2025-05-31
+- Full SHA: `{_TARGET_LLAMACPP_COMMIT}`
+- Date: {_TARGET_LLAMACPP_DATE}
 
 This file's status with respect to the above commit is:
 - Synchronized
