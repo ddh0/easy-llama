@@ -44,31 +44,29 @@ class SamplerParams:
     #
     #       -----------------------------------------------------------------------------------
     #
-    #       as of 2025-04-22, the sampler chain for easy-llama is constructed as follows:
+    #       as of 2025-06-03, the sampler chain for easy-llama is constructed as follows:
     #
     #       -----------------------------------------------------------------------------------
     #
-    #       logits -> logit-bias -> top-k (k=128) -> penalties -> dry -> xtc ...
+    #       logits -> logit-bias -> penalties -> xtc -> dry ...
     #
     #       -- IF TEMP <= 0.0:
     #
     #       ... -> greedy
     #
-    #       -- IF MIROSTAT v1:
+    #       -- ELIF MIROSTAT v1:
     #
     #       ... -> temp(-ext) -> mirostat-v1
     #
-    #       -- IF MIROSTAT v2:
+    #       -- ELIF MIROSTAT v2:
     #
     #       ... -> temp(-ext) -> mirostat-v2
     #
+    #       -- ELIF TOP-N-SIGMA > 0:
+    #
+    #       ... top-n-sigma -> temp(-ext) -> dist
+    #
     #       -- ELSE:
-    #
-    #         -- IF TOP-N-SIGMA >= 0:
-    #
-    #         ... -> top-k -> temp -> top-n-sigma -> dist
-    #
-    #         -- ELSE:
     #
     #         ... -> top-k -> typical-p -> top-p -> min-p -> temp(-ext) -> dist
     #       
@@ -77,20 +75,15 @@ class SamplerParams:
     #       - "temp(-ext)" denotes "temp" if dynatemp_range == 0.0, otherwise
     #         "temp-ext"
     #
-    #       - "top-k (k=128)" is always performed before applying penalties
-    #         and DRY to improve performance
-    #
-    #       - note that "logit-bias", "top-k (k=128)", "penalties", and "dry"
-    #         are always applied
     
     def __init__( 
         #
         # ref: llama.cpp/common/common.h: struct common_params_sampling { ... }
         #
         self,
-        llama: Llama,    # some samplers require info about n_ctx_train, n_vocab, etc.
+        llama: Llama, # some samplers require info about n_ctx_train, n_vocab, etc.
         
-        seed:               int   = -1,    # random seed: <= 0
+        seed:               int   = -1,    # random: <= 0
         top_k:              int   = 40,    # neutral: <= 0
         top_p:              float = 0.95,  # neutral: 1.0
         min_p:              float = 0.05,  # neutral: 0.0
@@ -101,7 +94,7 @@ class SamplerParams:
         dynatemp_delta:     float = 0.0,   # neutral: <= 0.0
         dynatemp_exponent:  float = 1.0,   # controls how entropy maps to dynamic temperature
         penalty_last_n:     int   = 64,    # disable: 0, n_ctx: -1, last n tokens to penalize
-        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1
+        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1; values < 1.0 will INCREASE repetition
         penalty_freq:       float = 0.0,   # neutral: 0.0
         penalty_present:    float = 0.0,   # neutral: 0.0
         dry_multiplier:     float = 0.0,   # disable: 0.0, DRY repetition penalty for tokens extending repetition:
@@ -174,7 +167,7 @@ class SamplerParams:
 
         # Logit bias
 
-        if logit_bias is not None:
+        if logit_bias is not None and len(logit_bias) > 0:
             if len(logit_bias) == 1:
                 self._chain_str += f'one logit bias -> '
             else:
@@ -185,33 +178,14 @@ class SamplerParams:
                 n_logit_bias=len(logit_bias),
                 logit_bias=logit_bias_arr
             ))
-        
-        penalty_last_n = penalty_last_n if penalty_last_n >= 0 else llama.n_ctx()
-        _penalties_sampler_active = penalty_last_n != 0 and any(
-            [penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]
-        )
-        _dry_sampler_active = dry_multiplier > 0.0
-        _use_topk128_cutoff = _penalties_sampler_active or _dry_sampler_active
-        
-        if _use_topk128_cutoff:
-        
-            # Top-K (where k == 128)
-            #
-            # NOTE: This improves performance by greatly reducing the number of
-            #       tokens that the DRY and penalties samplers need to consider. It
-            #       should have absolutely no effect on the output except under the
-            #       strangest and most unlikely circumstances (like when temp > 10.0
-            #       and all other samplers are explicitly disabled).
-            #
-            #       If you really need to bypass this, you can construct your own
-            #       llama_sampler_chain manually. But you probably don't need to.
-            #      
-            self._chain_str += 'top-k 128 -> '
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=128))
 
         # Penalties
 
-        if _penalties_sampler_active:
+        penalty_last_n = penalty_last_n if penalty_last_n >= 0 else llama.n_ctx()
+
+        if penalty_last_n != 0 and any(
+            [penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]
+        ):
             self._chain_str += f'penalty last:{penalty_last_n}'
             self._chain_str += f' rept:{penalty_repeat:.3f}' if penalty_repeat != 1.0 else ''
             self._chain_str += f' pres:{penalty_present:.3f}' if penalty_present != 0.0 else ''
@@ -224,9 +198,22 @@ class SamplerParams:
                 penalty_present=penalty_present
             ))
         
+        # XTC
+        
+        if xtc_probability > 0.0:
+            self._chain_str += f'XTC p:{xtc_probability:.2f} t:{xtc_threshold:.2f} -> '
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_xtc(
+                    p=xtc_probability,
+                    t=xtc_threshold,
+                    min_keep=1,
+                    seed=seed if seed > 0 else _get_random_seed()
+                )
+            )
+        
         # DRY
         
-        if _dry_sampler_active:
+        if dry_multiplier > 0.0:
             self._chain_str += f'DRY x{dry_multiplier:.2f} base:{dry_base:.2f} '
             self._chain_str += f'len:{dry_allowed_length} -> '
             # dry == D.R.Y. ("Don't Repeat Yourself")
@@ -246,27 +233,16 @@ class SamplerParams:
                 num_breakers=len(seq_breakers)
             ))
         
-        # XTC
-        
-        if xtc_probability > 0.0:
-            self._chain_str += f'XTC p:{xtc_probability:.2f} t:{xtc_threshold:.2f} -> '
-            lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_xtc(
-                    p=xtc_probability,
-                    t=xtc_threshold,
-                    min_keep=1,
-                    seed=seed if seed > 0 else _get_random_seed()
-                )
-            )
-        
         # IF TEMP <= 0.0:
+
+        dynatemp_delta = abs(dynatemp_delta) if dynatemp_delta is not None else None
 
         if temp <= 0.0:
             # ... -> greedy
             self._chain_str += 'greedy'
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_greedy())
 
-        # IF MIROSTAT v1:
+        # ELIF MIROSTAT v1:
 
         elif mirostat == 1:
             # ... -> temp(-ext) -> mirostat-v1
@@ -286,6 +262,7 @@ class SamplerParams:
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp(t=temp)
                 )
+            
             self._chain_str += f'mirostat v1 tau:{mirostat_tau:.2f} eta:{mirostat_eta:.2f}'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_mirostat(
@@ -295,7 +272,7 @@ class SamplerParams:
                 )
             )
         
-        # IF MIROSTAT v2:
+        # ELIF MIROSTAT v2:
 
         elif mirostat == 2:
             # ... -> temp(-ext) -> mirostat-v2
@@ -315,6 +292,7 @@ class SamplerParams:
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp(t=temp)
                 )
+            
             self._chain_str += f'mirostat v2 tau:{mirostat_tau:.2f} eta:{mirostat_eta:.2f}'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_mirostat_v2(
@@ -324,63 +302,81 @@ class SamplerParams:
                 )
             )
         
-        # DEFAULT CASE
-
-        elif mirostat == 0:
-            if top_n_sigma >= 0.0:
-                # ... -> top-k -> temp -> top-n-sigma -> ...
-                self._chain_str += (
-                    f'top-k {top_k} -> temp {temp:.2f} -> top-n-sigma {top_n_sigma:.2f} -> '
-                )
-                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
-                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
-                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_n_sigma(n=top_n_sigma)) 
-            else:
-                # ... -> top-k -> typical-p -> top-p -> min-p -> temp(-ext) -> ...
-                if top_k > 0:
-                    self._chain_str += f'top-k {top_k} -> '
-                    lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
-                if typical_p != 1.0:
-                    self._chain_str += f'typical-p {typical_p:.2f} -> '
-                    lib.llama_sampler_chain_add(
-                        smpl, lib.llama_sampler_init_typical(p=typical_p, min_keep=1)
-                    )
-                if top_p < 1.0:
-                    self._chain_str += f'top-p {top_p:.2f} -> '
-                    lib.llama_sampler_chain_add(
-                        smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1)
-                    )
-                if min_p > 0.0:
-                    self._chain_str += f'min-p {min_p:.3f} -> '
-                    lib.llama_sampler_chain_add(
-                        smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
-                    )
-                if dynatemp_delta != 0.0:
-                    # dynamic temperature AKA entropy sampling
-                    self._chain_str += f'temp {temp:.2f} +/- {dynatemp_delta:.2f} -> '
-                    lib.llama_sampler_chain_add(
-                        smpl, lib.llama_sampler_init_temp_ext(
-                            t=temp,
-                            delta=dynatemp_delta,
-                            exponent=dynatemp_exponent
-                        )
-                    )
-                else:
-                    # standard temperature
-                    self._chain_str += f'temp {temp:.2f} -> '
-                    lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
+        # ELIF TOP-N-SIGMA > 0:
+        
+        elif top_n_sigma > 0.0:
+            # ... top-n-sigma -> temp(-ext) -> dist
+            self._chain_str += (
+                f'top-n-sigma {top_n_sigma:.2f} ->  '
+            )
             
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_n_sigma(n=top_n_sigma)) 
+
+            if dynatemp_delta > 0.0:
+                # dynamic temperature AKA entropy sampling
+                self._chain_str += f'temp {temp:.2f} +/- {dynatemp_delta:.2f} -> '
+                lib.llama_sampler_chain_add(
+                    smpl, lib.llama_sampler_init_temp_ext(
+                        t=temp,
+                        delta=dynatemp_delta,
+                        exponent=dynatemp_exponent
+                    )
+                )
+            else:
+                # standard temperature
+                self._chain_str += f'temp {temp:.2f} -> '
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
+        
+            self._chain_str += 'dist'
+            lib.llama_sampler_chain_add(
+                smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
+            )
+        
+        # ELSE (DEFAULT CASE):
+
+        else:
+            # ... -> top-k -> typical-p -> top-p -> min-p -> temp(-ext) -> ...
+            if mirostat != 0:
+                log(f'unknown mirostat version {mirostat}. ignored.', 2)
+            if top_k > 0:
+                self._chain_str += f'top-k {top_k} -> '
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
+            if typical_p != 1.0:
+                self._chain_str += f'typical-p {typical_p:.2f} -> '
+                lib.llama_sampler_chain_add(
+                    smpl, lib.llama_sampler_init_typical(p=typical_p, min_keep=1)
+                )
+            if top_p < 1.0:
+                self._chain_str += f'top-p {top_p:.2f} -> '
+                lib.llama_sampler_chain_add(
+                    smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1)
+                )
+            if min_p > 0.0:
+                self._chain_str += f'min-p {min_p:.3f} -> '
+                lib.llama_sampler_chain_add(
+                    smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
+                )
+            if dynatemp_delta != 0.0:
+                # dynamic temperature AKA entropy sampling
+                self._chain_str += f'temp {temp:.2f} +/- {dynatemp_delta:.2f} -> '
+                lib.llama_sampler_chain_add(
+                    smpl, lib.llama_sampler_init_temp_ext(
+                        t=temp,
+                        delta=dynatemp_delta,
+                        exponent=dynatemp_exponent
+                    )
+                )
+            else:
+                # standard temperature
+                self._chain_str += f'temp {temp:.2f} -> '
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
+        
             # ... -> dist
             self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
             )
-
-        else:
-            raise ValueError(
-                f'SamplerParams.__init__: unknown mirostat version {mirostat!r}'
-            )
-
+        
         self.smpl = smpl
     
     def __del__(self):
@@ -389,7 +385,7 @@ class SamplerParams:
     def __repr__(self) -> str:
         return (
             f"SamplerParams("
-            f"llama=<Llama object>, "
+            f"llama=<Llama instance>, "
             f"seed={self.seed}, "
             f"top_k={self.top_k}, "
             f"min_p={self.min_p}, "
@@ -491,7 +487,7 @@ class SamplerPreset:
     def __init__(
         self,
 
-        seed:               int   = -1,    # random seed: <= 0
+        seed:               int   = -1,    # random: <= 0
         top_k:              int   = 40,    # neutral: <= 0
         top_p:              float = 0.95,  # neutral: 1.0
         min_p:              float = 0.05,  # neutral: 0.0
@@ -502,7 +498,7 @@ class SamplerPreset:
         dynatemp_delta:     float = 0.0,   # neutral: <= 0.0
         dynatemp_exponent:  float = 1.0,   # controls how entropy maps to dynamic temperature
         penalty_last_n:     int   = 64,    # disable: 0, n_ctx: -1, last n tokens to penalize
-        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1
+        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1; values < 1.0 will INCREASE repetition
         penalty_freq:       float = 0.0,   # neutral: 0.0
         penalty_present:    float = 0.0,   # neutral: 0.0
         dry_multiplier:     float = 0.0,   # disable: 0.0, DRY repetition penalty for tokens extending repetition:

@@ -452,8 +452,9 @@ class Thread:
         self.messages = orig_thread_messages.copy()
         return summary
 
-    def print_stats(self, file: _SupportsWriteAndFlush = sys.stderr) -> None:
+    def print_stats(self, file: Optional[_SupportsWriteAndFlush] = None) -> None:
         """Print stats about the context usage in this thread"""
+        _file = sys.stdout if file is None else file
         with suppress_output():
             input_ids = self.get_input_ids(role=None)
         n_thread_tokens = len(input_ids)
@@ -461,9 +462,9 @@ class Thread:
         n_ctx = self.llama._n_ctx
         c = (n_thread_tokens/n_ctx) * 100
         ctx_used_pct = int(c) + (c > int(c)) # round up to next integer
-        print(f"{n_thread_tokens} / {n_ctx} tokens", file=file)
-        print(f"{ctx_used_pct}% of context used", file=file)
-        print(f"{n_msgs} messages", file=file)
+        print(f"{n_thread_tokens} / {n_ctx} tokens", file=_file)
+        print(f"{ctx_used_pct}% of context used", file=_file)
+        print(f"{n_msgs} messages", file=_file)
     
     def reset(self) -> None:
         self.messages = self._orig_messages.copy()

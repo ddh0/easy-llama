@@ -77,9 +77,10 @@ class ANSI:
     MODE_STRIKETHROUGH_SET   = '\x1b[9m'
     MODE_STRIKETHROUGH_RESET = '\x1b[29m'
 
-NoneType: type = type(None)
+NoneType = type(None)
 
 _VERBOSE = True
+"""Package-wide verbose flag"""
 
 _DEBUG = False
 """Package-wide debug flag"""
@@ -89,15 +90,6 @@ class _ArrayLike(Iterable):
 
 class _SupportsWriteAndFlush(TextIO):
     """A file, stream, or buffer that supports writing and flushing"""
-
-class UnreachableException(Exception):
-    """The code has reached an unreachable state"""
-    def __init__(self):
-        super().__init__(
-            "the code has reached a location that was thought to be "
-            "unreachable. please report this issue to the developer at this "
-            "link: https://github.com/ddh0/easy-llama/issues/new/choose"
-        )
 
 class LlamaNullException(Exception):
     """Raised when a libllama function returns NULL or NULLPTR"""
@@ -114,17 +106,20 @@ def set_verbose(state: bool) -> None:
     _VERBOSE = state
 
 def get_verbose() -> bool:
-    """Return `True` if verbose terminal output is enabled in easy-llama, `False` otherwise"""
-    global _VERBOSE
-    return _VERBOSE
+    """Return `True` if verbose output is enabled in easy-llama, `False` otherwise. If debug
+    output is enabled, this will always `True`."""
+    global _VERBOSE, _DEBUG
+    return _VERBOSE or _DEBUG # force-enable verbose mode if debug mode is enabled
 
-@contextlib.contextmanager
-def KeyboardInterruptHandler():
-    log_verbose('Press CTRL+C to exit')
-    try:
-        yield
-    except KeyboardInterrupt:
-        print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
+def set_debug(state: bool) -> None:
+    """Enable or disable debug output from easy-llama"""
+    global _DEBUG
+    _DEBUG = state
+
+def get_debug() -> bool:
+    """Return `True` if debug output is enabled in easy-llama, `False` otherwise"""
+    global _DEBUG
+    return _DEBUG
 
 def log(
     text: str,
@@ -162,7 +157,15 @@ def log_debug(text: str, level: Literal[1,2,3,4] = 1) -> None:
     if _DEBUG:
         log('[DEBUG] ' + text, level)
 
-def softmax(z, T: float = 1.0):
+@contextlib.contextmanager
+def KeyboardInterruptHandler():
+    log_verbose('Press CTRL+C to exit')
+    try:
+        yield
+    except KeyboardInterrupt:
+        print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
+
+def softmax(z: _ArrayLike, T: float = 1.0) -> np.ndarray:
     """Numerically stable softmax over all dimensions of an arbitrarily shaped array in
     float32 precision."""
     z_arr = np.array(z, dtype=np.float32)
@@ -255,9 +258,8 @@ def assert_type(
     code_location: str,
     hint: Optional[str] = None
 ):
-    """Ensure that `obj` is an instance of `expected_type`.
-
-    If `expected_type` is a tuple, ensure that `obj` is an instance of some type in the tuple.
+    """Ensure that `obj` is an instance of `expected_type`. If `expected_type` is a tuple,
+    ensure that `obj` is an instance of some type in the tuple.
 
     Raise `TypeError` otherwise, using `obj_name` and `code_location` to make an informative
     exception message.
@@ -288,16 +290,15 @@ def assert_type(
         exc.add_note(hint)
     raise exc
 
-def null_ptr_check(ptr: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
-    """Ensure that the given object `ptr` is not NULL / NULLPTR
+def null_ptr_check(obj: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
+    """Ensure that the given object `obj` is not NULL / NULLPTR. Raise `LlamaNullException` on
+    failure.
 
-    Raise LlamaNullException on failure
-
-    - ptr:
-        The object to check
+    - obj:
+        The object to check (should be a ctypes pointer of some kind)
     - ptr_name:
-        The name of the object (for error messages)
+        The name of the object, used for error message
     - loc_hint:
-        Code location hint used in easy-llama"""
-    if not bool(ptr):
+        Code location hint, used for error message"""
+    if not bool(obj):
         raise LlamaNullException(f"{loc_hint}: pointer `{ptr_name}` is null")

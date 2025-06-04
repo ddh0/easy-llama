@@ -26,6 +26,8 @@ Helpful references:
 - `llama.h` at master:
     [llama.cpp/blob/master/include/llama.h](https://github.com/ggml-org/llama.cpp/blob/master/include/llama.h)"""
 
+from . import __version__
+
 import os
 import sys
 import ctypes
@@ -35,7 +37,7 @@ import numpy as np
 
 from enum   import IntEnum
 from typing import Optional, Callable
-from .utils import ptr, log, ez_decode
+from .utils import ptr, log, ez_decode, log_verbose
 
 faulthandler.enable() # prints more helpful info if python crashes
 
@@ -401,7 +403,7 @@ class llama_model_tensor_buft_override(ctypes.Structure):
 
 llama_model_tensor_buft_override_p = ctypes.POINTER(llama_model_tensor_buft_override)
 
-dummy_progress_callback = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_float, ctypes.c_void_p)
+progress_callback_functype = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_float, ctypes.c_void_p)
 
 class llama_model_params(ctypes.Structure):
     # NOTE: These fields need to be aligned with struct llama_model_params {...} !!!
@@ -425,7 +427,7 @@ class llama_model_params(ctypes.Structure):
         # Called with a progress value between 0.0 and 1.0. Pass NULL to disable.
         # If the provided progress_callback returns true, model loading continues.
         # If it returns false, model loading is immediately aborted.
-        ("progress_callback", dummy_progress_callback),
+        ("progress_callback", progress_callback_functype),
         
         # context pointer passed to the progress callback
         ("progress_callback_user_data", ctypes.c_void_p),
@@ -554,6 +556,11 @@ def llama_backend_init() -> None:
     
     if _BACKEND_INIT:
         return
+    
+    log_verbose(
+        f'easy_llama v{__version__} '
+        f'targeting llama.cpp@{_TARGET_LLAMACPP_COMMIT[:7]} ({_TARGET_LLAMACPP_DATE})'
+    )
 
     lib_path = os.environ.get('LIBLLAMA')
 
@@ -603,6 +610,7 @@ def llama_backend_init() -> None:
     # initialize the built-in greedy sampler
     _internals.greedy_sampler = llama_sampler_init_greedy()
 
+    # TODO: this probably breaks if more than one model is loaded?
     # initialize the built-in re-usable single-token batch
     _internals.tg_batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
 
@@ -1769,12 +1777,12 @@ def llama_log_set(log_callback: ctypes.c_void_p, user_data: ctypes.c_void_p) -> 
 
 class llama_perf_context_data(ctypes.Structure):
     _fields_ = [
-        ("t_start_ms", ctypes.c_double),
-        ("t_load_ms",  ctypes.c_double),
+        ("t_start_ms",  ctypes.c_double),
+        ("t_load_ms",   ctypes.c_double),
         ("t_p_eval_ms", ctypes.c_double),
-        ("t_eval_ms", ctypes.c_double),
-        ("n_p_eval", ctypes.c_int32),
-        ("n_eval", ctypes.c_int32),
+        ("t_eval_ms",   ctypes.c_double),
+        ("n_p_eval",    ctypes.c_int32 ),
+        ("n_eval",      ctypes.c_int32 )
     ]
 
 llama_perf_context_data_p = ctypes.POINTER(llama_perf_context_data)
@@ -1782,7 +1790,7 @@ llama_perf_context_data_p = ctypes.POINTER(llama_perf_context_data)
 class llama_perf_sampler_data(ctypes.Structure):
     _fields_ = [
         ("t_sample_ms", ctypes.c_double),
-        ("n_sample", ctypes.c_int32),
+        ("n_sample",    ctypes.c_int32 )
     ]
 
 llama_perf_sampler_data_p = ctypes.POINTER(llama_perf_sampler_data)
@@ -1967,63 +1975,64 @@ class _internals:
         
         Get the logits for the last token decoded."""
         c_last_token_logits = llama_get_logits_ith(ctx, -1)
-        last_token_logits = np.ctypeslib.as_array(c_last_token_logits, shape=(1, n_vocab))[0]
-        return last_token_logits
+        return np.ctypeslib.as_array(c_last_token_logits, shape=(1, n_vocab))[0]
     
-    # def decode_soft_prompt(
-    #     ctx: ptr[llama_context],
-    #     embeddings: np.ndarray,
-    #     pos: int, # starting position for the first embedding (usually 0)
-    #     seq_id: int = 0
-    # ) -> Optional[np.ndarray]: # returns logits for the _next_ token (after soft prompt)
-    #     """### INTERNAL
+    def decode_embeddings(
+        ctx: ptr[llama_context],
+        embeddings: np.ndarray,
+        pos: int, # starting position for the first embedding (usually 0)
+        seq_id: int = 0
+    ) -> Optional[np.ndarray]: # returns logits for the next token (after decoding embeddings)
+        """### INTERNAL
 
-    #     Decode a batch of soft prompt embeddings."""
-    #     n_prompt_tokens = embeddings.shape[0]
-    #     if n_prompt_tokens == 0:
-    #         return None
+        Decode a batch of embeddings."""
+        n_prompt_tokens = embeddings.shape[0]
+        if n_prompt_tokens == 0:
+            return None
 
-    #     model = llama_get_model(ctx)
-    #     n_embd = llama_model_n_embd(model)
-    #     n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model))
+        model = llama_get_model(ctx)
+        n_embd = llama_model_n_embd(model)
+        n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model))
 
-    #     if embeddings.shape[1] != n_embd:
-    #         raise ValueError(
-    #             f"decode_soft_prompt: embedding dimension mismatch: expected {n_embd}, got "
-    #             f"{embeddings.shape[1]}"
-    #         )
+        if embeddings.shape[1] != n_embd:
+            raise ValueError(
+                f"decode_embeddings: embedding dimension mismatch: expected {n_embd}, got "
+                f"{embeddings.shape[1]}"
+            )
 
-    #     batch = llama_batch_init(n_tokens=n_prompt_tokens, embd=n_embd, n_seq_max=1)
-    #     batch.n_tokens = n_prompt_tokens
-    #     batch.token = NULL
+        batch = llama_batch_init(n_tokens=n_prompt_tokens, embd=n_embd, n_seq_max=1)
+        batch.n_tokens = n_prompt_tokens
+        batch.token = NULL
 
-    #     ctypes.memmove(batch.embd, embeddings.ctypes.data, embeddings.nbytes)
+        ctypes.memmove(batch.embd, embeddings.ctypes.data, embeddings.nbytes)
 
-    #     for i in range(n_prompt_tokens):
-    #         batch.pos[i] = pos + i
-    #         batch.n_seq_id[i] = 1
-    #         batch.seq_id[i][0] = seq_id
-    #         batch.logits[i] = C_FALSE # by default, don't compute logits ...
+        for i in range(n_prompt_tokens):
+            batch.pos[i] = pos + i
+            batch.n_seq_id[i] = 1
+            batch.seq_id[i][0] = seq_id
+            batch.logits[i] = C_FALSE # by default, don't compute logits ...
 
-    #     # ... except for the last token
-    #     batch.logits[n_prompt_tokens - 1] = C_TRUE
+        # ... except for the last vector
+        batch.logits[n_prompt_tokens - 1] = C_TRUE
 
-    #     ret = llama_decode(ctx, batch)
+        ret = llama_decode(ctx, batch)
 
-    #     logits = None
-    #     if n_prompt_tokens > 0 and batch.logits[n_prompt_tokens - 1]:
-    #          ctypes_logits_ptr = llama_get_logits(ctx)
-    #          if ctypes_logits_ptr: # TODO: ?
-    #               logits = np.ctypeslib.as_array(ctypes_logits_ptr, shape=(1, n_vocab))[0]
+        if n_prompt_tokens > 0 and batch.logits[n_prompt_tokens - 1]:
+             ctypes_logits_ptr = llama_get_logits(ctx)
+             if ctypes_logits_ptr:
+                logits = np.ctypeslib.as_array(ctypes_logits_ptr, shape=(1, n_vocab))[0]
+             else:
+                log('decode_embeddings: llama_get_logits returned nullptr', 2)
+                logits = None
 
-    #     llama_batch_free(batch)
+        llama_batch_free(batch)
 
-    #     if ret != 0:
-    #         raise RuntimeError(
-    #             f'decode_soft_prompt: llama_decode failed with status code {ret}'
-    #         )
+        if ret != 0:
+            raise RuntimeError(
+                f'decode_embeddings: llama_decode failed with status code {ret}'
+            )
 
-    #     return logits # return the logits for the token immediately following the soft prompt
+        return logits # return the logits for the token immediately following the embeddings
 
     def sample_greedy(ctx: ptr[llama_context]) -> int:
         """### INTERNAL
