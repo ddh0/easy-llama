@@ -129,7 +129,7 @@ def log(
     """Print the given text, prefixed with a timestamp"""
     if disable:
         return
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %a %k:%M:%S.%f")[:-3]
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %a %H:%M:%S.%f")[:-3]
     if level == 1:
         lvltxt = f"{ANSI.FG_BRIGHT_GREEN}INFO"
     elif level == 2:
@@ -166,8 +166,8 @@ def KeyboardInterruptHandler():
         print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
 
 def softmax(z: _ArrayLike, T: float = 1.0) -> np.ndarray:
-    """Numerically stable softmax over all dimensions of an arbitrarily shaped array in
-    float32 precision."""
+    """Numerically stable softmax over **all** elements of an arbitrarily shaped array in
+    float32 precision. Supports temperature scaling for all real values of `T`."""
     z_arr = np.array(z, dtype=np.float32)
     if z_arr.size == 0:
         return z_arr
