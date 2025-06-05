@@ -25,6 +25,8 @@ This repository provides **easy-llama**, a Python package which serves as a wrap
 2. [Installation](#installation)
 3. [Setting `LIBLLAMA`](#setting-libllama)
 4. [Examples](#examples)
+5. [Contributing](#contributing)
+6. [License](#license)
 
 ## Prerequisites
 

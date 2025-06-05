@@ -610,10 +610,6 @@ def llama_backend_init() -> None:
     # initialize the built-in greedy sampler
     _internals.greedy_sampler = llama_sampler_init_greedy()
 
-    # TODO: this probably breaks if more than one model is loaded?
-    # initialize the built-in re-usable single-token batch
-    _internals.tg_batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
-
     # don't let this function be called again
     _BACKEND_INIT = True
 
@@ -1854,12 +1850,6 @@ class _internals:
     greedy_sampler: Optional[llama_sampler]
     """This built-in greedy sampler will be initialized along with libllama."""
 
-    tg_batch: Optional[llama_batch]
-    """This built-in `llama_batch` object is initialized along with libllama. It will be re-used
-    for all single-token non-embedding batches (i.e. normal autoregressive text generation).
-    This is done so that we don't have to initialize + free a new batch for every new token
-    generated."""
-
     # this buffer is re-used every time _internals.token_to_piece() is called
     # it is only 256 bytes, so OK to keep in memory
     detok_buffer = ctypes.create_string_buffer(MAX_TOKEN_LENGTH)
@@ -1867,6 +1857,7 @@ class _internals:
     class LogitBiasArrayType:
         """Type hint for a `ctypes.Array[llama_logit_bias]` of arbitrary length"""
 
+    @staticmethod
     def decode_pp(
         ctx: ptr[llama_context],
         pos: int,
@@ -1890,6 +1881,7 @@ class _internals:
         if ret != 0:
             raise RuntimeError(f'decode_pp: llama_decode failed with status code {ret}')
 
+    @staticmethod
     def decode_tg(
         ctx: ptr[llama_context],
         pos: int,
@@ -1898,16 +1890,19 @@ class _internals:
         """### INTERNAL
 
         Decode with batch size == 1 (text generation)."""
-        _internals.tg_batch.n_tokens = 1
-        _internals.tg_batch.token[0] = token
-        _internals.tg_batch.pos[0] = pos
-        _internals.tg_batch.seq_id[0][0] = 0
-        _internals.tg_batch.n_seq_id[0] = 1
-        _internals.tg_batch.logits[0] = C_TRUE
-        ret = llama_decode(ctx, _internals.tg_batch)
+        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
+        batch.n_tokens = 1
+        batch.token[0] = token
+        batch.pos[0] = pos
+        batch.seq_id[0][0] = 0
+        batch.n_seq_id[0] = 1
+        batch.logits[0] = C_TRUE
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
         if ret != 0:
             raise RuntimeError(f'decode_tg: llama_decode failed with status code {ret}')
 
+    @staticmethod
     def decode_pp_with_logits(
         ctx: ptr[llama_context],
         pos: int,
@@ -1944,6 +1939,7 @@ class _internals:
         logits: np.ndarray = np.ctypeslib.as_array(c_logits, shape=(n_tokens, n_vocab))
         return logits
 
+    @staticmethod
     def decode_tg_with_logits(
         ctx: ptr[llama_context],
         pos: int,
@@ -1955,13 +1951,15 @@ class _internals:
         Decode with batch size == 1 (text generation).
         
         Return the logits for the inferred next token."""
-        _internals.tg_batch.n_tokens = 1
-        _internals.tg_batch.token[0] = token
-        _internals.tg_batch.pos[0] = pos
-        _internals.tg_batch.seq_id[0][0] = 0
-        _internals.tg_batch.n_seq_id[0] = 1
-        _internals.tg_batch.logits[0] = C_TRUE
-        ret = llama_decode(ctx, _internals.tg_batch)
+        batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
+        batch.n_tokens = 1
+        batch.token[0] = token
+        batch.pos[0] = pos
+        batch.seq_id[0][0] = 0
+        batch.n_seq_id[0] = 1
+        batch.logits[0] = C_TRUE
+        ret = llama_decode(ctx, batch)
+        llama_batch_free(batch)
         if ret != 0:
             raise RuntimeError(
                 f'decode_tg_with_logits: llama_decode failed with status code {ret}'
@@ -1969,34 +1967,33 @@ class _internals:
         c_logits = llama_get_logits(ctx)
         logits: np.ndarray = np.ctypeslib.as_array(c_logits, shape=(1, n_vocab))[0]
         return logits
-
-    def get_logits(ctx: ptr[llama_context], n_vocab: int) -> np.ndarray:
-        """### INTERNAL
-        
-        Get the logits for the last token decoded."""
-        c_last_token_logits = llama_get_logits_ith(ctx, -1)
-        return np.ctypeslib.as_array(c_last_token_logits, shape=(1, n_vocab))[0]
     
-    def decode_embeddings(
+    @staticmethod
+    def decode_embd(
         ctx: ptr[llama_context],
         embeddings: np.ndarray,
         pos: int, # starting position for the first embedding (usually 0)
         seq_id: int = 0
-    ) -> Optional[np.ndarray]: # returns logits for the next token (after decoding embeddings)
+    ) -> None:
         """### INTERNAL
 
-        Decode a batch of embeddings."""
+        Decode a batch of embeddings. The shape of the embeddings must be (n_tokens, n_embd)."""
         n_prompt_tokens = embeddings.shape[0]
         if n_prompt_tokens == 0:
             return None
 
-        model = llama_get_model(ctx)
-        n_embd = llama_model_n_embd(model)
-        n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model))
+        n_ctx = llama_n_ctx(ctx)
+        if n_prompt_tokens > n_ctx:
+            raise ValueError(
+                f'decode_embd: length of embeddings exceeds context length ({n_prompt_tokens} '
+                f'> {n_ctx})'
+            )
+
+        n_embd = llama_model_n_embd(llama_get_model(ctx))
 
         if embeddings.shape[1] != n_embd:
             raise ValueError(
-                f"decode_embeddings: embedding dimension mismatch: expected {n_embd}, got "
+                f"decode_embd: embedding dimension mismatch: expected {n_embd}, got "
                 f"{embeddings.shape[1]}"
             )
 
@@ -2012,34 +2009,32 @@ class _internals:
             batch.seq_id[i][0] = seq_id
             batch.logits[i] = C_FALSE # by default, don't compute logits ...
 
-        # ... except for the last vector
+        # ... except for the last embedding
         batch.logits[n_prompt_tokens - 1] = C_TRUE
 
         ret = llama_decode(ctx, batch)
-
-        if n_prompt_tokens > 0 and batch.logits[n_prompt_tokens - 1]:
-             ctypes_logits_ptr = llama_get_logits(ctx)
-             if ctypes_logits_ptr:
-                logits = np.ctypeslib.as_array(ctypes_logits_ptr, shape=(1, n_vocab))[0]
-             else:
-                log('decode_embeddings: llama_get_logits returned nullptr', 2)
-                logits = None
-
         llama_batch_free(batch)
-
         if ret != 0:
             raise RuntimeError(
-                f'decode_embeddings: llama_decode failed with status code {ret}'
+                f'decode_embd: llama_decode failed with status code {ret}'
             )
+    
+    @staticmethod
+    def get_logits(ctx: ptr[llama_context], n_vocab: int) -> np.ndarray:
+        """### INTERNAL
+        
+        Get the logits for the last token decoded."""
+        c_last_token_logits = llama_get_logits_ith(ctx, -1)
+        return np.ctypeslib.as_array(c_last_token_logits, shape=(1, n_vocab))[0]
 
-        return logits # return the logits for the token immediately following the embeddings
-
+    @staticmethod
     def sample_greedy(ctx: ptr[llama_context]) -> int:
         """### INTERNAL
 
         Sample the most likely token"""
         return llama_sampler_sample(_internals.greedy_sampler, ctx, -1)
 
+    @staticmethod
     def tokenize(
         vocab: ptr[llama_vocab],
         text_bytes: bytes,
@@ -2086,6 +2081,7 @@ class _internals:
         del tokens_buf
         return ret
 
+    @staticmethod
     def token_to_piece(vocab: ptr[llama_vocab], token: int, special: bool) -> bytes:
         """### INTERNAL
 
@@ -2109,6 +2105,7 @@ class _internals:
         #       string itself. let the caller handle this
         return _internals.detok_buffer.raw[:n_bytes]
 
+    @staticmethod
     def detokenize(
         vocab: ptr[llama_vocab],
         tokens: list[int],
@@ -2139,6 +2136,7 @@ class _internals:
             detok_bytes += _internals.detok_buffer.raw[:n_bytes]
         return ez_decode(detok_bytes)
 
+    @staticmethod
     def get_length(
         vocab: ptr[llama_vocab],
         text_bytes: bytes,
@@ -2158,6 +2156,7 @@ class _internals:
             parse_special=parse_special
         )
     
+    @staticmethod
     def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArrayType:
         """### INTERNAL
 
@@ -2182,23 +2181,22 @@ class LlamaDeprecatedException(Exception):
 
 def DEPRECATED(new_func: Optional[Callable] = None):
     """Decorator for functions that are marked with DEPRECATED in libllama"""
-
+    
     def decorator(func: Callable):
-
         def deprecator(*args, **kwargs):
             if new_func is None:
                 raise LlamaDeprecatedException(
-                    f"the function {func.__name__!r} is marked as deprecated. you cannot "
+                    f"The function {func.__name__!r} is marked as deprecated. You cannot "
                     f"use it."
                 )
             else:
                 raise LlamaDeprecatedException(
-                    f"the function {func.__name__!r} is marked as deprecated. you cannot "
-                    f"use it. use {new_func.__name__!r} instead."
+                    f"The function {func.__name__!r} is marked as deprecated. You cannot "
+                    f"use it. Use {new_func.__name__!r} instead."
                 )
-        
+
         return deprecator
-    
+
     return decorator
 
 @DEPRECATED(new_func=llama_model_load_from_file)
@@ -2211,10 +2209,6 @@ def llama_free_model(*args):
 
 @DEPRECATED(new_func=llama_init_from_model)
 def llama_new_context_with_model(*args):
-    pass
-
-@DEPRECATED(new_func=llama_model_free)
-def llama_free_model(*args):
     pass
 
 @DEPRECATED(new_func=llama_model_n_ctx_train)

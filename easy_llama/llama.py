@@ -961,13 +961,13 @@ class Llama:
             log(
                 f'you are using the default n_ctx value {actual_n_ctx}, which '
                 f'is very small. increase n_ctx as needed to support longer '
-                f'inputs and outputs.', 2
+                f'inputs and outputs (this model supports up to {self.n_ctx_train()})', 2
             )
         
         self._stopwatch = _LlamaStopwatch()
 
         #
-        # Store Llama metadata as attributes for faster access internally
+        # Store immutable Llama metadata as attributes for faster access internally
         #
 
         self._name                  = self.name()
@@ -981,7 +981,6 @@ class Llama:
         self._n_layer               = self.n_layer()
         self._n_head                = self.n_head()
         self._n_head_kv             = self.n_head_kv()
-        self._pooling_type          = self.pooling_type()
         self._n_swa                 = self.n_swa()
         self._vocab_type            = self.vocab_type()
         self._rope_type             = self.rope_type()
@@ -1057,15 +1056,13 @@ class Llama:
         _pos = self.pos
 
         if _pos < 0:
-            self.pos = 0
-            self.context_tokens = []
+            self.reset()
             log_verbose(
                 f'self.pos value was {self.pos} - clamping to 0. the KV cache has been reset.',
                 2
             )
-        elif _pos != _n_context_tokens:
-            self.pos = 0
-            self.context_tokens = []
+        if _pos != _n_context_tokens:
+            self.reset()
             log_verbose(
                 f'n_context_tokens {_n_context_tokens} did not match self.pos {_pos}. the KV '
                 f'cache has been reset.', 2
