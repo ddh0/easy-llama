@@ -112,7 +112,7 @@ class Thread:
         #
 
         try:
-            template = jinja2.Template(chat_template_str, undefined=jinja2.StrictUndefined)
+            template = jinja2.Template(chat_template_str)
         except Exception as e:
             exc_str = f"_render_msgs: error creating chat template: {type(e).__name__}: {e}"
             log(exc_str, 3)
