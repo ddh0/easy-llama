@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "easy_llama"
 dynamic = ["version"]
-description = "This is easy-llama, a Python package that wraps the C/C++ API provided by llama.cpp. It's intended for developers and machine learning hobbyists who want to integrate on-device language models (LLMs) into their applications."
+description = "Python package wrapping llama.cpp for on-device LLM inference"
 readme = "README.md"
 authors = [{ name = "Dylan Halladay", email = "chemist-mulches-39@icloud.com" }]
 license = { text = "MIT" }

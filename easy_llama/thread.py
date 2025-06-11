@@ -4,16 +4,13 @@
 
 """This file provides functionality for multi-turn conversations with Llama models."""
 
-# TODO: jinja2
-
 import sys
 import jinja2
 
 from typing    import Optional
-from .formats  import PromptFormat
 from .sampling import SamplerPreset
 from .utils    import (
-    _SupportsWriteAndFlush, ANSI, log, assert_type, ez_encode, ez_decode, suppress_output,
+    _SupportsWriteAndFlush, ANSI, log, ez_encode, ez_decode, suppress_output,
     KeyboardInterruptHandler
 )
 
@@ -31,61 +28,63 @@ class Thread:
     def __init__(
         self,
         llama: _llama.Llama,
-        prompt_format: PromptFormat,
         sampler_preset: Optional[SamplerPreset] = None
     ) -> None:
         
-        assert_type(llama, _llama.Llama, 'llama', 'Thread.__init__')
-        assert_type(prompt_format, PromptFormat, 'prompt_format', 'Thread.__init__')
+        if not isinstance(llama, _llama.Llama):
+            raise TypeError(
+                f'Thread.__init__: llama must be an instance of llama.Llama, not {type(llama)}'
+            )
         
         llama._validate_model_state()
 
         self.llama = llama
-        self.prompt_format = prompt_format        
-        self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
-
+        self.sampler_preset = sampler_preset if isinstance(sampler_preset, SamplerPreset) else (
+            SamplerPreset()
+        )
+        
         self.messages: list[dict[str, str]] = []
-
-        system_prompt = prompt_format.system_prompt()
-
-        if system_prompt != '':
-            self.messages.append({
-                'role': 'system',
-                'content': system_prompt
-            })
-        
-        # stop tokens
-        format_stops = self.prompt_format.stop_tokens()
-        self._stop_tokens = format_stops if format_stops is not None else self.llama.eog_tokens
-        
-        # save the original messages for self.reset()
-        self._orig_messages = self.messages.copy()
-
-        # save the sampler_preset param for repr
-        self._sampler_preset = self.sampler_preset
+        self._initial_messages = self.messages.copy()
+        self._stop_tokens = self.llama.eog_tokens
     
     def __repr__(self) -> str:
         return (
             f"Thread("
             f"llama={self.llama!r}, "
-            f"prompt_format={self.prompt_format!r}, "
-            f"sampler_preset={self._sampler_preset!r}"
+            f"sampler_preset={self.sampler_preset!r}, "
+            f"messages={self.messages!r}"
             f")"
         )
 
-    def _messages_in_jinja_format(self) -> list[dict]:
+    def _render_msgs(
+        self,
+        add_generation_prompt: bool = True,
+        **kwargs
+    ) -> str:
+        """Render the chat template template using the messages in this Thread"""
+        
         jinja_messages = []
+        
+        #
+        # convert all messages in the thread into the format expected by the chat template
+        #
+
         for message in self.messages:
             try:
                 role = message['role']
             except KeyError:
-                log(f'_messages_in_jinja_format: skipping message with no role!', 2)
+                log(f'_render_msgs: skipping message with no role!', 2)
                 continue
             try:
                 content = message['content']
             except KeyError:
-                log(f'_messages_in_jinja_format: skipping message with no content!', 2)
+                log(f'_render_msgs: skipping message with no content!', 2)
                 continue
+
+            role = role.lower()
+            if len(content) == 0:
+                log(f'_render_msgs: {role} message content is empty', 2)
+
             if role in Thread.valid_system_roles:
                 jinja_messages.append({'role': 'system', 'content': content})
             elif role in Thread.valid_user_roles:
@@ -93,196 +92,73 @@ class Thread:
             elif role in Thread.valid_bot_roles:
                 jinja_messages.append({'role': 'assistant', 'content': content})
             else:
-                log(
-                    f'_messages_in_jinja_format: skipping message with invalid role {role!r}!',
-                    2
-                )
-        return jinja_messages
-    
-    def _render_messages(
-        self,
-        add_generation_prompt: bool = True,
-        **kwargs
-    ) -> str:
-        """Render the Jinja template with current messages"""
-        try:
-            template = jinja2.Template(
-                source=self.llama._chat_template,
-                undefined=jinja2.StrictUndefined
+                log(f'_render_msgs: skipping message with invalid role {role!r}!', 2)
+        
+        #
+        # get the chat template string from the model's metadata
+        #
+
+        chat_template_str = self.llama.chat_template()
+        if chat_template_str is None:
+            exc_str = (
+                f"_render_msgs: unable to render messages becuase the model has no chat "
+                f"template! re-convert your model or download a newer version."
             )
-            context = {
-                'messages': self._messages_in_jinja_format(),
-                'add_generation_prompt': add_generation_prompt,
-                **kwargs
-            }
-            return template.render(context)
-        except jinja2.exceptions.TemplateSyntaxError as e:
-            log(f"_render_messages: invalid chat template syntax: {e}", 3)
-            raise ValueError(f"_render_messages: invalid chat template syntax: {e}") from e
-        except jinja2.exceptions.UndefinedError as e:
-            log(f"_render_messages: missing template variable: {e}", 3)
-            raise ValueError(f"_render_messages: missing template variable: {e}") from e
+            log(exc_str, 3)
+            raise ValueError(exc_str)
+
+        #
+        # convert the template string to an actual jinja2 template
+        #
+
+        try:
+            template = jinja2.Template(chat_template_str, undefined=jinja2.StrictUndefined)
         except Exception as e:
-            log(f"_render_messages: template rendering error: {e}", 3)
-            raise ValueError(f"_render_messages: template rendering error: {e}") from e
-    
-    def get_input_ids(self, role: Optional[str] = 'bot') -> list[int]:
+            exc_str = f"_render_msgs: error creating chat template: {type(e).__name__}: {e}"
+            log(exc_str, 3)
+            raise ValueError(exc_str) from e
+        
+        #
+        # set the context data used when rendering the template
+        #
+        
+        context = {
+            'messages': jinja_messages,
+            'add_generation_prompt': add_generation_prompt,
+            **kwargs
+        }
+
+        #
+        # finally, render the chat template and return the resulting string
+        #
+
+        try:
+            return template.render(context)
+        except Exception as e:
+            exc_str = (
+                f"_render_msgs: error rendering chat template with content: "
+                f"{type(e).__name__}: {e}"
+            )
+            log(exc_str, 3)
+            raise ValueError(exc_str) from e
+
+    def get_input_ids(self, add_generation_prompt: bool = True, **kwargs) -> list[int]:
         """Get a list of token IDs in this thread, to be used for inference
 
-        - role:
-            The role for which inference will be performed (usually 'bot'). Can be 'system',
-            'user', 'bot', or None. If None, no role prefix will be appended (this is useful 
-            when you just want to get all the tokens in this Thread but are not going to do
-            inference)."""
-        
-        if role is None and len(self.messages) == 0:
-            if self.llama.add_bos_token():
-                return [self.llama.token_bos()]
-            else:
-                return []
-        
-        input_ids = []
-        if len(self.messages) > 0:
-            # the prefix of the first message requires `add_special=True` in order to set
-            # the BOS token correctly
-            first_msg = self.messages[0]
-            if first_msg['role'].lower() in Thread.valid_system_roles:
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.system_prefix()),
-                    add_special=True,
-                    parse_special=True
-                ))
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(first_msg['content']),
-                    add_special=False,
-                    parse_special=False
-                ))
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.system_suffix()),
-                    add_special=False,
-                    parse_special=True
-                ))
+        - add_generation_prompt:
+            Whether or not to include the bot prefix tokens at the end of the input IDs.
             
-            elif first_msg['role'].lower() in Thread.valid_user_roles:
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.user_prefix()),
-                    add_special=True,
-                    parse_special=True
-                ))
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(first_msg['content']),
-                    add_special=False,
-                    parse_special=False
-                ))
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.user_suffix()),
-                    add_special=False,
-                    parse_special=True
-                ))
-            
-            elif first_msg['role'].lower() in Thread.valid_bot_roles:
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.bot_prefix()),
-                    add_special=True,
-                    parse_special=True
-                ))
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(first_msg['content']),
-                    add_special=False,
-                    parse_special=False
-                ))
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.bot_suffix()),
-                    add_special=False,
-                    parse_special=True
-                ))
-            
-            else:
-                raise ValueError(
-                    f'Thread.get_input_ids: first message has invalid role {role!r}'
-                )
-            
-            # all the other messages are treated the same
-            i = 0
-            for msg in self.messages[1:]:
-                i += 1
-                if msg['role'].lower() in Thread.valid_system_roles:
-                    raise ValueError(
-                        f'Thread.get_input_ids: multiple system messages are not supported'
-                    )
-                elif msg['role'].lower() in Thread.valid_user_roles:
-                    input_ids.extend(self.llama.tokenize(
-                        text_bytes=ez_encode(self.prompt_format.user_prefix()),
-                        add_special=False,
-                        parse_special=True
-                    ))
-                    input_ids.extend(self.llama.tokenize(
-                        text_bytes=ez_encode(msg['content']),
-                        add_special=False,
-                        parse_special=False
-                    ))
-                    input_ids.extend(self.llama.tokenize(
-                        text_bytes=ez_encode(self.prompt_format.user_suffix()),
-                        add_special=False,
-                        parse_special=True
-                    ))
-                elif msg['role'].lower() in Thread.valid_bot_roles:
-                    input_ids.extend(self.llama.tokenize(
-                        text_bytes=ez_encode(self.prompt_format.bot_prefix()),
-                        add_special=False,
-                        parse_special=True
-                    ))
-                    input_ids.extend(self.llama.tokenize(
-                        text_bytes=ez_encode(msg['content']),
-                        add_special=False,
-                        parse_special=False
-                    ))
-                    input_ids.extend(self.llama.tokenize(
-                        text_bytes=ez_encode(self.prompt_format.bot_suffix()),
-                        add_special=False,
-                        parse_special=True
-                    ))
-                else:
-                    raise ValueError(
-                        f'Thread.get_input_ids: message {i} has invalid role {role!r}'
-                    )
-        
-        if role is not None:
-            # append the role prefix tokens to the end
-            # (if role is None, no prefix is appended)
-            if role.lower() in Thread.valid_system_roles:
-                raise ValueError(
-                    f'Thread.get_input_ids: multiple system messages are not supported'
-                )
-            elif role.lower() in Thread.valid_user_roles:
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.user_prefix()),
-                    add_special=False,
-                    parse_special=True
-                ))
-            elif role.lower() in Thread.valid_bot_roles:
-                input_ids.extend(self.llama.tokenize(
-                    text_bytes=ez_encode(self.prompt_format.bot_prefix()),
-                    add_special=False,
-                    parse_special=True
-                ))
-            else:
-                raise ValueError(f'Thread.get_input_ids: invalid role {role!r}')
-        
-        # input_ids is now fully constructed
-        n_input_ids = len(input_ids)
+        Any additional kwargs are passed as context for rendering the chat template."""
 
-        _llama.log_verbose(
-            f'Thread.get_input_ids: converted {len(self.messages)} messages to '
-            f'{n_input_ids} tokens'
+        # render the messages using the provided context
+        thread_chat_string = self._render_msgs(add_generation_prompt, **kwargs)
+
+        # tokenize the rendered chat template
+        input_ids = self.llama.tokenize(
+            text_bytes=ez_encode(thread_chat_string),
+            add_special=True,
+            parse_special=True
         )
-
-        if n_input_ids >= self.llama._n_ctx:
-            log(
-                f'Thread.get_input_ids: length of input_ids {n_input_ids} '
-                f'equals or exceeds the current context length '
-                f'{self.llama._n_ctx}', 2
-            )
         
         return input_ids
     
@@ -294,7 +170,7 @@ class Thread:
             'content': content
         })
         response_toks = self.llama.generate(
-            input_tokens=self.get_input_ids(role='bot'),
+            input_tokens=self.get_input_ids(add_generation_prompt=True),
             n_predict=n_predict if n_predict is not None else -1,
             stop_tokens=self._stop_tokens,
             sampler_preset=self.sampler_preset
@@ -306,31 +182,9 @@ class Thread:
         })
         return response_txt
 
-    def as_string(self) -> str:
+    def as_string(self, **kwargs) -> str:
         """Return this thread's message history as a string"""
-        result_str = ''
-        for msg in self.messages:
-            if msg['role'].lower() in Thread.valid_system_roles:
-                result_str += ''.join([
-                    self.prompt_format.system_prefix(),
-                    msg['content'],
-                    self.prompt_format.system_suffix()
-                ])
-            elif msg['role'].lower() in Thread.valid_user_roles:
-                result_str += ''.join([
-                    self.prompt_format.user_prefix(),
-                    msg['content'],
-                    self.prompt_format.user_suffix()
-                ])
-            elif msg['role'].lower() in Thread.valid_bot_roles:
-                result_str += ''.join([
-                    self.prompt_format.bot_prefix(),
-                    msg['content'],
-                    self.prompt_format.bot_suffix()
-                ])
-            else:
-                raise ValueError(f"Thread.as_string: invalid message role {msg['role']!r}")
-        return result_str
+        return self._render_msgs(add_generation_prompt=False, **kwargs)
     
     def add_message(self, role: str, content: str) -> None:
         """Append a message to `Thread.messages` with the specified role and content
@@ -380,7 +234,7 @@ class Thread:
                         stop_tokens=self._stop_tokens,
                         sampler_preset=self.sampler_preset
                     )
-
+                    
                     response_toks = []
                     detok_bytes_buffer = b''
                     
@@ -420,12 +274,6 @@ class Thread:
                     response = self.send(user_input)
                     print(f'\n{B}{response}{R}\n')
     
-    def give_input_output_examples(self, examples: dict[str, str]) -> None:
-        """Provide examples for few-shot prompting""" # TODO: this should be renamed or removed
-        for input_msg_content, output_msg_content in examples.items():
-            self.add_message('user', input_msg_content)
-            self.add_message('bot', output_msg_content)
-    
     def summarize(self) -> str:
         """Generate a summary of this thread"""
         thread_as_string = self.as_string()
@@ -456,7 +304,7 @@ class Thread:
         """Print stats about the context usage in this thread"""
         _file = sys.stdout if file is None else file
         with suppress_output():
-            input_ids = self.get_input_ids(role=None)
+            input_ids = self.get_input_ids(add_generation_prompt=False)
         n_thread_tokens = len(input_ids)
         n_msgs = len(self.messages)
         n_ctx = self.llama._n_ctx
@@ -467,4 +315,4 @@ class Thread:
         print(f"{n_msgs} messages", file=_file)
     
     def reset(self) -> None:
-        self.messages = self._orig_messages.copy()
+        self.messages: list[dict[str, str]] = []

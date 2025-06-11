@@ -12,7 +12,7 @@ https://github.com/ddh0/easy-llama"""
 
 # package version (pyproject.toml reads from here)
 
-__version__ = '0.2.5'
+__version__ = '0.2.6'
 
 # submodules
 

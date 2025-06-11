@@ -13,7 +13,7 @@ import contextlib
 
 import numpy as np
 
-from typing import Iterable, TextIO, Optional, TypeVar, Generic, NoReturn, Literal, Union
+from typing import Iterable, TextIO, TypeVar, Generic, NoReturn, Literal
 
 class ANSI:
     """ANSI codes for terminal emulators"""
@@ -109,7 +109,7 @@ def get_verbose() -> bool:
     """Return `True` if verbose output is enabled in easy-llama, `False` otherwise. If debug
     output is enabled, this will always `True`."""
     global _VERBOSE, _DEBUG
-    return _VERBOSE or _DEBUG # force-enable verbose mode if debug mode is enabled
+    return _VERBOSE or _DEBUG # force-enable verbose output if debug output is enabled
 
 def set_debug(state: bool) -> None:
     """Enable or disable debug output from easy-llama"""
@@ -250,45 +250,6 @@ def suppress_output(disable: bool = False):
 
                 _os.close(saved_stdout_fd)
                 _os.close(saved_stderr_fd)
-
-def assert_type(
-    obj: object,
-    expected_type: Union[type, tuple[type]],
-    obj_name: str,
-    code_location: str,
-    hint: Optional[str] = None
-):
-    """Ensure that `obj` is an instance of `expected_type`. If `expected_type` is a tuple,
-    ensure that `obj` is an instance of some type in the tuple.
-
-    Raise `TypeError` otherwise, using `obj_name` and `code_location` to make an informative
-    exception message.
-
-    If specified, `hint` is added as a note to the exception."""
-
-    if isinstance(obj, expected_type):
-        return
-    
-    obj_type_repr = repr(type(obj).__name__)
-
-    if not isinstance(expected_type, tuple):
-        # represent `int` as 'int' instead of "<class 'int'>"
-        expected_type_repr = repr(expected_type.__name__)
-        exc = TypeError(
-            f"{code_location}: {obj_name} should be an instance of {expected_type_repr}, "
-            f"not {obj_type_repr}"
-        )
-    else:
-        # represent `(int, list)` as "('int', 'list')" instead of
-        # "(<class 'int'>, <class 'list'>)"
-        expected_type_repr = repr(tuple(t.__name__ for t in expected_type))
-        exc = TypeError(
-            f"{code_location}: {obj_name} should be one of {expected_type_repr}, "
-            f"not {obj_type_repr}"
-        )
-    if isinstance(hint, str):
-        exc.add_note(hint)
-    raise exc
 
 def null_ptr_check(obj: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
     """Ensure that the given object `obj` is not NULL / NULLPTR. Raise `LlamaNullException` on

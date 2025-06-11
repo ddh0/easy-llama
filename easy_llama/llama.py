@@ -840,19 +840,19 @@ class Llama:
         #
 
         self._model = _LlamaModel(
-            path_model                  = path_model,
-            devices                     = kwargs.get('devices'),
-            tensor_buft_override        = kwargs.get('tensor_buft_override'),
-            n_gpu_layers                = n_gpu_layers,
-            split_mode                  = kwargs.get('split_mode'),
-            main_gpu                    = kwargs.get('main_gpu'),
-            tensor_split                = kwargs.get('tensor_split'),
-            rpc_servers                 = kwargs.get('rpc_servers'),
-            kv_overrides                = kwargs.get('kv_overrides'),
-            vocab_only                  = kwargs.get('vocab_only'),
-            use_mmap                    = kwargs.get('use_mmap'),
-            use_mlock                   = kwargs.get('use_mlock'),
-            check_tensors               = kwargs.get('check_tensors')
+            path_model           = path_model,
+            devices              = kwargs.get('devices'),
+            tensor_buft_override = kwargs.get('tensor_buft_override'),
+            n_gpu_layers         = n_gpu_layers,
+            split_mode           = kwargs.get('split_mode'),
+            main_gpu             = kwargs.get('main_gpu'),
+            tensor_split         = kwargs.get('tensor_split'),
+            rpc_servers          = kwargs.get('rpc_servers'),
+            kv_overrides         = kwargs.get('kv_overrides'),
+            vocab_only           = kwargs.get('vocab_only'),
+            use_mmap             = kwargs.get('use_mmap'),
+            use_mlock            = kwargs.get('use_mlock'),
+            check_tensors        = kwargs.get('check_tensors')
         )
         
         self._vocab = lib.llama_model_get_vocab(self._model.model)
@@ -1074,7 +1074,7 @@ class Llama:
             )
     
     def warmup(self) -> None:
-        """Warm-up the model. This also clears the KV cache."""
+        """Warm-up the model. This also resets the model state."""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.warmup")
 
         with suppress_output(disable=get_verbose()):

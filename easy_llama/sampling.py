@@ -641,18 +641,18 @@ class SamplerPresets:
     """The default llama.cpp sampler preset"""
 
     Cool = SamplerPreset(
-        top_k = -1,
-        top_p = 1.0,
-        min_p = 0.5,
-        temp = 1.0
+        top_k = 32,
+        top_p = 0.95,
+        min_p = 0.05,
+        temp = 0.3
     )
     """The recommended easy-llama sampler preset for predictable output"""
 
     Warm = SamplerPreset(
-        top_k = -1,
-        top_p = 1.0,
-        min_p = 0.1,
-        temp = 1.5
+        top_k = 64,
+        top_p = 0.95,
+        min_p = 0.05,
+        temp = 1.25
     )
     """The recommended easy-llama sampler preset for creative yet coherent output"""
 
@@ -724,11 +724,11 @@ class SamplerPresets:
     """https://github.com/oobabooga/text-generation-webui/pull/5677"""
 
     XTC = SamplerPreset(
-        top_k=-1,
-        top_p=1.0,
-        min_p=0.02,
-        xtc_probability=0.5,
-        xtc_threshold=0.1
+        top_k = -1,
+        top_p = 1.0,
+        min_p = 0.02,
+        xtc_probability = 0.5,
+        xtc_threshold = 0.1
     )
     """https://github.com/oobabooga/text-generation-webui/pull/6335"""
 
@@ -772,6 +772,14 @@ class SamplerPresets:
         temp = 0.3
     )
     """Mistral models tend to require a lower temperature"""
+
+    Magistral = SamplerPreset(
+        top_k = -1,
+        top_p = 0.95,
+        min_p = 0.0,
+        temp = 0.7
+    )
+    """[mistralai/Magistral-Small-2506](https://huggingface.co/mistralai/Magistral-Small-2506)"""
 
     Qwen2_5Official = SamplerPreset(
         top_k = 20,

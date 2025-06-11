@@ -9,24 +9,28 @@
 import os
 import uvicorn
 
-import easy_llama as ez
-
+from .                       import utils
+from .                       import llama
+from .thread                 import Thread
 from pydantic                import BaseModel
 from fastapi.staticfiles     import StaticFiles
 from fastapi.responses       import FileResponse
+from .sampling               import SamplerPreset
 from fastapi.middleware.cors import CORSMiddleware
-from easy_llama.utils        import assert_type, log, ANSI
 from typing                  import Optional, Union, Literal
 from fastapi                 import FastAPI, APIRouter, Body, HTTPException
-
 
 WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 
 STATUS_RESPONSE_SUCCESS = {'success': True}
 STATUS_RESPONSE_FAILURE = {'success': False}
 
-Y = ANSI.FG_BRIGHT_YELLOW
-R = ANSI.MODE_RESET_ALL
+Y = utils.ANSI.FG_BRIGHT_YELLOW
+R = utils.ANSI.MODE_RESET_ALL
+
+def exc_to_str(exc: Exception) -> str:
+    """Return `"ExceptionType: Exception message"`"""
+    return f"{type(exc).__name__}: {exc}"
 
 #
 # Pydantic models for FastAPI
@@ -97,15 +101,17 @@ class Server:
     """The easy-llama FastAPI server, providing a WebUI and an API router"""
 
     def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
-        log(f'ez.Server @ {Y}{self._host}{R}:{Y}{self._port}{R} {text}', level=level)
+        utils.log(f'ez.Server @ {Y}{self._host}{R}:{Y}{self._port}{R} {text}', level)
 
     def __init__(
         self,
-        thread: 'ez.Thread',
+        thread: Thread,
         host: str = "127.0.0.1",
         port: int = 8080
     ):
-        assert_type(thread, getattr(ez, 'Thread'), 'thread', 'Server.__init__')
+        if not isinstance(thread, Thread):
+            raise TypeError(f'Server.__init__: thread must be an instance of easy_llama.Thread')
+        
         self._thread = thread
         self._host = host
         self._port = port
@@ -152,7 +158,7 @@ class Server:
         @router.get("/ping", response_model=StatusResponseModel)
         async def ping() -> dict:
             """Check if the server is running."""
-            self.log('pong')
+            self.log('/ping: pong')
             return STATUS_RESPONSE_SUCCESS
 
         @router.post("/send", response_model=MessageResponseModel)
@@ -162,12 +168,12 @@ class Server:
 
             try:
                  self._thread.add_message(message.role, message.content)
-            
-            except ValueError as exc:
-                 self.log(f"/send: error adding user message: {exc}", 3)
-                 raise HTTPException(status_code=400, detail=str(exc))
+            except Exception as exc:
+                 exc_str = exc_to_str(exc)
+                 self.log(exc_str, 3)
+                 raise HTTPException(status_code=400, detail=exc_str)
 
-            input_toks = self._thread.get_input_ids(role='bot')
+            input_toks = self._thread.get_input_ids(add_generation_prompt=True)
 
             try:
                  response_toks = self._thread.llama.generate(
@@ -178,22 +184,18 @@ class Server:
                  )
                  response_txt = self._thread.llama.detokenize(response_toks, special=False)
             
-            except ez.llama.ExceededContextLengthException as exc:
-                 self.log(f"ExceededContextLengthException: {exc}", 3)
-                 raise HTTPException(status_code=413, detail=str(exc))
-            
             except Exception as exc:
-                self.log(f"Error during generation: {type(exc).__name__}: {exc}", level=3)
-                raise HTTPException(status_code=500, detail=str(exc))
+                exc_str = exc_to_str(exc)
+                raise HTTPException(status_code=500, detail=exc_str)
 
-            # Add bot response to history
+            # add bot response to history
             self._thread.add_message('bot', response_txt)
 
             return {
                 'role': 'bot',
                 'content': response_txt,
-                'n_input_tokens': len(input_toks), # Tokens processed for this turn
-                'n_output_tokens': len(response_toks) # Tokens generated this turn
+                'n_input_tokens': len(input_toks),
+                'n_output_tokens': len(response_toks)
             }
 
         @router.post("/add_message", response_model=StatusResponseModel, tags=["Chat"])
@@ -206,32 +208,24 @@ class Server:
             try:
                 self._thread.add_message(message.role, message.content)
                 return STATUS_RESPONSE_SUCCESS
-            except ValueError as exc:
-                self.log(f'Failed to add message: {exc}', 3)
-                raise HTTPException(status_code=400, detail=str(exc))
+            except Exception as exc:
+                exc_str = exc_to_str(exc)
+                raise HTTPException(status_code=400, detail=exc_str)
 
         @router.post("/set_system_prompt", response_model=StatusResponseModel, tags=["Chat"])
         async def set_system_prompt(request: SetSystemPromptRequestModel = Body(...)) -> dict:
-            """
-            Set or update the system prompt (the first message if it has a system role).
-            If no system prompt exists, it will be prepended.
-            """
+            """Set or update the system prompt (the first message if it has a system role).
+            If no system prompt exists, it will be prepended."""
             content = request.content
             new_sys_msg = {'role': 'system', 'content': content}
             messages = self._thread.messages
 
-            if messages and messages[0]['role'].lower() in self._thread.valid_system_roles:
-                self.log("Updating existing system prompt.")
+            if messages and messages[0]['role'].lower() in Thread.valid_system_roles:
                 messages[0]['content'] = content
+                self.log("/set_system_prompt: updated system prompt content")
             else:
-                self.log("Prepending new system prompt.")
                 messages.insert(0, new_sys_msg)
-
-            orig_messages = self._thread._orig_messages
-            if orig_messages and orig_messages[0]['role'].lower() in self._thread.valid_system_roles:
-                 orig_messages[0]['content'] = content
-            else:
-                 orig_messages.insert(0, new_sys_msg)
+                self.log("/set_system_prompt: prepended new system prompt")
 
             return STATUS_RESPONSE_SUCCESS
 
@@ -239,51 +233,37 @@ class Server:
         async def trigger() -> dict[str, Union[str, int]]:
             """Trigger the bot to generate a response based on the current history,
             without adding a user message first. Appends the bot's response."""
-            self.log("/trigger request received")
-            if not self._thread.messages:
-                 # TODO: this is incorrect
-                 self.log("Cannot trigger response: No messages in history.", level=2)
-                 raise HTTPException(status_code=400, detail="Cannot trigger response with empty history")
 
-            last_message_role = self._thread.messages[-1]['role'].lower()
-            if last_message_role in self._thread.valid_bot_roles:
-                 self.log("Last message was from bot, triggering another bot response.", level=1)
-                 # Allow triggering even if last was bot, might be desired sometimes
-            elif last_message_role in self._thread.valid_system_roles:
-                 self.log("Last message was system, triggering bot response.", level=1)
-            elif last_message_role in self._thread.valid_user_roles:
-                 self.log("Last message was user, triggering bot response.", level=1)
-
+            #
             # prepare for generation
+            #
 
             try:
-                input_toks = self._thread.get_input_ids(role='bot')
-            except ez.llama.ExceededContextLengthException as exc:
-                 self.log(f"Context length exceeded before generation: {exc}", level=3)
-                 raise HTTPException(status_code=413, detail=f"Input context too long: {exc}")
-            except ValueError as exc: # Handle potential errors in get_input_ids
-                 self.log(f"Error getting input IDs: {exc}", level=3)
-                 raise HTTPException(status_code=500, detail=f"Internal error preparing generation: {exc}")
+                input_toks = self._thread.get_input_ids(add_generation_prompt=True)
+            except Exception as exc:
+                 exc_str = f"/trigger: " + exc_to_str(exc)
+                 self.log(exc_str, 3)
+                 raise HTTPException(status_code=500, detail=exc_str)
 
+            #
             # generate response
+            #
 
             try:
                  response_toks = self._thread.llama.generate(
                      input_tokens=input_toks,
                      n_predict=-1,
-                     stop_tokens=self._thread._stop_tokens,
+                     stop_tokens=self._thread.llama.eog_tokens,
                      sampler_preset=self._thread.sampler_preset
                  )
                  response_txt = self._thread.llama.detokenize(response_toks, special=False).strip()
                  self.log(f"Generated {len(response_toks)} tokens: '{response_txt[:50]}...'")
-            except ez.llama.ExceededContextLengthException as exc:
-                 self.log(f"Context length exceeded during generation: {exc}", level=3)
-                 raise HTTPException(status_code=413, detail=f"Context length exceeded during generation: {exc}")
             except Exception as exc:
-                self.log(f"Error during generation: {type(exc).__name__}: {exc}", level=3)
-                raise HTTPException(status_code=500, detail=f"Generation failed: {exc}")
+                exc_str = f"/trigger: " + exc_to_str(exc)
+                self.log(exc_str, 3)
+                raise HTTPException(status_code=500, detail=exc_str)
 
-            # Add bot response to history
+            # add bot response to history
             self._thread.add_message('bot', response_txt)
 
             return {
@@ -310,11 +290,11 @@ class Server:
             self.log("/summarize request received")
             try:
                 summary_text = self._thread.summarize()
-                self.log(f"Generated summary: '{summary_text[:50]}...'")
                 return {"summary": summary_text}
             except Exception as exc:
-                 self.log(f"Error during summarization: {type(exc).__name__}: {exc}", level=3)
-                 raise HTTPException(status_code=500, detail=f"Summarization failed: {exc}")
+                 exc_str = f"/summarize: " + exc_to_str(exc)
+                 self.log(exc_str, 3)
+                 raise HTTPException(status_code=500, detail=exc_str)
 
 
         @router.post("/cancel", response_model=StatusResponseModel, tags=["Control"])
@@ -347,7 +327,7 @@ class Server:
             self.log("/info request received")
             # Use suppress_output if get_input_ids might log verbosely
             # with ez.utils.suppress_output(disable=ez.get_verbose()):
-            input_ids = self._thread.get_input_ids(role=None) # Get tokens just for counting
+            input_ids = self._thread.get_input_ids(add_generation_prompt=False) # Get tokens just for counting
 
             return {
                 'model_name': self._thread.llama.name(),
@@ -359,6 +339,7 @@ class Server:
                 'n_thread_tokens': len(input_ids),
                 'n_thread_messages': len(self._thread.messages)
             }
+
 
         @router.post("/sampler", response_model=SamplerSettingsModel, tags=["Sampling"])
         async def set_sampler(settings: SamplerSettingsModel = Body(...)) -> dict:
@@ -378,7 +359,7 @@ class Server:
 
             # Create a new preset from the merged data
             try:
-                new_preset = ez.SamplerPreset(**current_data)
+                new_preset = SamplerPreset(**current_data)
                 # Update the thread's active sampler preset
                 self._thread.sampler_preset = new_preset
                 self.log(f"Sampler settings updated. Current: {new_preset}")
@@ -394,8 +375,6 @@ class Server:
             self.log("/sampler GET request received")
             return self._thread.sampler_preset.as_dict()
 
-
-    # --- Server Start Method ---
     def start(self):
         """Start the Uvicorn server."""
         try:

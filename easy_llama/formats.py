@@ -5,8 +5,6 @@
 """This file provides functionality for defining prompt formats, which are used to define how
 the input to a Llama model should be structured."""
 
-# TODO: jinja2
-
 import time
 
 from datetime        import datetime, timedelta
