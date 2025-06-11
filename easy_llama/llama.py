@@ -636,10 +636,6 @@ class _LlamaCtx:
         if n_ubatch is not None:
             self.params.n_ubatch = n_ubatch
         if n_seq_max is not None:
-            if n_seq_max != 1:
-                raise NotImplementedError(
-                    f'n_seq_max value {n_seq_max} != 1; this is not yet supported'
-                )
             self.params.n_seq_max = n_seq_max
         if n_threads is not None:
             self.params.n_threads = n_threads
@@ -907,7 +903,7 @@ class Llama:
             n_ctx             = _n_ctx,
             n_batch           = kwargs.get('n_batch'),
             n_ubatch          = kwargs.get('n_ubatch'),
-            # n_seq_max         = kwargs.get('n_seq_max'), # uncomment this if n_seq_max gets supported
+            n_seq_max         = kwargs.get('n_seq_max'),
             n_threads         = _n_threads,
             n_threads_batch   = _n_threads_batch,
             rope_scaling_type = kwargs.get('rope_scaling_type'),

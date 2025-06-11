@@ -1855,7 +1855,7 @@ class _internals:
     Helper functions used by the `llama` and `sampling` modules."""
 
     # these will be initialized when libllama is initialized
-    greedy_sampler: Optional[llama_sampler]               = None
+    greedy_sampler: Optional[ptr[llama_sampler]]          = None
     detok_buffer:   Optional[ctypes.Array[ctypes.c_char]] = None
 
     class LogitBiasArrayType:
@@ -1866,7 +1866,7 @@ class _internals:
         ctx: ptr[llama_context],
         pos: int,
         tokens: list[int],
-        n_tokens: int,
+        n_tokens: int
     ) -> None:
         """### INTERNAL
 
@@ -2022,6 +2022,8 @@ class _internals:
             raise RuntimeError(
                 f'decode_embd: llama_decode failed with status code {ret}'
             )
+    
+    # TODO: add internal functions that handle decoding of multiple sequences
     
     @staticmethod
     def get_logits(ctx: ptr[llama_context], n_vocab: int) -> np.ndarray:
