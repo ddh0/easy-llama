@@ -393,12 +393,12 @@ class llama_model_kv_override(ctypes.Structure):
 
 llama_model_kv_override_p = ctypes.POINTER(llama_model_kv_override)
 
-ggml_backend_buffer_type_t = ctypes.c_void_p # opaque pointer type
+ggml_backend_buffer_type_t = ctypes.c_void_p # opaque
 
 class llama_model_tensor_buft_override(ctypes.Structure):
     _fields_ = [
         ("pattern", ctypes.c_char_p           ), # regex pattern to match tensor names
-        ("buft",    ggml_backend_buffer_type_t)  # pointer to buffer type
+        ("buft",    ggml_backend_buffer_type_t)  # opaque pointer to buffer type
     ]
 
 llama_model_tensor_buft_override_p = ctypes.POINTER(llama_model_tensor_buft_override)

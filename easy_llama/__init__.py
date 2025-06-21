@@ -12,7 +12,7 @@ https://github.com/ddh0/easy-llama"""
 
 # package version (pyproject.toml reads from here)
 
-__version__ = '0.2.6'
+__version__ = '0.2.7'
 
 # submodules
 
@@ -29,6 +29,6 @@ from . import utils
 from .utils    import get_verbose, set_verbose, get_debug, set_debug
 from .sampling import SamplerParams, SamplerPreset, SamplerPresets
 from .formats  import PromptFormat, PromptFormats, SystemPrompts
-from .llama    import Llama
+from .thread   import Thread, Role
 from .server   import Server
-from .thread   import Thread
+from .llama    import Llama

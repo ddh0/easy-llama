@@ -2,14 +2,15 @@
 # https://github.com/ddh0/easy-llama/
 # MIT License -- Copyright (c) 2024 Dylan Halladay
 
-"""This file provides functionality for defining prompt formats, which are used to define how
-the input to a Llama model should be structured."""
+"""This file is obsolete and will be removed soon. Instances of `easy_llama.thread.Thread` will
+now utilize the model's built-in Jinja2 chat template to format messages."""
 
 import time
 
 from datetime        import datetime, timedelta
 from collections.abc import Callable
 from typing          import Optional
+from .utils          import log
 
 def _call_or_return(obj: object | Callable[..., object]) -> object:
     return obj() if callable(obj) else obj
@@ -28,6 +29,10 @@ class PromptFormat:
         bot_suffix:    str | Callable[..., str],
         stop_tokens:   list[int] | Callable[..., list[int]] | None = None
     ) -> None:
+        log(
+            f"the PromptFormats class is obsolete. instances of `easy_llama.thread.Thread` "
+            f"will now utilize the model's built-in Jinja2 chat template to format messages.", 2
+        )
         self._system_prefix = system_prefix
         self._system_prompt = system_prompt
         self._system_suffix = system_suffix

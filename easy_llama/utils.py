@@ -263,3 +263,7 @@ def null_ptr_check(obj: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
         Code location hint, used for error message"""
     if not bool(obj):
         raise LlamaNullException(f"{loc_hint}: pointer `{ptr_name}` is null")
+
+def exc_to_str(exc: Exception) -> str:
+    """Return `'ExceptionType: Exception message'`"""
+    return f"{type(exc).__name__}: {exc}"

@@ -5,7 +5,7 @@
 """This file provides functionality for defining the sampler parameters used to control
 text generation."""
 
-# TODO: implement grammar, implement custom sampling chains
+# TODO: implement grammar
 
 import os
 import sys
@@ -25,6 +25,39 @@ class Llama: # can't import the real Llama - would be circular
 def _get_random_seed() -> int:
     # unsigned 32-bit integer
     return int.from_bytes(bytes=os.urandom(4), byteorder=sys.byteorder, signed=False)
+
+class _ParamDefaults:
+    """Default sampler parameter values"""
+    
+    seed: int = -1
+
+    top_k:              int   = 64
+    top_p:              float = 0.95
+    min_p:              float = 0.05
+    xtc_probability:    float = 0.0
+    xtc_threshold:      float = 0.1
+    typical_p:          float = 1.0
+    temp:               float = 1.0
+    dynatemp_delta:     float = 0.0
+    dynatemp_exponent:  float = 1.0
+    penalty_last_n:     int   = 64
+    penalty_repeat:     float = 1.0
+    penalty_freq:       float = 0.0
+    penalty_present:    float = 0.0
+    dry_multiplier:     float = 0.0
+    dry_base:           float = 1.75
+    dry_allowed_length: int   = 4
+    dry_penalty_last_n: int   = -1
+    mirostat:           int   = 0
+    top_n_sigma:        float = -1.0
+    mirostat_tau:       float = 5.0
+    mirostat_eta:       float = 0.1
+
+    dry_sequence_breakers: list[str] = ["\n", "\r", ":", "\"", "*"]
+
+    # TODO: grammar goes here
+
+    logit_bias: Optional[dict[int, float]] = None
 
 class SamplerParams:
     """A SamplerParams object is used by a Llama model to define sampling behaviour.
@@ -76,88 +109,119 @@ class SamplerParams:
     #         "temp-ext"
     #
     
-    def __init__( 
+    def __init__(
         #
         # ref: llama.cpp/common/common.h: struct common_params_sampling { ... }
         #
         self,
         llama: Llama, # some samplers require info about n_ctx_train, n_vocab, etc.
-        
-        seed:               int   = -1,    # random: <= 0
-        top_k:              int   = 40,    # neutral: <= 0
-        top_p:              float = 0.95,  # neutral: 1.0
-        min_p:              float = 0.05,  # neutral: 0.0
-        xtc_probability:    float = 0.0,   # neutral: 0.0
-        xtc_threshold:      float = 0.1,   # disable: > 0.5
-        typical_p:          float = 1.0,   # neutral: 1.0
-        temp:               float = 0.8,   # neutral: 1.0, greedy: <= 0.0
-        dynatemp_delta:     float = 0.0,   # neutral: <= 0.0
-        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to dynamic temperature
-        penalty_last_n:     int   = 64,    # disable: 0, n_ctx: -1, last n tokens to penalize
-        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1; values < 1.0 will INCREASE repetition
-        penalty_freq:       float = 0.0,   # neutral: 0.0
-        penalty_present:    float = 0.0,   # neutral: 0.0
-        dry_multiplier:     float = 0.0,   # disable: 0.0, DRY repetition penalty for tokens extending repetition:
-        dry_base:           float = 1.75,  # disable: 0.0, multiplier * base ^ (length of sequence before token - allowed length)
-        dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
-        dry_penalty_last_n: int   = -1,    # disable: 0, n_ctx: -1, how many tokens to scan for repetitions
-        mirostat:           int   = 0,     # disable: 0, use v1: 1, use v2: 2
-        top_n_sigma:        float = -1.0,  # disable: -1.0
-        mirostat_tau:       float = 5.0,   # target entropy for mirostat
-        mirostat_eta:       float = 0.1,   # learning rate for mirostat
 
-        dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
+        seed:               Optional[int]   = None, # random: <= 0
+        top_k:              Optional[int]   = None, # neutral: <= 0
+        top_p:              Optional[float] = None, # neutral: 1.0
+        min_p:              Optional[float] = None, # neutral: 0.0
+        xtc_probability:    Optional[float] = None, # neutral: 0.0
+        xtc_threshold:      Optional[float] = None, # disable: > 0.5
+        typical_p:          Optional[float] = None, # neutral: 1.0
+        temp:               Optional[float] = None, # neutral: 1.0, greedy: <= 0.0
+        dynatemp_delta:     Optional[float] = None, # neutral: <= 0.0
+        dynatemp_exponent:  Optional[float] = None, # controls how entropy maps to dynamic temperature
+        penalty_last_n:     Optional[int]   = None, # disable: 0, n_ctx: -1, last n tokens to penalize
+        penalty_repeat:     Optional[float] = None, # neutral: 1.0, should be between 1.0 and ~1.1; values < 1.0 will INCREASE repetition
+        penalty_freq:       Optional[float] = None, # neutral: 0.0
+        penalty_present:    Optional[float] = None, # neutral: 0.0
+        dry_multiplier:     Optional[float] = None, # disable: 0.0, DRY repetition penalty for tokens extending repetition:
+        dry_base:           Optional[float] = None, # disable: 0.0, multiplier * base ^ (length of sequence before token - allowed length)
+        dry_allowed_length: Optional[int]   = None, # tokens extending repetitions beyond this receive penalty
+        dry_penalty_last_n: Optional[int]   = None, # disable: 0, n_ctx: -1, how many tokens to scan for repetitions
+        mirostat:           Optional[int]   = None, # disable: 0, use v1: 1, use v2: 2
+        top_n_sigma:        Optional[float] = None, # disable: -1.0
+        mirostat_tau:       Optional[float] = None, # target entropy for mirostat
+        mirostat_eta:       Optional[float] = None, # learning rate for mirostat
+
+        dry_sequence_breakers: Optional[list[str]] = None, # sequence breakers for DRY
 
         # TODO: grammar goes here
 
-        logit_bias: Optional[dict[int, float]] = None
-    ):
+        logit_bias: Optional[dict[int, float]] = None # dictionary of one or more {tok_id: bias}
+    ):  
         self.smpl = None
-        
-        #
-        # ref: llama.cpp/common/common.h: common_sampler_init(...) { ... }
-        #
 
         #
         # Store parameter values as attributes
         #
 
-        # NOTE: Changing these attributes will not change the sampling. If you need to change
-        #       sampling, construct a new sampler.
+        # NOTE: Changing these attributes after initialization will not change the sampling. If
+        #       you need to change the sampling, construct a new sampler.
 
         self.llama = llama
-        self.seed  = seed
 
-        self.top_k              = top_k
-        self.top_p              = top_p
-        self.min_p              = min_p
-        self.xtc_probability    = xtc_probability
-        self.xtc_threshold      = xtc_threshold
-        self.typical_p          = typical_p
-        self.temp               = temp
-        self.dynatemp_delta     = dynatemp_delta
-        self.dynatemp_exponent  = dynatemp_exponent
-        self.penalty_last_n     = penalty_last_n
-        self.penalty_repeat     = penalty_repeat
-        self.penalty_freq       = penalty_freq
-        self.penalty_present    = penalty_present
-        self.dry_multiplier     = dry_multiplier
-        self.dry_base           = dry_base
-        self.dry_allowed_length = dry_allowed_length
-        self.dry_penalty_last_n = dry_penalty_last_n
-        self.mirostat           = mirostat
-        self.top_n_sigma        = top_n_sigma
-        self.mirostat_tau       = mirostat_tau
-        self.mirostat_eta       = mirostat_eta
+        self.seed = seed if seed is not None else _ParamDefaults.seed
 
-        # TODO
-        # self._validate_params() # show warnings/errors for nonsensical sampler values
+        self.top_k              = top_k if top_k is not None else _ParamDefaults.top_k
+        self.top_p              = top_p if top_p is not None else _ParamDefaults.top_p
+        self.min_p              = min_p if min_p is not None else _ParamDefaults.min_p
+        self.xtc_probability    = xtc_probability if xtc_probability is not None else (
+            _ParamDefaults.xtc_probability
+        )
+        self.xtc_threshold      = xtc_threshold if xtc_threshold is not None else (
+            _ParamDefaults.xtc_threshold
+        )
+        self.typical_p          = typical_p if typical_p is not None else (
+            _ParamDefaults.typical_p
+        )
+        self.temp               = temp if temp is not None else _ParamDefaults.temp
+        self.dynatemp_delta     = dynatemp_delta if dynatemp_delta is not None else (
+            _ParamDefaults.dynatemp_delta
+        )
+        self.dynatemp_exponent  = dynatemp_exponent if dynatemp_exponent is not None else (
+            _ParamDefaults.dynatemp_exponent
+        )
+        self.penalty_last_n     = penalty_last_n if penalty_last_n is not None else (
+            _ParamDefaults.penalty_last_n
+        )
+        self.penalty_repeat     = penalty_repeat if penalty_repeat is not None else (
+            _ParamDefaults.penalty_repeat
+        )
+        self.penalty_freq       = penalty_freq if penalty_freq is not None else (
+            _ParamDefaults.penalty_freq
+        )
+        self.penalty_present    = penalty_present if penalty_present is not None else (
+            _ParamDefaults.penalty_present
+        )
+        self.dry_multiplier     = dry_multiplier if dry_multiplier is not None else (
+            _ParamDefaults.dry_multiplier
+        )
+        self.dry_base           = dry_base if dry_base is not None else _ParamDefaults.dry_base
+        self.dry_allowed_length = dry_allowed_length if dry_allowed_length is not None else (
+            _ParamDefaults.dry_allowed_length
+        )
+        self.dry_penalty_last_n = dry_penalty_last_n if dry_penalty_last_n is not None else (
+            _ParamDefaults.dry_penalty_last_n
+        )
+        self.mirostat           = mirostat if mirostat is not None else _ParamDefaults.mirostat
+        self.top_n_sigma        = top_n_sigma if top_n_sigma is not None else (
+            _ParamDefaults.top_n_sigma
+        )
+        self.mirostat_tau       = mirostat_tau if mirostat_tau is not None else (
+            _ParamDefaults.mirostat_tau
+        )
+        self.mirostat_eta       = mirostat_eta if mirostat_eta is not None else (
+            _ParamDefaults.mirostat_eta
+        )
         
-        self.dry_sequence_breakers = dry_sequence_breakers
+        self.dry_sequence_breakers = (
+            dry_sequence_breakers if dry_sequence_breakers is not None else
+            _ParamDefaults.dry_sequence_breakers
+        )
 
-        self.logit_bias = logit_bias
+        self.logit_bias = logit_bias if logit_bias is not None else _ParamDefaults.logit_bias
 
         self._chain_str = ''
+
+        #
+        # ref: llama.cpp/common/common.h: common_sampler_init(...) { ... }
+        #
 
         sparams = lib.llama_sampler_chain_default_params()
         null_ptr_check(sparams, 'sparams', 'SamplerParams.__init__')
@@ -326,7 +390,7 @@ class SamplerParams:
                 # standard temperature
                 self._chain_str += f'temp {temp:.2f} -> '
                 lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
-        
+
             self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
@@ -371,7 +435,6 @@ class SamplerParams:
                 self._chain_str += f'temp {temp:.2f} -> '
                 lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
         
-            # ... -> dist
             self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
@@ -468,8 +531,328 @@ class SamplerParams:
         """
         # Create a copy to avoid modifying the original dictionary
         # and remove keys that are not constructor arguments (like 'llama' if present)
-        filtered_params = {k: v for k, v in params_dict.items() if k in SamplerPreset.__init__.__code__.co_varnames}
+        filtered_params = {
+            k: v for k, v in params_dict.items()
+            if k in SamplerPreset.__init__.__code__.co_varnames
+        }
         return cls(llama=llama, **filtered_params)
+
+# TODO ensure the below class exactly mirrors llama.cpp names / styling / structure
+
+class CustomSamplerChain:
+    """Allows for the creation of arbitrary custom sampler chains.
+
+    Unlike `SamplerParams`, which constructs a sampler chain based on a fixed set of logic,
+    this class allows the user to add samplers one by one in any order.
+
+    Each `add_*` method adds a new sampler to the chain and returns `self`, allowing for
+    method chaining. This object can then be used in place of a `SamplerParams` object.
+
+    Example:
+        >>> MySamplerChain = (CustomSamplerChain(llama)
+        ...          .add_top_k(50)
+        ...          .add_top_p(0.9)
+        ...          .add_temp(0.7)
+        ...          .add_dist())
+        >>> MySamplerChain.print_chain()
+        sampler chain: top-k 50 -> top-p 0.90 -> temp 0.70 -> dist
+        >>> # This chain can now be used for sampling, e.g., in `Llama.generate()`
+    """
+    def __init__(self, llama: Llama):
+        """Initializes an empty custom sampler chain.
+
+        Args:
+            llama: The Llama instance this sampler chain will be associated with.
+        """
+        self.llama = llama
+        self.smpl = None
+        self._chain_str = ''
+
+        sparams = lib.llama_sampler_chain_default_params()
+        null_ptr_check(sparams, 'sparams', 'CustomSamplerChain.__init__')
+
+        smpl = lib.llama_sampler_chain_init(sparams)
+        null_ptr_check(smpl, 'smpl', 'CustomSamplerChain.__init__')
+
+        self.smpl = smpl
+
+    def __del__(self):
+        self.free()
+
+    def free(self) -> None:
+        if self.smpl is not None:
+            lib.llama_sampler_free(self.smpl)
+            self.smpl = None
+
+    def reset(self) -> None:
+        """Resets the state of the samplers in the chain."""
+        null_ptr_check(self.smpl, 'self.smpl', 'CustomSamplerChain.reset')
+        lib.llama_sampler_reset(self.smpl)
+
+    def print_chain(self) -> None:
+        """Print the active sampler chain as it has been constructed."""
+        log(f'sampler chain: {self._chain_str}')
+
+    def _add_to_chain_str(self, s: str):
+        if self._chain_str:
+            self._chain_str += ' -> '
+        self._chain_str += s
+
+    #
+    # The methods below correspond to the different types of samplers
+    # that can be added to the chain.
+    #
+
+    def add_logit_bias(self, logit_bias: Optional[dict[int, float]]) -> 'CustomSamplerChain':
+        """Adds a logit bias sampler."""
+        if logit_bias is not None and len(logit_bias) > 0:
+            if len(logit_bias) == 1:
+                self._add_to_chain_str(f'one logit bias')
+            else:
+                self._add_to_chain_str(f'{len(logit_bias)} logit biases')
+            logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
+            lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_logit_bias(
+                n_vocab=self.llama._n_vocab,
+                n_logit_bias=len(logit_bias),
+                logit_bias=logit_bias_arr
+            ))
+        return self
+
+    def add_penalties(
+        self,
+        penalty_last_n: Optional[int] = None,
+        penalty_repeat: Optional[float] = None,
+        penalty_freq: Optional[float] = None,
+        penalty_present: Optional[float] = None
+    ) -> 'CustomSamplerChain':
+        """Adds a penalties sampler."""
+        _penalty_last_n = penalty_last_n if penalty_last_n is not None else (
+            _ParamDefaults.penalty_last_n
+        )
+        _penalty_repeat = penalty_repeat if penalty_repeat is not None else (
+            _ParamDefaults.penalty_repeat
+        )
+        _penalty_freq = penalty_freq if penalty_freq is not None else (
+            _ParamDefaults.penalty_freq
+        )
+        _penalty_present = penalty_present if penalty_present is not None else (
+            _ParamDefaults.penalty_present
+        )
+
+        final_last_n = _penalty_last_n if _penalty_last_n >= 0 else self.llama.n_ctx()
+
+        if final_last_n != 0 and any(
+            [_penalty_repeat != 1.0, _penalty_present != 0.0, _penalty_freq != 0.0]
+        ):
+            chain_str = f'penalty last:{final_last_n}'
+            if _penalty_repeat != 1.0: chain_str += f' rept:{_penalty_repeat:.3f}'
+            if _penalty_present != 0.0: chain_str += f' pres:{_penalty_present:.3f}'
+            if _penalty_freq != 0.0: chain_str += f' freq:{_penalty_freq:.3f}'
+            self._add_to_chain_str(chain_str)
+
+            lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_penalties(
+                penalty_last_n=final_last_n,
+                penalty_repeat=_penalty_repeat,
+                penalty_freq=_penalty_freq,
+                penalty_present=_penalty_present
+            ))
+        return self
+
+    def add_xtc(
+        self,
+        p: Optional[float] = None,
+        t: Optional[float] = None,
+        seed: Optional[int] = None
+    ) -> 'CustomSamplerChain':
+        """Adds an XTC sampler."""
+        _p = p if p is not None else _ParamDefaults.xtc_probability
+        _t = t if t is not None else _ParamDefaults.xtc_threshold
+        _seed = seed if seed is not None else _ParamDefaults.seed
+
+        if _p > 0.0:
+            self._add_to_chain_str(f'XTC p:{_p:.2f} t:{_t:.2f}')
+            lib.llama_sampler_chain_add(
+                self.smpl, lib.llama_sampler_init_xtc(
+                    p=_p,
+                    t=_t,
+                    min_keep=1,
+                    seed=_seed if _seed > 0 else _get_random_seed()
+                )
+            )
+        return self
+
+    def add_dry(
+        self,
+        multiplier: Optional[float] = None,
+        base: Optional[float] = None,
+        allowed_length: Optional[int] = None,
+        penalty_last_n: Optional[int] = None,
+        sequence_breakers: Optional[list[str]] = None
+    ) -> 'CustomSamplerChain':
+        """Adds a DRY sampler."""
+        _multiplier = multiplier if multiplier is not None else _ParamDefaults.dry_multiplier
+        _base = base if base is not None else _ParamDefaults.dry_base
+        _allowed_length = allowed_length if allowed_length is not None else (
+            _ParamDefaults.dry_allowed_length
+        )
+        _penalty_last_n = penalty_last_n if penalty_last_n is not None else (
+            _ParamDefaults.dry_penalty_last_n
+        )
+        _seq_breakers = sequence_breakers if sequence_breakers is not None else (
+            _ParamDefaults.dry_sequence_breakers
+        )
+
+        if _multiplier > 0.0:
+            self._add_to_chain_str(
+                f'DRY x{_multiplier:.2f} base:{_base:.2f} len:{_allowed_length}'
+            )
+            null_ptr_check(self.llama._vocab, 'llama._vocab', 'CustomSamplerChain.add_dry')
+            seq_breakers_bytes = [ez_encode(s) for s in _seq_breakers]
+            arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
+            lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_dry(
+                vocab=self.llama._vocab,
+                n_ctx_train=self.llama._n_ctx_train,
+                dry_multiplier=_multiplier,
+                dry_base=_base,
+                dry_allowed_length=_allowed_length,
+                dry_penalty_last_n=_penalty_last_n,
+                seq_breakers=arr,
+                num_breakers=len(_seq_breakers)
+            ))
+        return self
+
+    def add_greedy(self) -> 'CustomSamplerChain':
+        """Adds a greedy sampler (always picks the most likely token)."""
+        self._add_to_chain_str('greedy')
+        lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_greedy())
+        return self
+
+    def add_top_k(self, k: Optional[int] = None) -> 'CustomSamplerChain':
+        """Adds a top-k sampler."""
+        _k = k if k is not None else _ParamDefaults.top_k
+        if _k > 0:
+            self._add_to_chain_str(f'top-k {_k}')
+            lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_top_k(k=_k))
+        return self
+
+    def add_typical_p(self, p: Optional[float] = None) -> 'CustomSamplerChain':
+        """Adds a typical-p sampler."""
+        _p = p if p is not None else _ParamDefaults.typical_p
+        if _p < 1.0:
+            self._add_to_chain_str(f'typical-p {_p:.2f}')
+            lib.llama_sampler_chain_add(
+                self.smpl, lib.llama_sampler_init_typical(p=_p, min_keep=1)
+            )
+        return self
+
+    def add_top_p(self, p: Optional[float] = None) -> 'CustomSamplerChain':
+        """Adds a top-p sampler."""
+        _p = p if p is not None else _ParamDefaults.top_p
+        if _p < 1.0:
+            self._add_to_chain_str(f'top-p {_p:.2f}')
+            lib.llama_sampler_chain_add(
+                self.smpl, lib.llama_sampler_init_top_p(p=_p, min_keep=1)
+            )
+        return self
+
+    def add_min_p(self, p: Optional[float] = None) -> 'CustomSamplerChain':
+        """Adds a min-p sampler."""
+        _p = p if p is not None else _ParamDefaults.min_p
+        if _p > 0.0:
+            self._add_to_chain_str(f'min-p {_p:.3f}')
+            lib.llama_sampler_chain_add(
+                self.smpl, lib.llama_sampler_init_min_p(p=_p, min_keep=1)
+            )
+        return self
+    
+    def add_top_n_sigma(self, n: Optional[float] = None) -> 'CustomSamplerChain':
+        """Adds a top-n-sigma sampler."""
+        _n = n if n is not None else _ParamDefaults.top_n_sigma
+        if _n > 0.0:
+            self._add_to_chain_str(f'top-n-sigma {_n:.2f}')
+            lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_top_n_sigma(n=_n))
+        return self
+
+    def add_temp(self, t: Optional[float] = None) -> 'CustomSamplerChain':
+        """Adds a temperature sampler."""
+        _t = t if t is not None else _ParamDefaults.temp
+        self._add_to_chain_str(f'temp {_t:.2f}')
+        lib.llama_sampler_chain_add(self.smpl, lib.llama_sampler_init_temp(t=_t))
+        return self
+
+    def add_temp_ext(
+        self,
+        t: Optional[float] = None,
+        delta: Optional[float] = None,
+        exponent: Optional[float] = None
+    ) -> 'CustomSamplerChain':
+        """Adds a dynamic temperature (entropy) sampler."""
+        _t = t if t is not None else _ParamDefaults.temp
+        _delta = delta if delta is not None else _ParamDefaults.dynatemp_delta
+        _exponent = exponent if exponent is not None else _ParamDefaults.dynatemp_exponent
+
+        self._add_to_chain_str(f'temp {_t:.2f} +/- {abs(_delta):.2f}')
+        lib.llama_sampler_chain_add(
+            self.smpl, lib.llama_sampler_init_temp_ext(
+                t=_t,
+                delta=abs(_delta),
+                exponent=_exponent
+            )
+        )
+        return self
+
+    def add_mirostat_v1(
+        self,
+        tau: Optional[float] = None,
+        eta: Optional[float] = None,
+        seed: Optional[int] = None
+    ) -> 'CustomSamplerChain':
+        """Adds a mirostat v1 sampler."""
+        _tau = tau if tau is not None else _ParamDefaults.mirostat_tau
+        _eta = eta if eta is not None else _ParamDefaults.mirostat_eta
+        _seed = seed if seed is not None else _ParamDefaults.seed
+
+        self._add_to_chain_str(f'mirostat v1 tau:{_tau:.2f} eta:{_eta:.2f}')
+        lib.llama_sampler_chain_add(
+            self.smpl, lib.llama_sampler_init_mirostat(
+                seed=_seed if _seed > 0 else _get_random_seed(),
+                tau=_tau,
+                eta=_eta
+            )
+        )
+        return self
+
+    def add_mirostat_v2(
+        self,
+        tau: Optional[float] = None,
+        eta: Optional[float] = None,
+        seed: Optional[int] = None
+    ) -> 'CustomSamplerChain':
+        """Adds a mirostat v2 sampler."""
+        _tau = tau if tau is not None else _ParamDefaults.mirostat_tau
+        _eta = eta if eta is not None else _ParamDefaults.mirostat_eta
+        _seed = seed if seed is not None else _ParamDefaults.seed
+
+        self._add_to_chain_str(f'mirostat v2 tau:{_tau:.2f} eta:{_eta:.2f}')
+        lib.llama_sampler_chain_add(
+            self.smpl, lib.llama_sampler_init_mirostat_v2(
+                seed=_seed if _seed > 0 else _get_random_seed(),
+                tau=_tau,
+                eta=_eta
+            )
+        )
+        return self
+
+    def add_dist(self, seed: Optional[int] = None) -> 'CustomSamplerChain':
+        """Adds a distribution sampler, which performs the random sampling from the modified
+        logit distribution. This should usually be the last sampler in the chain."""
+        _seed = seed if seed is not None else _ParamDefaults.seed
+        self._add_to_chain_str('dist')
+        lib.llama_sampler_chain_add(
+            self.smpl, lib.llama_sampler_init_dist(
+                seed=_seed if _seed > 0 else _get_random_seed()
+        ))
+        return self
 
 
 class SamplerPreset:
@@ -487,62 +870,95 @@ class SamplerPreset:
     def __init__(
         self,
 
-        seed:               int   = -1,    # random: <= 0
-        top_k:              int   = 40,    # neutral: <= 0
-        top_p:              float = 0.95,  # neutral: 1.0
-        min_p:              float = 0.05,  # neutral: 0.0
-        xtc_probability:    float = 0.0,   # neutral: 0.0
-        xtc_threshold:      float = 0.1,   # disable: > 0.5
-        typical_p:          float = 1.0,   # neutral: 1.0
-        temp:               float = 0.8,   # neutral: 1.0, greedy: <= 0.0
-        dynatemp_delta:     float = 0.0,   # neutral: <= 0.0
-        dynatemp_exponent:  float = 1.0,   # controls how entropy maps to dynamic temperature
-        penalty_last_n:     int   = 64,    # disable: 0, n_ctx: -1, last n tokens to penalize
-        penalty_repeat:     float = 1.0,   # neutral: 1.0, should be between 1.0 and ~1.1; values < 1.0 will INCREASE repetition
-        penalty_freq:       float = 0.0,   # neutral: 0.0
-        penalty_present:    float = 0.0,   # neutral: 0.0
-        dry_multiplier:     float = 0.0,   # disable: 0.0, DRY repetition penalty for tokens extending repetition:
-        dry_base:           float = 1.75,  # disable: 0.0, multiplier * base ^ (length of sequence before token - allowed length)
-        dry_allowed_length: int   = 2,     # tokens extending repetitions beyond this receive penalty
-        dry_penalty_last_n: int   = -1,    # disable: 0, n_ctx: -1, how many tokens to scan for repetitions
-        mirostat:           int   = 0,     # disable: 0, use v1: 1, use v2: 2
-        top_n_sigma:        float = -1.0,  # disable: -1.0
-        mirostat_tau:       float = 5.0,   # target entropy for mirostat
-        mirostat_eta:       float = 0.1,   # learning rate for mirostat
+        seed:               Optional[int]   = None, # random: <= 0
+        top_k:              Optional[int]   = None, # neutral: <= 0
+        top_p:              Optional[float] = None, # neutral: 1.0
+        min_p:              Optional[float] = None, # neutral: 0.0
+        xtc_probability:    Optional[float] = None, # neutral: 0.0
+        xtc_threshold:      Optional[float] = None, # disable: > 0.5
+        typical_p:          Optional[float] = None, # neutral: 1.0
+        temp:               Optional[float] = None, # neutral: 1.0, greedy: <= 0.0
+        dynatemp_delta:     Optional[float] = None, # neutral: <= 0.0
+        dynatemp_exponent:  Optional[float] = None, # controls how entropy maps to dynamic temperature
+        penalty_last_n:     Optional[int]   = None, # disable: 0, n_ctx: -1, last n tokens to penalize
+        penalty_repeat:     Optional[float] = None, # neutral: 1.0, should be between 1.0 and ~1.1; values < 1.0 will INCREASE repetition
+        penalty_freq:       Optional[float] = None, # neutral: 0.0
+        penalty_present:    Optional[float] = None, # neutral: 0.0
+        dry_multiplier:     Optional[float] = None, # disable: 0.0, DRY repetition penalty for tokens extending repetition:
+        dry_base:           Optional[float] = None, # disable: 0.0, multiplier * base ^ (length of sequence before token - allowed length)
+        dry_allowed_length: Optional[int]   = None, # tokens extending repetitions beyond this receive penalty
+        dry_penalty_last_n: Optional[int]   = None, # disable: 0, n_ctx: -1, how many tokens to scan for repetitions
+        mirostat:           Optional[int]   = None, # disable: 0, use v1: 1, use v2: 2
+        top_n_sigma:        Optional[float] = None, # disable: -1.0
+        mirostat_tau:       Optional[float] = None, # target entropy for mirostat
+        mirostat_eta:       Optional[float] = None, # learning rate for mirostat
 
-        dry_sequence_breakers: list[str] = ["\n", ":", "\"", "*"], # default sequence breakers for DRY
+        dry_sequence_breakers: Optional[list[str]] = None, # sequence breakers for DRY
 
         # TODO: grammar goes here
 
-        logit_bias: Optional[dict[int, float]] = None
+        logit_bias: Optional[dict[int, float]] = None # dictionary of one or more {tok_id: bias}
     ):
-        self.seed  = seed
+        self.seed = seed if seed is not None else _ParamDefaults.seed
 
-        self.top_k              = top_k
-        self.top_p              = top_p
-        self.min_p              = min_p
-        self.xtc_probability    = xtc_probability
-        self.xtc_threshold      = xtc_threshold
-        self.typical_p          = typical_p
-        self.temp               = temp
-        self.dynatemp_delta     = dynatemp_delta
-        self.dynatemp_exponent  = dynatemp_exponent
-        self.penalty_last_n     = penalty_last_n
-        self.penalty_repeat     = penalty_repeat
-        self.penalty_freq       = penalty_freq
-        self.penalty_present    = penalty_present
-        self.dry_multiplier     = dry_multiplier
-        self.dry_base           = dry_base
-        self.dry_allowed_length = dry_allowed_length
-        self.dry_penalty_last_n = dry_penalty_last_n
-        self.mirostat           = mirostat
-        self.top_n_sigma        = top_n_sigma
-        self.mirostat_tau       = mirostat_tau
-        self.mirostat_eta       = mirostat_eta
+        self.top_k              = top_k if top_k is not None else _ParamDefaults.top_k
+        self.top_p              = top_p if top_p is not None else _ParamDefaults.top_p
+        self.min_p              = min_p if min_p is not None else _ParamDefaults.min_p
+        self.xtc_probability    = xtc_probability if xtc_probability is not None else (
+            _ParamDefaults.xtc_probability
+        )
+        self.xtc_threshold      = xtc_threshold if xtc_threshold is not None else (
+            _ParamDefaults.xtc_threshold
+        )
+        self.typical_p          = typical_p if typical_p is not None else (
+            _ParamDefaults.typical_p
+        )
+        self.temp               = temp if temp is not None else _ParamDefaults.temp
+        self.dynatemp_delta     = dynatemp_delta if dynatemp_delta is not None else (
+            _ParamDefaults.dynatemp_delta
+        )
+        self.dynatemp_exponent  = dynatemp_exponent if dynatemp_exponent is not None else (
+            _ParamDefaults.dynatemp_exponent
+        )
+        self.penalty_last_n     = penalty_last_n if penalty_last_n is not None else (
+            _ParamDefaults.penalty_last_n
+        )
+        self.penalty_repeat     = penalty_repeat if penalty_repeat is not None else (
+            _ParamDefaults.penalty_repeat
+        )
+        self.penalty_freq       = penalty_freq if penalty_freq is not None else (
+            _ParamDefaults.penalty_freq
+        )
+        self.penalty_present    = penalty_present if penalty_present is not None else (
+            _ParamDefaults.penalty_present
+        )
+        self.dry_multiplier     = dry_multiplier if dry_multiplier is not None else (
+            _ParamDefaults.dry_multiplier
+        )
+        self.dry_base           = dry_base if dry_base is not None else _ParamDefaults.dry_base
+        self.dry_allowed_length = dry_allowed_length if dry_allowed_length is not None else (
+            _ParamDefaults.dry_allowed_length
+        )
+        self.dry_penalty_last_n = dry_penalty_last_n if dry_penalty_last_n is not None else (
+            _ParamDefaults.dry_penalty_last_n
+        )
+        self.mirostat           = mirostat if mirostat is not None else _ParamDefaults.mirostat
+        self.top_n_sigma        = top_n_sigma if top_n_sigma is not None else (
+            _ParamDefaults.top_n_sigma
+        )
+        self.mirostat_tau       = mirostat_tau if mirostat_tau is not None else (
+            _ParamDefaults.mirostat_tau
+        )
+        self.mirostat_eta       = mirostat_eta if mirostat_eta is not None else (
+            _ParamDefaults.mirostat_eta
+        )
         
-        self.dry_sequence_breakers = dry_sequence_breakers
+        self.dry_sequence_breakers = (
+            dry_sequence_breakers if dry_sequence_breakers is not None else
+            _ParamDefaults.dry_sequence_breakers
+        )
 
-        self.logit_bias = logit_bias
+        self.logit_bias = logit_bias if logit_bias is not None else _ParamDefaults.logit_bias
 
     def __repr__(self) -> str:
         return (

@@ -9,28 +9,21 @@
 import os
 import uvicorn
 
-from .                       import utils
-from .                       import llama
-from .thread                 import Thread
 from pydantic                import BaseModel
 from fastapi.staticfiles     import StaticFiles
+from .thread                 import Thread, Role
 from fastapi.responses       import FileResponse
 from .sampling               import SamplerPreset
 from fastapi.middleware.cors import CORSMiddleware
-from typing                  import Optional, Union, Literal
+from typing                  import Optional, Union
 from fastapi                 import FastAPI, APIRouter, Body, HTTPException
+
+from utils import log, exc_to_str
 
 WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 
 STATUS_RESPONSE_SUCCESS = {'success': True}
 STATUS_RESPONSE_FAILURE = {'success': False}
-
-Y = utils.ANSI.FG_BRIGHT_YELLOW
-R = utils.ANSI.MODE_RESET_ALL
-
-def exc_to_str(exc: Exception) -> str:
-    """Return `"ExceptionType: Exception message"`"""
-    return f"{type(exc).__name__}: {exc}"
 
 #
 # Pydantic models for FastAPI
@@ -40,16 +33,16 @@ class StatusResponseModel(BaseModel):
     success: bool
 
 class MessageModel(BaseModel):
-    role:    str
+    role:    int
     content: str
 
 class SendMessageModel(BaseModel):
-    role:      str
+    role:      int
     content:   str
     n_predict: Optional[int] = -1
 
 class MessageResponseModel(BaseModel):
-    role:            str
+    role:            int
     content:         str
     n_input_tokens:  int
     n_output_tokens: int
@@ -100,9 +93,6 @@ class SamplerSettingsModel(BaseModel):
 class Server:
     """The easy-llama FastAPI server, providing a WebUI and an API router"""
 
-    def log(self, text: str, level: Literal[1,2,3,4] = 1) -> None:
-        utils.log(f'ez.Server @ {Y}{self._host}{R}:{Y}{self._port}{R} {text}', level)
-
     def __init__(
         self,
         thread: Thread,
@@ -140,11 +130,11 @@ class Server:
                      return FileResponse(index_path)
                  else:
                      # fallback if index.html is missing but directory exists
-                     self.log('index.html not found', 3)
+                     log('index.html not found', 3)
                      raise HTTPException(status_code=404, detail="index.html not found")
 
         else:
-             self.log(f"WebUI directory not found at {WEBUI_DIRECTORY}", level=2)
+             log(f"WebUI directory not found at {WEBUI_DIRECTORY}", 3)
              @self._app.get("/", include_in_schema=False)
              async def root_fallback():
                  # provide a message if WebUI isn't found
@@ -158,7 +148,7 @@ class Server:
         @router.get("/ping", response_model=StatusResponseModel)
         async def ping() -> dict:
             """Check if the server is running."""
-            self.log('/ping: pong')
+            log('/ping: pong')
             return STATUS_RESPONSE_SUCCESS
 
         @router.post("/send", response_model=MessageResponseModel)
@@ -170,7 +160,7 @@ class Server:
                  self._thread.add_message(message.role, message.content)
             except Exception as exc:
                  exc_str = exc_to_str(exc)
-                 self.log(exc_str, 3)
+                 log(exc_str, 3)
                  raise HTTPException(status_code=400, detail=exc_str)
 
             input_toks = self._thread.get_input_ids(add_generation_prompt=True)
@@ -192,7 +182,7 @@ class Server:
             self._thread.add_message('bot', response_txt)
 
             return {
-                'role': 'bot',
+                'role': Role.BOT,
                 'content': response_txt,
                 'n_input_tokens': len(input_toks),
                 'n_output_tokens': len(response_toks)
@@ -204,7 +194,6 @@ class Server:
             Add a message to the thread history without triggering a bot response.
             Useful for manually setting up conversation state.
             """
-            self.log(f"/add_message request: role='{message.role}', content='{message.content[:50]}...'")
             try:
                 self._thread.add_message(message.role, message.content)
                 return STATUS_RESPONSE_SUCCESS
@@ -214,20 +203,15 @@ class Server:
 
         @router.post("/set_system_prompt", response_model=StatusResponseModel, tags=["Chat"])
         async def set_system_prompt(request: SetSystemPromptRequestModel = Body(...)) -> dict:
-            """Set or update the system prompt (the first message if it has a system role).
-            If no system prompt exists, it will be prepended."""
-            content = request.content
-            new_sys_msg = {'role': 'system', 'content': content}
-            messages = self._thread.messages
-
-            if messages and messages[0]['role'].lower() in Thread.valid_system_roles:
-                messages[0]['content'] = content
-                self.log("/set_system_prompt: updated system prompt content")
+            """Set or update the system prompt."""
+            try:
+                self._thread.send(content=request.content)
+            except Exception as exc:
+                exc_str = exc_to_str(exc)
+                log(exc_str, 3)
+                raise exc
             else:
-                messages.insert(0, new_sys_msg)
-                self.log("/set_system_prompt: prepended new system prompt")
-
-            return STATUS_RESPONSE_SUCCESS
+                return STATUS_RESPONSE_SUCCESS
 
         @router.post("/trigger", response_model=MessageResponseModel, tags=["Chat"])
         async def trigger() -> dict[str, Union[str, int]]:
@@ -242,7 +226,7 @@ class Server:
                 input_toks = self._thread.get_input_ids(add_generation_prompt=True)
             except Exception as exc:
                  exc_str = f"/trigger: " + exc_to_str(exc)
-                 self.log(exc_str, 3)
+                 log(exc_str, 3)
                  raise HTTPException(status_code=500, detail=exc_str)
 
             #
@@ -257,17 +241,16 @@ class Server:
                      sampler_preset=self._thread.sampler_preset
                  )
                  response_txt = self._thread.llama.detokenize(response_toks, special=False).strip()
-                 self.log(f"Generated {len(response_toks)} tokens: '{response_txt[:50]}...'")
             except Exception as exc:
                 exc_str = f"/trigger: " + exc_to_str(exc)
-                self.log(exc_str, 3)
+                log(exc_str, 3)
                 raise HTTPException(status_code=500, detail=exc_str)
 
             # add bot response to history
-            self._thread.add_message('bot', response_txt)
+            self._thread.add_message(Role.BOT, response_txt)
 
             return {
-                'role': 'bot',
+                'role': Role.BOT,
                 'content': response_txt,
                 'n_input_tokens': len(input_toks),
                 'n_output_tokens': len(response_toks)
@@ -277,7 +260,7 @@ class Server:
         @router.get("/messages", response_model=list[MessageModel], tags=["Chat"])
         async def messages() -> list[dict]:
             """Get the current list of messages in the thread history."""
-            self.log("/messages request received")
+            log("/messages request received")
             return self._thread.messages
 
 
@@ -287,23 +270,20 @@ class Server:
             Generate a summary of the current chat thread.
             Note: This performs inference and modifies the Llama context temporarily.
             """
-            self.log("/summarize request received")
+            log("/summarize request received")
             try:
                 summary_text = self._thread.summarize()
                 return {"summary": summary_text}
             except Exception as exc:
                  exc_str = f"/summarize: " + exc_to_str(exc)
-                 self.log(exc_str, 3)
+                 log(exc_str, 3)
                  raise HTTPException(status_code=500, detail=exc_str)
 
 
         @router.post("/cancel", response_model=StatusResponseModel, tags=["Control"])
         async def cancel() -> dict:
-            """(Not Implemented) Attempt to cancel ongoing generation."""
-            # NOTE: llama.cpp doesn't have a built-in robust way to interrupt
-            # llama_decode mid-computation from Python easily without potential
-            # instability. This requires more complex handling (e.g., abort callbacks).
-            self.log('Endpoint `/api/cancel` is not implemented yet!', 2)
+            """Attempt to cancel ongoing generation."""
+            log('Endpoint `/api/cancel` is not implemented yet!', 2)
             # return STATUS_RESPONSE_FAILURE
             raise HTTPException(status_code=501, detail="Cancel operation not implemented")
 
@@ -311,20 +291,20 @@ class Server:
         @router.post("/reset", response_model=StatusResponseModel, tags=["Control"])
         async def reset() -> dict:
             """Reset the chat thread to its initial state (usually just the system prompt)."""
-            self.log("/reset request received")
+            log("/reset request received")
             try:
                 self._thread.reset()
-                self.log("Thread and Llama context reset successfully.")
+                log("Thread and Llama context reset successfully.")
                 return STATUS_RESPONSE_SUCCESS
             except Exception as exc:
-                self.log(f"Error during reset: {type(exc).__name__}: {exc}", level=3)
+                log(f"Error during reset: {type(exc).__name__}: {exc}", level=3)
                 raise HTTPException(status_code=500, detail=f"Reset failed: {exc}")
 
 
         @router.get("/info", response_model=InfoResponseModel, tags=["Status"])
         async def get_info() -> dict[str, Union[str, int, float]]:
             """Get information about the loaded model and current thread state."""
-            self.log("/info request received")
+            log("/info request received")
             # Use suppress_output if get_input_ids might log verbosely
             # with ez.utils.suppress_output(disable=ez.get_verbose()):
             input_ids = self._thread.get_input_ids(add_generation_prompt=False) # Get tokens just for counting
@@ -347,7 +327,7 @@ class Server:
             Update the sampler settings for subsequent generations.
             Returns the complete current settings after applying the update.
             """
-            self.log(f"/sampler POST request received with updates: {settings.model_dump(exclude_unset=True)}")
+            log(f"/sampler POST request received with updates: {settings.model_dump(exclude_unset=True)}")
             current = self._thread.sampler_preset
             update_data = settings.model_dump(exclude_unset=True) # Get only provided fields
 
@@ -362,17 +342,17 @@ class Server:
                 new_preset = SamplerPreset(**current_data)
                 # Update the thread's active sampler preset
                 self._thread.sampler_preset = new_preset
-                self.log(f"Sampler settings updated. Current: {new_preset}")
+                log(f"Sampler settings updated. Current: {new_preset}")
                 return new_preset.as_dict() # Return the full new settings
             except Exception as exc: # Catch potential validation errors in SamplerPreset
-                self.log(f"Error updating sampler settings: {exc}", level=3)
+                log(f"Error updating sampler settings: {exc}", level=3)
                 raise HTTPException(status_code=400, detail=f"Invalid sampler settings: {exc}")
 
 
         @router.get("/sampler", response_model=SamplerSettingsModel, tags=["Sampling"])
         async def get_sampler() -> dict:
             """Get the current sampler settings."""
-            self.log("/sampler GET request received")
+            log("/sampler GET request received")
             return self._thread.sampler_preset.as_dict()
 
     def start(self):
@@ -383,11 +363,9 @@ class Server:
                  host=self._host,
                  port=self._port
              )
-        except KeyboardInterrupt:
-            self.log('KeyboardInterrupt')
         except Exception as exc:
-            self.log(f'Server crashed: {type(exc).__name__}: {exc}', 3)
-            # Potentially re-raise or handle specific exceptions (e.g., port in use)
+            exc_str = exc_to_str(exc)
+            log(f'server stopped with exception: {exc_str}', 3)
             raise exc
         finally:
-             self.log("Server shutdown complete.")
+             log("server stopped")

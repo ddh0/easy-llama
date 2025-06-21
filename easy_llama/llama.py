@@ -32,13 +32,13 @@ from . import libllama as lib
 #
 
 PROGRESS_BAR_N_BATCHES = 16
-"""Show a tqdm progress bar if processing at least this many batches in one loop"""
+"""Show a tqdm progress bar if processing at least this many batches to be decoded"""
 
 PROGRESS_BAR_N_TOKENS = 20480
-"""Show a tqdm progress bar if processing at least this many tokens in one loop"""
+"""Show a tqdm progress bar if processing at least this many tokens to be decoded"""
 
 PROGRESS_BAR_N_TOKENS_MIN = 8192
-"""Never show a tqdm progress bar if there are fewer than this many tokens in one loop"""
+"""Never show a tqdm progress bar if there are fewer than this many tokens to be decoded"""
 
 _SUPPORTED_KV_TYPES = [
     lib.GGMLType.GGML_TYPE_F32,   # lib only supports static types, not
@@ -83,6 +83,27 @@ def _init_backend_if_needed() -> None:
     # actually load the backend
     with suppress_output(disable=get_verbose()):
         lib.llama_backend_init()
+
+def _kv_type_to_str(t: int) -> str:
+    # can't use match statement because we support Py3.9
+    if t == lib.GGMLType.GGML_TYPE_F32:
+        return "F32"
+    elif t == lib.GGMLType.GGML_TYPE_BF16:
+        return "BF16"
+    elif t == lib.GGMLType.GGML_TYPE_F16:
+        return "F16"
+    elif t == lib.GGMLType.GGML_TYPE_Q8_0:
+        return "Q8_0"
+    elif t == lib.GGMLType.GGML_TYPE_Q5_1:
+        return "Q5_1"
+    elif t == lib.GGMLType.GGML_TYPE_Q5_0:
+        return "Q5_0"
+    elif t == lib.GGMLType.GGML_TYPE_Q4_1:
+        return "Q4_1"
+    elif t == lib.GGMLType.GGML_TYPE_Q4_0:
+        return "Q4_0"
+    else:
+        return str(t) # integer as string
 
 # NOTE: the optimal n_threads value (for text generation) is equal to the number of physical
 #       cores (for homogenous CPUs) or to the number of performance cores (for heterogenous
@@ -157,7 +178,8 @@ def _round_n_ctx(n_ctx: int, n_ctx_train: int) -> int:
 
 def _batches_with_progress_bar(batches: list[list[int]]) -> Union[tqdm.tqdm, list[list[int]]]:
     """Wrap this around an iterable of batches to show a progress bar if there are over
-    `PROGRESS_BAR_N_BATCHES` batches or `PROGRESS_BAR_N_TOKENS` tokens."""
+    `PROGRESS_BAR_N_BATCHES` batches or `PROGRESS_BAR_N_TOKENS` tokens. Never show a progress
+    bar if there are fewer then `PROGRESS_BAR_N_TOKENS_MIN` tokens."""
 
     n_batches = len(batches)
     n_tokens = sum(len(batch) for batch in batches)
@@ -168,14 +190,8 @@ def _batches_with_progress_bar(batches: list[list[int]]) -> Union[tqdm.tqdm, lis
     return batches
 
 def split_tokens_into_batches(tokens: list[int], n_batch: int) -> list[list[int]]:
-    """Split a list of tokens into smaller batches"""
-    batch_splits = range(0, len(tokens), n_batch)
-    batches: list[list[int]] = []
-    for i in batch_splits:
-        batch_tokens = tokens[i : i + n_batch]
-        if len(batch_tokens) > 0:
-            batches.append(batch_tokens)
-    return batches
+    """Split a list of tokens into batches of size `n_batch`."""
+    return [tokens[i:i + n_batch] for i in range(0, len(tokens), n_batch)]
 
 #
 # Exceptions and other classes
@@ -325,11 +341,14 @@ class _LlamaStopwatch:
 
 class QuickGGUFReader:
     # ref: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
+
+    ValueType = Union[str, int, float, bool, list]
+    """Type hint for any GGUF metadata value type"""
     
     # the GGUF format versions that this class supports
     SUPPORTED_GGUF_VERSIONS = [2, 3]
     
-    # arguments for struct.unpack() based on gguf value type
+    # arguments for struct.unpack() based on GGUF value type
     value_packing = {
         GGUFValueType.UINT8   : "=B",
         GGUFValueType.INT8    : "=b",
@@ -344,7 +363,7 @@ class QuickGGUFReader:
         GGUFValueType.BOOL    : "?"
     }
 
-    # length in bytes for each gguf value type
+    # length in bytes for each GGUF value type
     value_lengths = {
         GGUFValueType.UINT8   : 1,
         GGUFValueType.INT8    : 1,
@@ -367,7 +386,7 @@ class QuickGGUFReader:
         )[0]
 
     @staticmethod
-    def get_single(value_type: GGUFValueType, file: BufferedReader) -> str | int | float | bool:
+    def get_single(value_type: GGUFValueType, file: BufferedReader) -> ValueType:
         """Read a single value from an open file"""
         if value_type == GGUFValueType.STRING:
             string_length = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
@@ -377,15 +396,13 @@ class QuickGGUFReader:
         return value
     
     @staticmethod
-    def load_metadata(path_model: os.PathLike[str] | str) -> dict[
-        str, str | int | float | bool | list
-    ]:
+    def load_metadata(path_model: os.PathLike[str] | str) -> dict[str, ValueType]:
         """Given a path to a GGUF file, peek at its header for metadata
 
         Return a dictionary where all keys are strings, and values can be
         strings, ints, floats, bools, or lists"""
 
-        metadata: dict[str, str | int | float | bool | list] = {}
+        metadata: dict[str, QuickGGUFReader.ValueType] = {}
         with open(path_model, "rb") as file:
             magic = file.read(4)
 
@@ -407,6 +424,7 @@ class QuickGGUFReader:
                 )
             
             tensor_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
+            log_debug(f'tensor count: {tensor_count}')
             if version == 3:
                 metadata_kv_count = QuickGGUFReader.unpack(GGUFValueType.UINT64, file=file)
             elif version == 2:
@@ -1004,8 +1022,7 @@ class Llama:
         self._token_fim_sep         = self.token_fim_sep()
 
         self.eog_tokens = [i for i in range(self._n_vocab) if self.token_is_eog(i)]
-        """A list of all tokens in the vocab that are marked as EOG
-        (End-Of-Generation)"""
+        """A list of all tokens in the vocab that are marked as EOG (End-Of-Generation)"""
 
         # internal use only - the default SamplerParams with this model
         self._default_sampler_params = SamplerParams(self)
@@ -1845,7 +1862,7 @@ class Llama:
             if yield_logits:
                 if not is_stop_token:
                     # decode the token, yield the logits for the next prediction
-                    logits = self._decode_batch([sampled_token], True)
+                    logits = self._decode_batch([sampled_token], logits_all=True)
                     yield logits
             else:
                 yield sampled_token
@@ -1854,19 +1871,75 @@ class Llama:
 
             if is_stop_token:
                 if get_verbose():
-                    tok_str = ez_decode(self.token_to_piece(sampled_token, True)) 
+                    tok_str = ez_decode(self.token_to_piece(sampled_token, special=True)) 
                     print()
                     log(f'inferred stop token {sampled_token} ({tok_str!r})')
                 break
             
             if not yield_logits:
-                self._decode_batch([sampled_token])
+                self._decode_batch([sampled_token], logits_all=False)
         
         # done generating, show stopwatch stats
         self._stopwatch.stop_wall_time()
         log_debug(f'Llama.stream: exited while loop')
         if get_verbose():
             self._stopwatch.print_stats()
+    
+    def stream_chars(
+        self,
+        input_tokens: list[int],
+        n_predict: int,
+        stop_tokens: Optional[list[int]] = None,
+        sampler_preset: Optional[SamplerPreset] = None,
+    ) -> Iterable[str]:
+        """Return a Generator which yields single characters as they are generated
+
+        - input_tokens:
+            The tokens to evaluate
+        - n_predict:
+            The number of tokens to predict. If `n_predict < 0`, then the number of tokens
+            predicted is only limited by the context length. If `n_predict == 0`, then no new
+            tokens will be predicted, but the input_tokens will still be processed.
+        - stop_tokens:
+            A list of token IDs that will end the generation early. Note that
+            the stop token will be included in the output. If this parameter is
+            None, all built-in stop tokens for the model will be used. Pass an
+            empty list `[]` to ignore all stop tokens.
+        - sampler_preset:
+            The `SamplerPreset` object to use for sampling. If not specified,
+            use the model's default sampler parameters"""
+        
+        tok_gen = self.stream(
+            input_tokens=input_tokens,
+            n_predict=n_predict,
+            stop_tokens=stop_tokens,
+            sampler_preset=sampler_preset,
+            yield_logits=False
+        )
+        
+        detok_bytes_buffer = b''
+        
+        for tok in tok_gen:
+            #
+            # detok_bytes_buffer holds any incomplete UTF-8 characters until they
+            # are completed by future tokens
+            # 
+            # for example, emojis are often split between two tokens, with one or
+            # both of those tokens not being valid UTF-8 on its own
+            #
+            detok_bytes_buffer += self.token_to_piece(tok, special=False)
+            try:
+                detok_txt = detok_bytes_buffer.decode('utf-8', errors='strict')
+            except UnicodeDecodeError:
+                pass # try again on next token
+            else:
+                detok_bytes_buffer = b''
+                yield detok_txt
+        
+        # yield any leftover bytes (though ideally there should be none)
+        if detok_bytes_buffer != b'':
+            leftover_txt = ez_decode(detok_bytes_buffer)
+            yield leftover_txt
     
     def benchmark(
         self,
@@ -1878,7 +1951,7 @@ class Llama:
         
         n_tokens_pp = n_tokens_pp if n_tokens_pp is not None else self.n_batch()
         n_tokens_tg = n_tokens_tg if n_tokens_tg is not None else 10
-        n_runs = n_runs if n_runs is not None else 3
+        n_runs      = n_runs      if n_runs      is not None else 3
 
         results = []
         total_pp_time_ns = 0
@@ -2008,7 +2081,9 @@ class Llama:
         """Given some tokens, return a list of tuples where the first item in the
         tuple is the token ID and the second item is the corresponding UTF-8
         text bytes."""
-        return list(zip(tokens, [self.token_to_piece(tok_id, special=True) for tok_id in tokens]))
+        return list(
+            zip(tokens, [self.token_to_piece(tok_id, special=True) for tok_id in tokens])
+        )
     
     def print_tokenization_mapping(
         self,
@@ -2032,13 +2107,15 @@ class Llama:
         print(f"Total number of tokens: {len(token_mapping)}", file=_file, flush=True)
     
     def name(self) -> str:
-        """Get the name of the model from the GGUF metadata"""
+        """Get the name of the model from the GGUF metadata. Fallback to using the filename
+        if the name is not set in the metadata."""
         # '/path/to/my-model.gguf' --> 'my-model'
         model_file_basename = os.path.basename(self._model.path_model).removesuffix('.gguf')
         # 'my-model-00001-of-99999' --> 'my-model'
         model_file_basename = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
-        # TODO: get from metadata instead, fallback to using filename
-        return model_file_basename
+        # use name from metadata if possible
+        model_name = self.metadata.get('general.name', model_file_basename)
+        return model_name
     
     def bpw(self) -> float:
         """Get the average bits per weight of the model"""
