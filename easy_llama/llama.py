@@ -877,7 +877,7 @@ class Llama:
         null_ptr_check(self._vocab, 'self._vocab', 'Llama.__init__')
 
         if self.vocab_only:
-            log('Llama instance has vocab_only=True, most functionality will not be available')
+            log('Llama instance is vocab-only, most functionality will not be available')
         
         else:
 
