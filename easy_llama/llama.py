@@ -853,6 +853,8 @@ class Llama:
         # Load model from file
         #
 
+        vocab_only = kwargs.get('vocab_only', False)
+
         self._model = _LlamaModel(
             path_model           = path_model,
             devices              = kwargs.get('devices'),
@@ -863,7 +865,7 @@ class Llama:
             tensor_split         = kwargs.get('tensor_split'),
             rpc_servers          = kwargs.get('rpc_servers'),
             kv_overrides         = kwargs.get('kv_overrides'),
-            vocab_only           = kwargs.get('vocab_only'),
+            vocab_only           = vocab_only,
             use_mmap             = kwargs.get('use_mmap'),
             use_mlock            = kwargs.get('use_mlock'),
             check_tensors        = kwargs.get('check_tensors')
@@ -873,170 +875,175 @@ class Llama:
         """A pointer to this model's `llama_vocab`"""
         null_ptr_check(self._vocab, 'self._vocab', 'Llama.__init__')
 
-        n_ctx_train = lib.llama_model_n_ctx_train(self._model.model)
-
-        # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
-
-        if n_ctx <= 0:
-            log_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
-            _n_ctx = int(n_ctx_train)
+        if vocab_only:
+            log('Llama instance has vocab_only=True, most functionality will not be available')
+        
         else:
-            _n_ctx = int(n_ctx)
 
-        # use rope_freq_base unless it == 0.0, in that case use the native
-        # rope_freq_base found in the GGUF metadata
-        rope_freq_base = kwargs.get('rope_freq_base', 0.0)
-
-        if rope_freq_base == 0.0:
-            rope_freq_base_train = None
-            for key in self.metadata.keys():
-                if key.endswith('.rope.freq_base'):
-                    rope_freq_base_train = float(self.metadata[key])
+            n_ctx_train = lib.llama_model_n_ctx_train(self._model.model)
             
-            # NOTE: if n_ctx > n_ctx_train, then rope_freq_base must also be
-            #       increased by at least a proportional amount to guarantee a
-            #       usable kv cache throughout the entire context
+            # use n_ctx unless it's 0 or negative, in that case use n_ctx_train
+
+            if n_ctx <= 0:
+                log_verbose(f'n_ctx value {n_ctx}; using n_ctx_train value {n_ctx_train}')
+                _n_ctx = int(n_ctx_train)
+            else:
+                _n_ctx = int(n_ctx)
+
+            # use rope_freq_base unless it == 0.0, in that case use the native
+            # rope_freq_base found in the GGUF metadata
+            rope_freq_base = kwargs.get('rope_freq_base', 0.0)
+
+            if rope_freq_base == 0.0:
+                rope_freq_base_train = None
+                for key in self.metadata.keys():
+                    if key.endswith('.rope.freq_base'):
+                        rope_freq_base_train = float(self.metadata[key])
+                
+                # NOTE: if n_ctx > n_ctx_train, then rope_freq_base must also be
+                #       increased by at least a proportional amount to guarantee a
+                #       usable kv cache throughout the entire context
+                #
+                #       the function _calculate_rope_freq_base handles this
+
+                _rope_freq_base = _calculate_rope_freq_base(
+                    n_ctx_train=n_ctx_train,
+                    n_ctx_load=_n_ctx,
+                    rope_freq_base_train=rope_freq_base_train # can be None
+                )
+            else:
+                _rope_freq_base = rope_freq_base
+            
+            _n_threads = n_threads if n_threads > 0 else _get_optimal_n_threads()
+            _n_threads_batch = n_threads_batch if n_threads_batch > 0 else (
+                _get_optimal_n_threads_batch()
+            )
+
             #
-            #       the function _calculate_rope_freq_base handles this
-
-            _rope_freq_base = _calculate_rope_freq_base(
-                n_ctx_train=n_ctx_train,
-                n_ctx_load=_n_ctx,
-                rope_freq_base_train=rope_freq_base_train # can be None
+            # New context with model
+            #
+            
+            self._ctx = _LlamaCtx(
+                model             = self._model,
+                n_ctx             = _n_ctx,
+                n_batch           = kwargs.get('n_batch'),
+                n_ubatch          = kwargs.get('n_ubatch'),
+                n_seq_max         = kwargs.get('n_seq_max'),
+                n_threads         = _n_threads,
+                n_threads_batch   = _n_threads_batch,
+                rope_scaling_type = kwargs.get('rope_scaling_type'),
+                pooling_type      = kwargs.get('pooling_type'),
+                attention_type    = kwargs.get('attention_type'),
+                rope_freq_base    = _rope_freq_base,
+                rope_freq_scale   = kwargs.get('rope_freq_scale'),
+                yarn_ext_factor   = kwargs.get('yarn_ext_factor'),
+                yarn_attn_factor  = kwargs.get('yarn_attn_factor'),
+                yarn_beta_fast    = kwargs.get('yarn_beta_fast'),
+                yarn_beta_slow    = kwargs.get('yarn_beta_slow'),
+                yarn_orig_ctx     = kwargs.get('yarn_orig_ctx'),
+                defrag_thold      = kwargs.get('defrag_thold'),
+                type_k            = type_k,
+                type_v            = type_v,
+                embeddings        = kwargs.get('embeddings'),
+                offload_kqv       = offload_kqv,
+                flash_attn        = flash_attn,
+                no_perf           = kwargs.get('no_perf'),
+                op_offload        = kwargs.get('op_offload'),
+                swa_full          = kwargs.get('swa_full')
             )
-        else:
-            _rope_freq_base = rope_freq_base
-        
-        _n_threads = n_threads if n_threads > 0 else _get_optimal_n_threads()
-        _n_threads_batch = n_threads_batch if n_threads_batch > 0 else (
-            _get_optimal_n_threads_batch()
-        )
 
-        #
-        # New context with model
-        #
-        
-        self._ctx = _LlamaCtx(
-            model             = self._model,
-            n_ctx             = _n_ctx,
-            n_batch           = kwargs.get('n_batch'),
-            n_ubatch          = kwargs.get('n_ubatch'),
-            n_seq_max         = kwargs.get('n_seq_max'),
-            n_threads         = _n_threads,
-            n_threads_batch   = _n_threads_batch,
-            rope_scaling_type = kwargs.get('rope_scaling_type'),
-            pooling_type      = kwargs.get('pooling_type'),
-            attention_type    = kwargs.get('attention_type'),
-            rope_freq_base    = _rope_freq_base,
-            rope_freq_scale   = kwargs.get('rope_freq_scale'),
-            yarn_ext_factor   = kwargs.get('yarn_ext_factor'),
-            yarn_attn_factor  = kwargs.get('yarn_attn_factor'),
-            yarn_beta_fast    = kwargs.get('yarn_beta_fast'),
-            yarn_beta_slow    = kwargs.get('yarn_beta_slow'),
-            yarn_orig_ctx     = kwargs.get('yarn_orig_ctx'),
-            defrag_thold      = kwargs.get('defrag_thold'),
-            type_k            = type_k,
-            type_v            = type_v,
-            embeddings        = kwargs.get('embeddings'),
-            offload_kqv       = offload_kqv,
-            flash_attn        = flash_attn,
-            no_perf           = kwargs.get('no_perf'),
-            op_offload        = kwargs.get('op_offload'),
-            swa_full          = kwargs.get('swa_full')
-        )
+            #
+            # Display warnings about n_ctx if necessary
+            #
 
-        #
-        # Display warnings about n_ctx if necessary
-        #
+            actual_n_ctx = self.n_ctx()
+            requested_n_ctx = _n_ctx
 
-        actual_n_ctx = self.n_ctx()
-        requested_n_ctx = _n_ctx
+            if actual_n_ctx != requested_n_ctx:
+                log(
+                    f"requested n_ctx value differs from actual n_ctx value; "
+                    f"requested {requested_n_ctx}, actual {actual_n_ctx}", 2
+                )
+            if actual_n_ctx < 512:
+                log(
+                    f"n_ctx value {actual_n_ctx} is less than 512, which can "
+                    f"sometimes cause problems with llama.cpp - consider "
+                    f"increasing it to at least 512", 2
+                )
+            if actual_n_ctx % 512 != 0:
+                log(
+                    f"n_ctx value {actual_n_ctx} is not divisible by 512, which "
+                    f"can sometimes cause problems with llama.cpp - consider "
+                    f"changing it to "
+                    f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}", 2
+                )
+            # warn about default context length
+            if actual_n_ctx == 512:
+                log(
+                    f'you are using the default n_ctx value {actual_n_ctx}, which '
+                    f'is very small. increase n_ctx as needed to support longer '
+                    f'inputs and outputs (this model supports up to {self.n_ctx_train()})', 2
+                )
+            
+            self._stopwatch = _LlamaStopwatch()
 
-        if actual_n_ctx != requested_n_ctx:
-            log(
-                f"requested n_ctx value differs from actual n_ctx value; "
-                f"requested {requested_n_ctx}, actual {actual_n_ctx}", 2
-            )
-        if actual_n_ctx < 512:
-            log(
-                f"n_ctx value {actual_n_ctx} is less than 512, which can "
-                f"sometimes cause problems with llama.cpp - consider "
-                f"increasing it to at least 512", 2
-            )
-        if actual_n_ctx % 512 != 0:
-            log(
-                f"n_ctx value {actual_n_ctx} is not divisible by 512, which "
-                f"can sometimes cause problems with llama.cpp - consider "
-                f"changing it to "
-                f"{_round_n_ctx(actual_n_ctx, n_ctx_train)}", 2
-            )
-        # warn about default context length
-        if actual_n_ctx == 512:
-            log(
-                f'you are using the default n_ctx value {actual_n_ctx}, which '
-                f'is very small. increase n_ctx as needed to support longer '
-                f'inputs and outputs (this model supports up to {self.n_ctx_train()})', 2
-            )
-        
-        self._stopwatch = _LlamaStopwatch()
+            #
+            # Store immutable Llama metadata as attributes for faster access internally
+            #
 
-        #
-        # Store immutable Llama metadata as attributes for faster access internally
-        #
+            self._name                  = self.name()
+            self._n_ctx                 = self.n_ctx()
+            self._n_batch               = self.n_batch()
+            self._n_ubatch              = self.n_ubatch()
+            self._n_seq_max             = self.n_seq_max()
+            self._n_vocab               = self.n_vocab()
+            self._n_ctx_train           = self.n_ctx_train()
+            self._n_embd                = self.n_embd()
+            self._n_layer               = self.n_layer()
+            self._n_head                = self.n_head()
+            self._n_head_kv             = self.n_head_kv()
+            self._n_swa                 = self.n_swa()
+            self._vocab_type            = self.vocab_type()
+            self._rope_type             = self.rope_type()
+            self._rope_freq_scale_train = self.rope_freq_scale_train()
+            self._model_size_bytes      = self.model_size_bytes()
+            self._chat_template         = self.chat_template()
+            self._n_params              = self.n_params()
+            self._bpw                   = self.bpw()
+            self._has_encoder           = self.has_encoder()
+            self._has_decoder           = self.has_decoder()
+            self._is_recurrent          = self.is_recurrent()
+            self._token_bos             = self.token_bos()
+            self._token_eos             = self.token_eos()
+            self._token_eot             = self.token_eot()
+            self._token_sep             = self.token_sep()
+            self._token_nl              = self.token_nl()
+            self._token_pad             = self.token_pad()
+            self._add_bos_token         = self.add_bos_token()
+            self._add_eos_token         = self.add_eos_token()
+            self._token_fim_pre         = self.token_fim_pre()
+            self._token_fim_suf         = self.token_fim_suf()
+            self._token_fim_mid         = self.token_fim_mid()
+            self._token_fim_pad         = self.token_fim_pad()
+            self._token_fim_rep         = self.token_fim_rep()
+            self._token_fim_sep         = self.token_fim_sep()
 
-        self._name                  = self.name()
-        self._n_ctx                 = self.n_ctx()
-        self._n_batch               = self.n_batch()
-        self._n_ubatch              = self.n_ubatch()
-        self._n_seq_max             = self.n_seq_max()
-        self._n_vocab               = self.n_vocab()
-        self._n_ctx_train           = self.n_ctx_train()
-        self._n_embd                = self.n_embd()
-        self._n_layer               = self.n_layer()
-        self._n_head                = self.n_head()
-        self._n_head_kv             = self.n_head_kv()
-        self._n_swa                 = self.n_swa()
-        self._vocab_type            = self.vocab_type()
-        self._rope_type             = self.rope_type()
-        self._rope_freq_scale_train = self.rope_freq_scale_train()
-        self._model_size_bytes      = self.model_size_bytes()
-        self._chat_template         = self.chat_template()
-        self._n_params              = self.n_params()
-        self._bpw                   = self.bpw()
-        self._has_encoder           = self.has_encoder()
-        self._has_decoder           = self.has_decoder()
-        self._is_recurrent          = self.is_recurrent()
-        self._token_bos             = self.token_bos()
-        self._token_eos             = self.token_eos()
-        self._token_eot             = self.token_eot()
-        self._token_sep             = self.token_sep()
-        self._token_nl              = self.token_nl()
-        self._token_pad             = self.token_pad()
-        self._add_bos_token         = self.add_bos_token()
-        self._add_eos_token         = self.add_eos_token()
-        self._token_fim_pre         = self.token_fim_pre()
-        self._token_fim_suf         = self.token_fim_suf()
-        self._token_fim_mid         = self.token_fim_mid()
-        self._token_fim_pad         = self.token_fim_pad()
-        self._token_fim_rep         = self.token_fim_rep()
-        self._token_fim_sep         = self.token_fim_sep()
+            self.eog_tokens = [i for i in range(self._n_vocab) if self.token_is_eog(i)]
+            """A list of all tokens in the vocab that are marked as EOG (End-Of-Generation)"""
 
-        self.eog_tokens = [i for i in range(self._n_vocab) if self.token_is_eog(i)]
-        """A list of all tokens in the vocab that are marked as EOG (End-Of-Generation)"""
+            # internal use only - the default SamplerParams with this model
+            self._default_sampler_params = SamplerParams(self)
 
-        # internal use only - the default SamplerParams with this model
-        self._default_sampler_params = SamplerParams(self)
+            self.pos = 0
+            """The current position of the model within the context window"""
 
-        self.pos = 0
-        """The current position of the model within the context window"""
+            self.context_tokens = []
+            """A list of all tokens currently in the context window"""
 
-        self.context_tokens = []
-        """A list of all tokens currently in the context window"""
+            self._lock = _InferenceLock()
 
-        self._lock = _InferenceLock()
-
-        if warmup:
-            self.warmup()
+            if warmup:
+                self.warmup()
 
         # End of Llama.__init__
     
