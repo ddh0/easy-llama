@@ -12,13 +12,12 @@ dynamic = ["version"]
 description = "Python package wrapping llama.cpp for on-device LLM inference"
 readme = "README.md"
 authors = [{ name = "Dylan Halladay", email = "chemist-mulches-39@icloud.com" }]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",  
     "Natural Language :: English",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",

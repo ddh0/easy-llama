@@ -779,7 +779,7 @@ class Llama:
         flash_attn: bool = False,
         warmup: bool = False,
         verbose: bool = True,
-        vocab_only: bool = True,
+        vocab_only: bool = False,
         **kwargs
     ):
         """Load a llama model from a file
