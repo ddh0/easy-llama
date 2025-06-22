@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing                  import Optional, Union
 from fastapi                 import FastAPI, APIRouter, Body, HTTPException
 
-from utils import log, exc_to_str
+from .utils import log, exc_to_str
 
 WEBUI_DIRECTORY = os.path.join(os.path.dirname(__file__), 'webui')
 
