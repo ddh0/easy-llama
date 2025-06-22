@@ -231,215 +231,211 @@ class SamplerParams:
 
         # Logit bias
 
-        if logit_bias is not None and len(logit_bias) > 0:
-            if len(logit_bias) == 1:
+        if self.logit_bias is not None and len(self.logit_bias) > 0:
+            if len(self.logit_bias) == 1:
                 self._chain_str += f'one logit bias -> '
             else:
-                self._chain_str += f'{len(logit_bias)} logit biases -> '
-            logit_bias_arr = _internals.get_logit_bias_array(logit_bias)
+                self._chain_str += f'{len(self.logit_bias)} logit biases -> '
+            logit_bias_arr = _internals.get_logit_bias_array(self.logit_bias)
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_logit_bias(
-                n_vocab=llama._n_vocab,
-                n_logit_bias=len(logit_bias),
+                n_vocab=self.llama._n_vocab,
+                n_logit_bias=len(self.logit_bias),
                 logit_bias=logit_bias_arr
             ))
 
         # Penalties
 
-        # TODO: update all sampler param variables to .attributes ?
-
-        self.penalty_last_n = self.penalty_last_n if self.penalty_last_n >= 0 else llama.n_ctx()
+        self.penalty_last_n = self.penalty_last_n if self.penalty_last_n >= 0 else self.llama.n_ctx()
 
         if self.penalty_last_n != 0 and any(
-            [penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]
+            [self.penalty_repeat != 1.0, self.penalty_present != 0.0, self.penalty_freq != 0.0]
         ):
-            self._chain_str += f'penalty last:{penalty_last_n}'
-            self._chain_str += f' rept:{penalty_repeat:.3f}' if penalty_repeat != 1.0 else ''
-            self._chain_str += f' pres:{penalty_present:.3f}' if penalty_present != 0.0 else ''
-            self._chain_str += f' freq:{penalty_freq:.3f}' if penalty_freq != 0.0 else ''
+            self._chain_str += f'penalty last:{self.penalty_last_n}'
+            self._chain_str += f' rept:{self.penalty_repeat:.3f}' if self.penalty_repeat != 1.0 else ''
+            self._chain_str += f' pres:{self.penalty_present:.3f}' if self.penalty_present != 0.0 else ''
+            self._chain_str += f' freq:{self.penalty_freq:.3f}' if self.penalty_freq != 0.0 else ''
             self._chain_str += f' -> '
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_penalties(
-                penalty_last_n=penalty_last_n,
-                penalty_repeat=penalty_repeat,
-                penalty_freq=penalty_freq,
-                penalty_present=penalty_present
+                penalty_last_n=self.penalty_last_n,
+                penalty_repeat=self.penalty_repeat,
+                penalty_freq=self.penalty_freq,
+                penalty_present=self.penalty_present
             ))
         
         # XTC
         
-        if xtc_probability > 0.0:
-            self._chain_str += f'XTC p:{xtc_probability:.2f} t:{xtc_threshold:.2f} -> '
+        if self.xtc_probability > 0.0:
+            self._chain_str += f'XTC p:{self.xtc_probability:.2f} t:{self.xtc_threshold:.2f} -> '
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_xtc(
-                    p=xtc_probability,
-                    t=xtc_threshold,
+                    p=self.xtc_probability,
+                    t=self.xtc_threshold,
                     min_keep=1,
-                    seed=seed if seed > 0 else _get_random_seed()
+                    seed=self.seed if self.seed > 0 else _get_random_seed()
                 )
             )
         
         # DRY
         
-        if dry_multiplier > 0.0:
-            self._chain_str += f'DRY x{dry_multiplier:.2f} base:{dry_base:.2f} '
-            self._chain_str += f'len:{dry_allowed_length} -> '
+        if self.dry_multiplier > 0.0:
+            self._chain_str += f'DRY x{self.dry_multiplier:.2f} base:{self.dry_base:.2f} '
+            self._chain_str += f'len:{self.dry_allowed_length} -> '
             # dry == D.R.Y. ("Don't Repeat Yourself")
             # ref: https://github.com/oobabooga/text-generation-webui/pull/5677
-            null_ptr_check(llama._vocab, 'llama._vocab', 'SamplerParams.__init__')
-            seq_breakers = dry_sequence_breakers
+            null_ptr_check(self.llama._vocab, 'llama._vocab', 'SamplerParams.__init__')
+            seq_breakers = self.dry_sequence_breakers
             seq_breakers_bytes = [ez_encode(s) for s in seq_breakers]
             arr = (ctypes.c_char_p * len(seq_breakers_bytes))(*seq_breakers_bytes)
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_dry(
-                vocab=llama._vocab,
-                n_ctx_train=llama._n_ctx_train,
-                dry_multiplier=dry_multiplier,
-                dry_base=dry_base,
-                dry_allowed_length=dry_allowed_length,
-                dry_penalty_last_n=dry_penalty_last_n,
+                vocab=self.llama._vocab,
+                n_ctx_train=self.llama._n_ctx_train,
+                dry_multiplier=self.dry_multiplier,
+                dry_base=self.dry_base,
+                dry_allowed_length=self.dry_allowed_length,
+                dry_penalty_last_n=self.dry_penalty_last_n,
                 seq_breakers=arr,
                 num_breakers=len(seq_breakers)
             ))
         
         # IF TEMP <= 0.0:
 
-        dynatemp_delta = abs(dynatemp_delta) if dynatemp_delta is not None else None
-
-        if temp <= 0.0:
+        if self.temp <= 0.0:
             # ... -> greedy
             self._chain_str += 'greedy'
             lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_greedy())
 
         # ELIF MIROSTAT v1:
 
-        elif mirostat == 1:
+        elif self.mirostat == 1:
             # ... -> temp(-ext) -> mirostat-v1
-            if dynatemp_delta != 0.0:
+            if self.dynatemp_delta > 0.0:
                 # dynamic temperature AKA entropy sampling
-                self._chain_str += f'temp {temp:.2f} +/- {dynatemp_delta:.2f} -> '
+                self._chain_str += f'temp {self.temp:.2f} +/- {self.dynatemp_delta:.2f} -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
-                        t=temp,
-                        delta=dynatemp_delta,
-                        exponent=dynatemp_exponent
+                        t=self.temp,
+                        delta=self.dynatemp_delta,
+                        exponent=self.dynatemp_exponent
                     )
                 )
             else:
                 # standard temperature
-                self._chain_str += f'temp {temp:.2f} -> '
+                self._chain_str += f'temp {self.temp:.2f} -> '
                 lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_temp(t=temp)
+                    smpl, lib.llama_sampler_init_temp(t=self.temp)
                 )
             
-            self._chain_str += f'mirostat v1 tau:{mirostat_tau:.2f} eta:{mirostat_eta:.2f}'
+            self._chain_str += f'mirostat v1 tau:{self.mirostat_tau:.2f} eta:{self.mirostat_eta:.2f}'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_mirostat(
-                    seed=seed if seed > 0 else _get_random_seed(),
-                    tau=mirostat_tau,
-                    eta=mirostat_eta
+                    seed=self.seed if self.seed > 0 else _get_random_seed(),
+                    tau=self.mirostat_tau,
+                    eta=self.mirostat_eta
                 )
             )
         
         # ELIF MIROSTAT v2:
 
-        elif mirostat == 2:
+        elif self.mirostat == 2:
             # ... -> temp(-ext) -> mirostat-v2
-            if dynatemp_delta != 0.0:
+            if self.dynatemp_delta > 0.0:
                 # dynamic temperature AKA entropy sampling
-                self._chain_str += f'temp-ext {temp:.2f} +/- {dynatemp_delta:.2f} -> '
+                self._chain_str += f'temp-ext {self.temp:.2f} +/- {self.dynatemp_delta:.2f} -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
-                        t=temp,
-                        delta=dynatemp_delta,
-                        exponent=dynatemp_exponent
+                        t=self.temp,
+                        delta=self.dynatemp_delta,
+                        exponent=self.dynatemp_exponent
                     )
                 )
             else:
                 # standard temperature
-                self._chain_str += f'temp {temp:.2f} -> '
+                self._chain_str += f'temp {self.temp:.2f} -> '
                 lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_temp(t=temp)
+                    smpl, lib.llama_sampler_init_temp(t=self.temp)
                 )
             
-            self._chain_str += f'mirostat v2 tau:{mirostat_tau:.2f} eta:{mirostat_eta:.2f}'
+            self._chain_str += f'mirostat v2 tau:{self.mirostat_tau:.2f} eta:{self.mirostat_eta:.2f}'
             lib.llama_sampler_chain_add(
                 smpl, lib.llama_sampler_init_mirostat_v2(
-                    seed=seed if seed > 0 else _get_random_seed(),
-                    tau=mirostat_tau,
-                    eta=mirostat_eta
+                    seed=self.seed if self.seed > 0 else _get_random_seed(),
+                    tau=self.mirostat_tau,
+                    eta=self.mirostat_eta
                 )
             )
         
         # ELIF TOP-N-SIGMA > 0:
         
-        elif top_n_sigma > 0.0:
+        elif self.top_n_sigma > 0.0:
             # ... top-n-sigma -> temp(-ext) -> dist
             self._chain_str += (
-                f'top-n-sigma {top_n_sigma:.2f} ->  '
+                f'top-n-sigma {self.top_n_sigma:.2f} ->  '
             )
             
-            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_n_sigma(n=top_n_sigma)) 
+            lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_n_sigma(n=self.top_n_sigma)) 
 
-            if dynatemp_delta > 0.0:
+            if self.dynatemp_delta > 0.0:
                 # dynamic temperature AKA entropy sampling
-                self._chain_str += f'temp {temp:.2f} +/- {dynatemp_delta:.2f} -> '
+                self._chain_str += f'temp {self.temp:.2f} +/- {self.dynatemp_delta:.2f} -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
-                        t=temp,
-                        delta=dynatemp_delta,
-                        exponent=dynatemp_exponent
+                        t=self.temp,
+                        delta=self.dynatemp_delta,
+                        exponent=self.dynatemp_exponent
                     )
                 )
             else:
                 # standard temperature
-                self._chain_str += f'temp {temp:.2f} -> '
-                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
+                self._chain_str += f'temp {self.temp:.2f} -> '
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=self.temp))
 
             self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
+                smpl, lib.llama_sampler_init_dist(seed=self.seed if self.seed > 0 else _get_random_seed())
             )
         
         # ELSE (DEFAULT CASE):
 
         else:
             # ... -> top-k -> typical-p -> top-p -> min-p -> temp(-ext) -> ...
-            if mirostat != 0:
-                log(f'unknown mirostat version {mirostat}. ignored.', 2)
-            if top_k > 0:
-                self._chain_str += f'top-k {top_k} -> '
-                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=top_k))
-            if typical_p != 1.0:
-                self._chain_str += f'typical-p {typical_p:.2f} -> '
+            if self.mirostat != 0:
+                log(f'unknown mirostat version {self.mirostat}. ignored.', 2)
+            if self.top_k > 0:
+                self._chain_str += f'top-k {self.top_k} -> '
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_top_k(k=self.top_k))
+            if self.typical_p != 1.0:
+                self._chain_str += f'typical-p {self.typical_p:.2f} -> '
                 lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_typical(p=typical_p, min_keep=1)
+                    smpl, lib.llama_sampler_init_typical(p=self.typical_p, min_keep=1)
                 )
-            if top_p < 1.0:
-                self._chain_str += f'top-p {top_p:.2f} -> '
+            if self.top_p < 1.0:
+                self._chain_str += f'top-p {self.top_p:.2f} -> '
                 lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_top_p(p=top_p, min_keep=1)
+                    smpl, lib.llama_sampler_init_top_p(p=self.top_p, min_keep=1)
                 )
-            if min_p > 0.0:
-                self._chain_str += f'min-p {min_p:.3f} -> '
+            if self.min_p > 0.0:
+                self._chain_str += f'min-p {self.min_p:.3f} -> '
                 lib.llama_sampler_chain_add(
-                    smpl, lib.llama_sampler_init_min_p(p=min_p, min_keep=1)
+                    smpl, lib.llama_sampler_init_min_p(p=self.min_p, min_keep=1)
                 )
-            if dynatemp_delta != 0.0:
+            if self.dynatemp_delta > 0.0:
                 # dynamic temperature AKA entropy sampling
-                self._chain_str += f'temp {temp:.2f} +/- {dynatemp_delta:.2f} -> '
+                self._chain_str += f'temp {self.temp:.2f} +/- {self.dynatemp_delta:.2f} -> '
                 lib.llama_sampler_chain_add(
                     smpl, lib.llama_sampler_init_temp_ext(
-                        t=temp,
-                        delta=dynatemp_delta,
-                        exponent=dynatemp_exponent
+                        t=self.temp,
+                        delta=self.dynatemp_delta,
+                        exponent=self.dynatemp_exponent
                     )
                 )
             else:
                 # standard temperature
-                self._chain_str += f'temp {temp:.2f} -> '
-                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=temp))
+                self._chain_str += f'temp {self.temp:.2f} -> '
+                lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_temp(t=self.temp))
         
             self._chain_str += 'dist'
             lib.llama_sampler_chain_add(
-                smpl, lib.llama_sampler_init_dist(seed=seed if seed > 0 else _get_random_seed())
+                smpl, lib.llama_sampler_init_dist(seed=self.seed if self.seed > 0 else _get_random_seed())
             )
         
         self.smpl = smpl
@@ -548,24 +544,12 @@ class CustomSamplerChain:
     this class allows the user to add samplers one by one in any order.
 
     Each `add_*` method adds a new sampler to the chain and returns `self`, allowing for
-    method chaining. This object can then be used in place of a `SamplerParams` object.
-
-    Example:
-        >>> MySamplerChain = (CustomSamplerChain(llama)
-        ...          .add_top_k(50)
-        ...          .add_top_p(0.9)
-        ...          .add_temp(0.7)
-        ...          .add_dist())
-        >>> MySamplerChain.print_chain()
-        sampler chain: top-k 50 -> top-p 0.90 -> temp 0.70 -> dist
-        >>> # This chain can now be used for sampling, e.g., in `Llama.generate()`
-    """
+    method chaining. This object can then be used in place of a `SamplerParams` object."""
     def __init__(self, llama: Llama):
         """Initializes an empty custom sampler chain.
 
         Args:
-            llama: The Llama instance this sampler chain will be associated with.
-        """
+            llama: The Llama instance this sampler chain will be associated with."""
         self.llama = llama
         self.smpl = None
         self._chain_str = ''
