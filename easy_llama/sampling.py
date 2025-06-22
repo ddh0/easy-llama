@@ -245,9 +245,11 @@ class SamplerParams:
 
         # Penalties
 
-        penalty_last_n = penalty_last_n if penalty_last_n >= 0 else llama.n_ctx()
+        # TODO: update all sampler param variables to .attributes ?
 
-        if penalty_last_n != 0 and any(
+        self.penalty_last_n = self.penalty_last_n if self.penalty_last_n >= 0 else llama.n_ctx()
+
+        if self.penalty_last_n != 0 and any(
             [penalty_repeat != 1.0, penalty_present != 0.0, penalty_freq != 0.0]
         ):
             self._chain_str += f'penalty last:{penalty_last_n}'
