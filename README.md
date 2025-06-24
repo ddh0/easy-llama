@@ -171,9 +171,12 @@ MyLlama = ez.Llama('Qwen3-4B-Q8_0.gguf')
 # create a conversation thread with the loaded model
 MyThread = ez.Thread(
 	MyLlama,
-	prompt_format=ez.PromptFormats.Qwen3NoThinking("Talk like an angry pirate at all times."),
-	sampler_preset=ez.SamplerPresets.Qwen3NoThinking
+	sampler_preset=ez.SamplerPresets.Qwen3NoThinking,
+  context={"enable_thinking": False} # optional: disable thinking for Qwen3
 )
+
+# add system prompt
+MyThread.add_message(ez.Role.SYSTEM, "Talk like an angry pirate.")
 
 # start a CLI-based interactive chat using the thread
 MyThread.interact()
