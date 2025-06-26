@@ -165,24 +165,24 @@ def KeyboardInterruptHandler():
     except KeyboardInterrupt:
         print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
 
-def softmax(z: _ArrayLike, T: float = 1.0) -> np.ndarray:
-    """Numerically stable softmax over **all** elements of an arbitrarily shaped array in
-    float32 precision. Supports temperature scaling for all real values of `T`."""
+def softmax(z: _ArrayLike, T: float = 1.0, axis: int = 1) -> np.ndarray:
+    """Numerically stable softmax over a specified axis of an arbitrarily shaped array
+    in float32 precision. Supports temperature scaling for all real values of `T`."""
     z_arr = np.array(z, dtype=np.float32)
     if z_arr.size == 0:
         return z_arr
     if T == 0.0:
         result = np.zeros_like(z_arr)
-        flat = z_arr.ravel()
-        result.flat[np.argmax(flat)] = 1.0
+        indices = np.argmax(z_arr, axis=axis)
+        np.put_along_axis(result, np.expand_dims(indices, axis), 1.0, axis=axis)
         return result
     if T < 0:
         z_arr = -z_arr
         T = -T
-    max_val = np.max(z_arr)
+    max_val = np.max(z_arr, axis=axis, keepdims=True)
     scaled = (z_arr - max_val) / T
     exp_vals = np.exp(scaled)
-    return exp_vals / np.sum(exp_vals)
+    return exp_vals / np.sum(exp_vals, axis=axis, keepdims=True)
 
 def cls() -> None:
     """Clear the terminal"""

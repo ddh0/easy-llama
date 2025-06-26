@@ -545,6 +545,7 @@ class CustomSamplerChain:
 
     Each `add_*` method adds a new sampler to the chain and returns `self`, allowing for
     method chaining. This object can then be used in place of a `SamplerParams` object."""
+    
     def __init__(self, llama: Llama):
         """Initializes an empty custom sampler chain.
 

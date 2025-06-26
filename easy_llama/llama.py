@@ -2205,7 +2205,7 @@ class Llama:
     
     def bpw(self) -> float:
         """Get the average bits per weight of the model"""
-        return (self._model_size_bytes * 8) / self._n_params
+        return (self.model_size_bytes() * 8) / self.n_params()
     
     def save_state(self, file_path: str) -> None:
         """Save the current state of the context to a file"""
