@@ -23,7 +23,6 @@ class Role(Enum):
     USER   = 1
     BOT    = 2
 
-
 class Thread:
 
     def __init__(

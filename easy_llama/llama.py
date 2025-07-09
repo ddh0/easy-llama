@@ -891,6 +891,8 @@ class Llama:
             else:
                 _n_ctx = int(n_ctx)
 
+            # TODO: switch from linear RoPE frequency scaling to YaRN scaling if possible?
+
             # use rope_freq_base unless it == 0.0, in that case use the native
             # rope_freq_base found in the GGUF metadata
             rope_freq_base = kwargs.get('rope_freq_base', 0.0)
@@ -1114,14 +1116,13 @@ class Llama:
 
         with suppress_output(disable=get_verbose()):
             self.reset()
-
-        lib.llama_set_warmup(self._ctx.ctx, True)
+            lib.llama_set_warmup(self._ctx.ctx, True)
 
         log_verbose('warmup: single token decode ...')
         with self._lock:
             _internals.decode_tg(self._ctx.ctx, 0, 0)
         
-        # This section decodes a full batch of tokens, but is probably unnecessary.
+        # this section decodes a full batch of tokens, but is probably unnecessary
         #
         # with suppress_output(disable=get_verbose()):
         #     self.reset()
@@ -1130,9 +1131,8 @@ class Llama:
         # with self._lock:
         #     _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
 
-        lib.llama_set_warmup(self._ctx.ctx, False)
-
         with suppress_output(disable=get_verbose()):
+            lib.llama_set_warmup(self._ctx.ctx, False)
             self.reset()
         
         log_verbose('warmup: done')
@@ -1336,7 +1336,7 @@ class Llama:
 
     def token_get_score(self, token: int) -> float:
         """Get the score of a token"""
-        null_ptr_check(self._vocab, "self._vocabl", "Llama.token_get_score")
+        null_ptr_check(self._vocab, "self._vocab", "Llama.token_get_score")
         return lib.llama_vocab_get_score(self._vocab, token)
 
     def token_is_eog(self, token: int) -> bool:
@@ -1729,7 +1729,7 @@ class Llama:
         if get_verbose():
             self._stopwatch.print_stats()
 
-        if return_logits: # TODO: this is inefficient, it decodes the last token again. replace.
+        if return_logits:
             return self.get_logits()
 
         return self.sample(sampler_params)
@@ -1799,7 +1799,7 @@ class Llama:
         for batch in _batches_with_progress_bar(batches):
             self._decode_batch(batch, logits_all=False)
 
-        log_debug('Llama.generate: done decodinging input batches')
+        log_debug('Llama.generate: done decoding input batches')
         
         if _n_predict == 0:
             self._stopwatch.stop_wall_time()
@@ -2010,6 +2010,7 @@ class Llama:
         
         # yield any leftover bytes (though ideally there should be none)
         if detok_bytes_buffer != b'':
+            log(f'stream_chars: yielding leftover bytes: {detok_bytes_buffer!r}', 2)
             leftover_txt = ez_decode(detok_bytes_buffer)
             yield leftover_txt
     
@@ -2083,7 +2084,7 @@ class Llama:
         return results
     
     def sample_greedy(self) -> int:
-        """Sample from the model's current logits greedily"""
+        """Get the most likely token from the current logits"""
         if self.vocab_only:
             raise RuntimeError('Llama.sample_greedy: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.sample_greedy')
@@ -2126,7 +2127,7 @@ class Llama:
             dry_sequence_breakers = sampler_preset.dry_sequence_breakers,
             logit_bias            = sampler_preset.logit_bias
         )
-
+    
     def sample(self, sampler_params: Optional[SamplerParams] = None) -> int:
         """Sample a token using the current context
 
@@ -2179,7 +2180,7 @@ class Llama:
         """Given some tokens, print a mapping of each token ID to the
         corresponding UTF-8 text bytes
 
-        This is meant to be roughly equivalent to `llama.cpp/llama-tokenize`
+        This is meant to be roughly equivalent to `llama-tokenize`
 
         - tokens:
             The tokens to print a mapping for
@@ -2236,8 +2237,6 @@ class Llama:
         """Load a previously saved context state from a file"""
         if self.vocab_only:
             raise RuntimeError('Llama.load_state: this instance is vocab-only')
-        
-        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.load_state')
 
         if not os.path.exists(file_path):
             raise FileNotFoundError(f'Llama.load_state: file_path {file_path} does not exist')
@@ -2245,6 +2244,8 @@ class Llama:
         if os.path.isdir(file_path):
             raise IsADirectoryError(f'Llama.load_state: file_path {file_path} is a directory')
         
+        null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.load_state')
+
         # reset the current context before loading the new one
         self.reset()
 

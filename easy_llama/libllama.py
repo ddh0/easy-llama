@@ -5,9 +5,9 @@
 # Manually update these constants to reflect the currently targeted version of llama.cpp:
 # -------------------------------------------------------------------------------------------- #
 # llama.cpp commit OID
-_TARGET_LLAMACPP_COMMIT = "803f8baf4f741d2f0465c46c33f285886b97a071"
+_TARGET_LLAMACPP_COMMIT = "8f22dc0a53338c629c1ef8fa878d8e39bfe627c9"
 # YYYY-MM-DD, the date of the above commit
-_TARGET_LLAMACPP_DATE   = "2025-05-31"
+_TARGET_LLAMACPP_DATE   = "2025-07-08"
 # -------------------------------------------------------------------------------------------- #
 
 f"""This file provides a Python interface to LLAMA_API ("libllama"), which is originally defined
@@ -18,7 +18,7 @@ This file was last updated to match `llama.cpp/include/llama.h` as of this commi
 - Date: {_TARGET_LLAMACPP_DATE}
 
 This file's status with respect to the above commit is:
-- Synchronized
+- WIP
 
 Helpful references:
 - `libllama` API changelog:
@@ -117,7 +117,7 @@ class GGMLType(IntEnum):
     # GGML_TYPE_Q4_0_4_4 = 31 -- support has been removed from gguf files
     # GGML_TYPE_Q4_0_4_8 = 32
     # GGML_TYPE_Q4_0_8_8 = 33
-    GGML_TYPE_TQ1_0   = 34,
+    GGML_TYPE_TQ1_0   = 34
     GGML_TYPE_TQ2_0   = 35
     # GGML_TYPE_IQ4_NL_4_4 = 36
     # GGML_TYPE_IQ4_NL_4_8 = 37
@@ -177,10 +177,24 @@ class llama_context(ctypes.Structure):
 
 llama_context_p = ctypes.POINTER(llama_context)
 
-class llama_kv_cache(ctypes.Structure):
+class llama_sampler(ctypes.Structure):
     pass
 
-llama_kv_cache_p = ctypes.POINTER(llama_kv_cache)
+llama_sampler_p = ctypes.POINTER(llama_sampler)
+
+#
+# Handle `typedef struct llama_memory_i * llama_memory_t;`
+#
+
+class llama_memory_i(ctypes.Structure):
+    pass
+
+llama_memory_i_p = ctypes.POINTER(llama_memory_i)
+
+class llama_memory_t(ctypes.Structure):
+    pass
+
+llama_memory_t_p = ctypes.POINTER(llama_memory_t)
 
 llama_pos    = ctypes.c_int32
 llama_token  = ctypes.c_int32
@@ -235,6 +249,7 @@ class LlamaVocabPreType(IntEnum):
     LLAMA_VOCAB_PRE_TYPE_LLAMA4         = 33
     LLAMA_VOCAB_PRE_TYPE_PIXTRAL        = 34
     LLAMA_VOCAB_PRE_TYPE_SEED_CODER     = 35
+    LLAMA_VOCAB_PRE_TYPE_HUNYUAN        = 36
 
 class LlamaRopeType(IntEnum):
     LLAMA_ROPE_TYPE_NONE   = -1
@@ -367,7 +382,10 @@ class llama_batch(ctypes.Structure):
         ("n_seq_id", ctypes.POINTER(ctypes.c_int32)              ),
         # the sequence to which the respective token belongs
         ("seq_id",   ctypes.POINTER(ctypes.POINTER(llama_seq_id))),
-        # if zero, the logits (and/or the embeddings) for the respective token will not be output
+        # if zero: the logits (and/or the embeddings) for the respective token will not be output
+        # if null:
+        #     - if embd: all tokens are output
+        #     - if not:  only the last token is output
         ("logits",   ctypes.POINTER(ctypes.c_int8)               ) # use C_FALSE / C_TRUE
     ]
 
@@ -509,7 +527,8 @@ class llama_model_quantize_params(ctypes.Structure):
         ("keep_split",             ctypes.c_bool  ), # quantize to the same number of shards
         ("imatrix",                ctypes.c_void_p), # pointer to importance matrix data
         ("kv_overrides",           ctypes.c_void_p), # pointer to vector containing overrides
-        ("tensor_types",           ctypes.c_void_p)  # pointer to vector containing tensor types
+        ("tensor_types",           ctypes.c_void_p), # pointer to vector containing tensor types
+        ("prune_layers",           ctypes.c_void_p)  # pointer to vector containing layer indices to prune
     ]
 
 llama_model_quantize_params_p = ctypes.POINTER(llama_model_quantize_params)
@@ -793,10 +812,10 @@ def llama_get_model(ctx: ptr[llama_context]) -> ptr[llama_model]:
     libllama.llama_get_model.restype = llama_model_p
     return libllama.llama_get_model(ctx)
 
-def llama_get_kv_self(ctx: ptr[llama_context]) -> ptr[llama_kv_cache]:
-    libllama.llama_get_kv_self.argtypes = [llama_context_p]
-    libllama.llama_get_kv_self.restype = llama_kv_cache_p
-    return libllama.llama_get_kv_self(ctx)
+def llama_get_memory(ctx: ptr[llama_context]) -> llama_memory_t:
+    libllama.llama_get_memory.argtypes = [llama_context_p]
+    libllama.llama_get_memory.restype = llama_memory_t
+    return libllama.llama_get_memory(ctx)
 
 def llama_pooling_type(ctx: ptr[llama_context]) -> int:
     """Get the pooling type used by a context"""
@@ -861,6 +880,25 @@ def llama_model_rope_freq_scale_train(model: ptr[llama_model]) -> float:
     libllama.llama_model_rope_freq_scale_train.argtypes = [llama_model_p]
     libllama.llama_model_rope_freq_scale_train.restype = ctypes.c_float
     return libllama.llama_model_rope_freq_scale_train(model)
+
+def llama_model_n_cls_out(model: ptr[llama_model]) -> int:
+    """Returns the number of classifier outputs (only valid for classifier models).
+    Undefined behavior for non-classifier models."""
+    libllama.llama_model_n_cls_out.argtypes = [llama_model_p]
+    libllama.llama_model_n_cls_out.restype = ctypes.c_uint32
+    return libllama.llama_model_n_cls_out(model)
+
+def llama_model_cls_label(model: ptr[llama_model], i: int) -> Optional[str]:
+    """Returns label of classifier output by index (<n_cls_out).
+    Returns nullptr if no label provided."""
+    libllama.llama_model_cls_label.argtypes = [llama_model_p, ctypes.c_uint32]
+    libllama.llama_model_cls_label.restype = ctypes.c_char_p
+    c_label = libllama.llama_model_cls_label(model, i)
+    if c_label:
+        c_label_p = ctypes.c_char_p(c_label)
+        return c_label_p.value.decode('utf-8')
+    else:
+        return None
 
 #
 # Getters for llama_vocab
@@ -1016,67 +1054,81 @@ def llama_apply_adapter_cvec(ctx: ptr[llama_context], data: ctypes.c_void_p, len
     return libllama.llama_apply_adapter_cvec(ctx, data, len, n_embd, il_start, il_end)
 
 #
-# KV cache
+# Memory (formerly KV cache)
 #
 
-def llama_kv_self_clear(ctx: ptr[llama_context]) -> None:
-    """Clear the KV cache"""
-    libllama.llama_kv_self_clear.argtypes = [llama_context_p]
-    libllama.llama_kv_self_clear.restype = None
-    libllama.llama_kv_self_clear(ctx)
+def llama_memory_clear(mem: llama_memory_t, data: bool) -> None:
+    """Clear the memory contents. If `data` is `True`, the data buffers will also be cleared
+    together with the metadata."""
+    libllama.llama_memory_clear.argtypes = [llama_memory_t, ctypes.c_bool]
+    libllama.llama_memory_clear.restype = None
+    libllama.llama_memory_clear(mem, data)
 
-def llama_kv_self_seq_rm(ctx: ptr[llama_context], seq_id: int, p0: int, p1: int) -> bool:
-    """Remove tokens from a sequence in the KV cache"""
-    libllama.llama_kv_self_seq_rm.argtypes = [llama_context_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-    libllama.llama_kv_self_seq_rm.restype = ctypes.c_bool
-    return libllama.llama_kv_self_seq_rm(ctx, seq_id, p0, p1)
+def llama_memory_seq_rm(mem: llama_memory_t, seq_id: llama_seq_id, p0: llama_pos, p1: llama_pos) -> bool:
+    """Removes all tokens that belong to the specified sequence and have positions in [p0, p1).
+    Returns False if a partial sequence cannot be removed. Removing a whole sequence never fails.
+    seq_id < 0 : match any sequence
+    p0 < 0     : [0,  p1]
+    p1 < 0     : [p0, inf)"""
+    libllama.llama_memory_seq_rm.argtypes = [llama_memory_t, llama_seq_id, llama_pos, llama_pos]
+    libllama.llama_memory_seq_rm.restype = ctypes.c_bool
+    return libllama.llama_memory_seq_rm(mem, seq_id, p0, p1)
 
-def llama_kv_self_seq_cp(ctx: ptr[llama_context], seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
-    """Copy tokens from one sequence to another in the KV cache"""
-    libllama.llama_kv_self_seq_cp.argtypes = [llama_context_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-    libllama.llama_kv_self_seq_cp.restype = None
-    libllama.llama_kv_self_seq_cp(ctx, seq_id_src, seq_id_dst, p0, p1)
+def llama_memory_seq_cp(mem: llama_memory_t, seq_id_src: llama_seq_id, seq_id_dst: llama_seq_id, p0: llama_pos, p1: llama_pos) -> None:
+    """Copy all tokens that belong to the specified sequence to another sequence.
+    p0 < 0 : [0,  p1]
+    p1 < 0 : [p0, inf)"""
+    libllama.llama_memory_seq_cp.argtypes = [llama_memory_t, llama_seq_id, llama_seq_id, llama_pos, llama_pos]
+    libllama.llama_memory_seq_cp.restype = None
+    libllama.llama_memory_seq_cp(mem, seq_id_src, seq_id_dst, p0, p1)
 
-def llama_kv_self_seq_keep(ctx: ptr[llama_context], seq_id: int) -> None:
-    """Keep only the tokens of a sequence in the KV cache"""
-    libllama.llama_kv_self_seq_keep.argtypes = [llama_context_p, ctypes.c_int]
-    libllama.llama_kv_self_seq_keep.restype = None
-    libllama.llama_kv_self_seq_keep(ctx, seq_id)
+def llama_memory_seq_keep(mem: llama_memory_t, seq_id: llama_seq_id) -> None:
+    """Removes all tokens that do not belong to the specified sequence."""
+    libllama.llama_memory_seq_keep.argtypes = [llama_memory_t, llama_seq_id]
+    libllama.llama_memory_seq_keep.restype = None
+    libllama.llama_memory_seq_keep(mem, seq_id)
 
-def llama_kv_self_seq_add(ctx: ptr[llama_context], seq_id: int, p0: int, p1: int, delta: int) -> None:
-    """Add a relative position to tokens in a sequence in the KV cache"""
-    libllama.llama_kv_self_seq_add.argtypes = [llama_context_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-    libllama.llama_kv_self_seq_add.restype = None
-    libllama.llama_kv_self_seq_add(ctx, seq_id, p0, p1, delta)
+def llama_memory_seq_add(mem: llama_memory_t, seq_id: llama_seq_id, p0: llama_pos, p1: llama_pos, delta: llama_pos) -> None:
+    """Adds relative position "delta" to all tokens that belong to the specified sequence and have positions in [p0, p1).
+    p0 < 0 : [0,  p1]
+    p1 < 0 : [p0, inf)"""
+    libllama.llama_memory_seq_add.argtypes = [llama_memory_t, llama_seq_id, llama_pos, llama_pos, llama_pos]
+    libllama.llama_memory_seq_add.restype = None
+    libllama.llama_memory_seq_add(mem, seq_id, p0, p1, delta)
 
-def llama_kv_self_seq_div(ctx: ptr[llama_context], seq_id: int, p0: int, p1: int, d: int) -> None:
-    """Divide the positions of tokens in a sequence in the KV cache by a factor"""
-    libllama.llama_kv_self_seq_div.argtypes = [llama_context_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-    libllama.llama_kv_self_seq_div.restype = None
-    libllama.llama_kv_self_seq_div(ctx, seq_id, p0, p1, d)
+def llama_memory_seq_div(mem: llama_memory_t, seq_id: llama_seq_id, p0: llama_pos, p1: llama_pos, d: int) -> None:
+    """Integer division of the positions by factor of `d > 1`.
+    p0 < 0 : [0,  p1]
+    p1 < 0 : [p0, inf)"""
+    libllama.llama_memory_seq_div.argtypes = [llama_memory_t, llama_seq_id, llama_pos, llama_pos, ctypes.c_int]
+    libllama.llama_memory_seq_div.restype = None
+    libllama.llama_memory_seq_div(mem, seq_id, p0, p1, d)
 
-def llama_kv_self_seq_pos_min(ctx: ptr[llama_context], seq_id: int) -> int:
-    """Returns the smallest position present in the KV cache for the specified sequence. This is
-    typically non-zero only for SWA caches. Return -1 if the sequence is empty."""
-    libllama.llama_kv_self_seq_pos_min.argtypes = [llama_context_p, llama_seq_id]
-    libllama.llama_kv_self_seq_pos_min.restype = llama_pos
-    return libllama.llama_kv_self_seq_pos_min(ctx, seq_id)
+def llama_memory_seq_pos_min(mem: llama_memory_t, seq_id: llama_seq_id) -> llama_pos:
+    """Returns the smallest position present in the memory for the specified sequence.
+    This is typically non-zero only for SWA caches.
+    Note that all positions in the range [pos_min, pos_max] are guaranteed to be present in the memory.
+    Return -1 if the sequence is empty."""
+    libllama.llama_memory_seq_pos_min.argtypes = [llama_memory_t, llama_seq_id]
+    libllama.llama_memory_seq_pos_min.restype = llama_pos
+    return libllama.llama_memory_seq_pos_min(mem, seq_id)
 
-def llama_kv_self_seq_pos_max(ctx: ptr[llama_context], seq_id: int) -> int:
-    """Get the maximum position of a sequence in the KV cache. Return -1 if the sequence is
-    empty."""
-    libllama.llama_kv_self_seq_pos_max.argtypes = [llama_context_p, llama_seq_id]
-    libllama.llama_kv_self_seq_pos_max.restype = llama_pos
-    return libllama.llama_kv_self_seq_pos_max(ctx, seq_id)
+def llama_memory_seq_pos_max(mem: llama_memory_t, seq_id: llama_seq_id) -> llama_pos:
+    """Returns the largest position present in the memory for the specified sequence.
+    Note that all positions in the range [pos_min, pos_max] are guaranteed to be present in the memory.
+    Return -1 if the sequence is empty."""
+    libllama.llama_memory_seq_pos_max.argtypes = [llama_memory_t, llama_seq_id]
+    libllama.llama_memory_seq_pos_max.restype = llama_pos
+    return libllama.llama_memory_seq_pos_max(mem, seq_id)
 
-def llama_kv_self_can_shift(ctx: ptr[llama_context]) -> bool:
-    """Check if the context supports KV cache shifting"""
-    libllama.llama_kv_self_can_shift.argtypes = [llama_context_p]
-    libllama.llama_kv_self_can_shift.restype = ctypes.c_bool
-    return libllama.llama_kv_self_can_shift(ctx)
+def llama_memory_can_shift(mem: llama_memory_t) -> bool:
+    """Check if the memory supports shifting."""
+    libllama.llama_memory_can_shift.argtypes = [llama_memory_t]
+    libllama.llama_memory_can_shift.restype = ctypes.c_bool
+    return libllama.llama_memory_can_shift(mem)
 
 #
-# State / session management
+# State and session management
 #
 
 def llama_state_get_size(ctx: ptr[llama_context]) -> int:
@@ -1122,13 +1174,13 @@ def llama_state_save_file(ctx: ptr[llama_context], path_session: str, tokens: li
     return libllama.llama_state_save_file(ctx, path_session.encode('utf-8'), (llama_token * n_token_count)(*tokens), ctypes.c_size_t(n_token_count))
 
 def llama_state_seq_get_size(ctx: ptr[llama_context], llama_seq_id: int) -> int:
-    """Get the exact size needed to copy the KV cache of a single sequence"""
+    """Get the exact size needed to copy the state of a single sequence"""
     libllama.llama_state_seq_get_size.argtypes = [llama_context_p, ctypes.c_int32]
     libllama.llama_state_seq_get_size.restype = ctypes.c_size_t
     return libllama.llama_state_seq_get_size(ctx, llama_seq_id)
 
 def llama_state_seq_get_data(ctx: ptr[llama_context], dst: ctypes.c_void_p, size: int, seq_id: int) -> int:
-    """Copy the KV cache of a single sequence into the specified buffer"""
+    """Copy the state of a single sequence into the specified buffer"""
     libllama.llama_state_seq_get_data.argtypes = [llama_context_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int32]
     libllama.llama_state_seq_get_data.restype = ctypes.c_size_t
     return libllama.llama_state_seq_get_data(ctx, dst, size, seq_id)
@@ -1200,31 +1252,30 @@ def llama_encode(ctx: ptr[llama_context], batch: llama_batch) -> int:
     - 0:
         success
     - < 0:
-        error. the KV cache state is restored to the state before this call"""
+        error. the memory state is restored to the state before this call"""
     libllama.llama_encode.argtypes = [llama_context_p, llama_batch]
     libllama.llama_encode.restype = ctypes.c_int32
     return libllama.llama_encode(ctx, batch)
 
 def llama_decode(ctx: ptr[llama_context], batch: llama_batch) -> int:
     """Process a batch of tokens.
-    Requires KV cache.
+    
+    Requires the context to have a memory.
     For encoder-decoder contexts, processes the batch using the decoder.
     Positive return values does not mean a fatal error, but rather a warning.
-    Upon non-zero return values, the KV cache state is restored to the state before this call
 
-    Returns:
-    - 0:
-        success
-    - 1:
-        could not find a KV slot for the batch (try reducing the size of
-        the batch or increase the context)
-    - 2:
-        aborted
-    - -1:
-        invalid input batch
-    - < -1:
-        error"""
-    # TODO: wrap the function call in try/except for KeyboardInterrupt? something like that?
+    Upon fatal error or abort, the ubatches that managed to be been processed will remain in the memory state of the context.
+    
+    To handle this correctly, query the memory state using `llama_memory_seq_pos_min()` and `llama_memory_seq_pos_max()`.
+    
+    Upon other return values, the memory state is restored to the state before this call.
+        - 0: success
+        - 1: could not find a KV slot for the batch (try reducing the size of the batch or increase the context)
+        - 2: aborted (processed ubatches will remain in the context's memory)
+        - -1: invalid input batch
+        - < -1: fatal error (processed ubatches will remain in the context's memory)
+    """
+    # TODO: wrap the function call in try/except for KeyboardInterrupt?
     libllama.llama_decode.argtypes = [llama_context_p, llama_batch]
     libllama.llama_decode.restype = ctypes.c_int32
     return libllama.llama_decode(ctx, batch)
@@ -1248,7 +1299,7 @@ def llama_n_threads_batch(ctx: ptr[llama_context]) -> int:
     return libllama.llama_n_threads_batch(ctx)
 
 def llama_set_embeddings(ctx: ptr[llama_context], embeddings: bool) -> None:
-    """Set whether to use embeddings mode or not"""
+    """Set whether the context outputs embeddings or not"""
     libllama.llama_set_embeddings.argtypes = [llama_context_p, ctypes.c_bool]
     libllama.llama_set_embeddings.restype = None
     libllama.llama_set_embeddings(ctx, embeddings)
@@ -1387,16 +1438,22 @@ def llama_vocab_pad(vocab: ptr[llama_vocab]) -> int:
     return libllama.llama_vocab_pad(vocab)
 
 def llama_vocab_get_add_bos(vocab: ptr[llama_vocab]) -> bool:
-    """Whether BOS token should be added to tokenizations"""
+    """Whether BOS token should be added to tokenizations."""
     libllama.llama_vocab_get_add_bos.argtypes = [llama_vocab_p]
     libllama.llama_vocab_get_add_bos.restype = ctypes.c_bool
     return libllama.llama_vocab_get_add_bos(vocab)
 
 def llama_vocab_get_add_eos(vocab: ptr[llama_vocab]) -> bool:
-    """Whether EOS token should be added to tokenizations"""
+    """Whether EOS token should be added to tokenizations."""
     libllama.llama_vocab_get_add_eos.argtypes = [llama_vocab_p]
     libllama.llama_vocab_get_add_eos.restype = ctypes.c_bool
     return libllama.llama_vocab_get_add_eos(vocab)
+
+def llama_vocab_get_add_sep(vocab: ptr[llama_vocab]) -> bool: # is this only for classifier models?
+    """Whether SEP token should be added to tokenizations."""
+    libllama.llama_vocab_get_add_sep.argtypes = [llama_vocab_p]
+    libllama.llama_vocab_get_add_sep.restype = ctypes.c_bool
+    return libllama.llama_vocab_get_add_sep(vocab)
 
 def llama_vocab_fim_pre(vocab: ptr[llama_vocab]) -> int:
     """Get the infill prefix token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
@@ -1459,7 +1516,9 @@ def llama_tokenize(vocab: ptr[llama_vocab], text: bytes, text_len: int, tokens: 
     
     Returns the number of tokens on success, no more than n_tokens_max. Returns
     a negative number on failure - the number of tokens that would have been
-    returned."""
+    returned.
+    
+    Returns INT32_MIN on overflow (e.g., tokenization result size exceeds int32_t limit)."""
     libllama.llama_tokenize.argtypes = [llama_vocab_p, ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(llama_token), ctypes.c_int32, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_tokenize.restype = ctypes.c_int32
     return libllama.llama_tokenize(vocab, text, text_len, tokens, n_tokens_max, add_special, parse_special)
@@ -2395,6 +2454,54 @@ def llama_kv_self_used_cells(*args):
 
 @DEPRECATED(new_func=None)
 def llama_kv_self_defrag(*args):
+    pass
+
+@DEPRECATED(new_func=None)
+def llama_kv_self_update(*args):
+    pass
+
+@DEPRECATED(new_func=llama_get_memory)
+def llama_get_kv_self(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_clear)
+def llama_kv_self_clear(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_rm)
+def llama_kv_self_seq_rm(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_cp)
+def llama_kv_self_seq_cp(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_keep)
+def llama_kv_self_seq_keep(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_add)
+def llama_kv_self_seq_add(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_div)
+def llama_kv_self_seq_div(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_pos_min)
+def llama_kv_self_seq_pos_min(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_seq_pos_max)
+def llama_kv_self_seq_pos_max(*args):
+    pass
+
+@DEPRECATED(new_func=None)
+def llama_kv_self_defrag(*args):
+    pass
+
+@DEPRECATED(new_func=llama_memory_can_shift)
+def llama_kv_self_can_shift(*args):
     pass
 
 @DEPRECATED(new_func=None)
