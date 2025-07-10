@@ -182,19 +182,12 @@ class llama_sampler(ctypes.Structure):
 
 llama_sampler_p = ctypes.POINTER(llama_sampler)
 
-#
-# Handle `typedef struct llama_memory_i * llama_memory_t;`
-#
-
 class llama_memory_i(ctypes.Structure):
     pass
 
 llama_memory_i_p = ctypes.POINTER(llama_memory_i)
 
-class llama_memory_t(ctypes.Structure):
-    pass
-
-llama_memory_t_p = ctypes.POINTER(llama_memory_t)
+llama_memory_t = llama_memory_i_p # `typedef struct llama_memory_i * llama_memory_t;`
 
 llama_pos    = ctypes.c_int32
 llama_token  = ctypes.c_int32
