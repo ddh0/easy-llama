@@ -55,6 +55,7 @@ class Thread:
         self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
         self.chat_template = chat_template if chat_template is not None else self._llama_chat_template
         self.chat_template_kwargs = chat_template_kwargs if chat_template_kwargs is not None else {}
+        self.messages: list[dict[str, Union[Role, str]]] = []
     
     def __repr__(self) -> str:
         return (
