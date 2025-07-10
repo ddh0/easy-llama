@@ -571,7 +571,7 @@ def llama_backend_init() -> None:
     
     log_verbose(
         f'easy_llama v{__version__} '
-        f'targeting llama.cpp@{_TARGET_LLAMACPP_COMMIT[:7]} ({_TARGET_LLAMACPP_DATE})'
+        f'targeting llama.cpp@{_TARGET_LLAMACPP_COMMIT[:8]} ({_TARGET_LLAMACPP_DATE})'
     )
 
     lib_path = os.environ.get('LIBLLAMA')
