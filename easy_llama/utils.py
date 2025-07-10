@@ -165,7 +165,7 @@ def KeyboardInterruptHandler():
     except KeyboardInterrupt:
         print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
 
-def softmax(z: _ArrayLike, T: float = 1.0, axis: int = 1) -> np.ndarray:
+def softmax(z: _ArrayLike, T: float = 1.0, axis: int = -1) -> np.ndarray:
     """Numerically stable softmax over a specified axis of an arbitrarily shaped array
     in float32 precision. Supports temperature scaling for all real values of `T`."""
     z_arr = np.array(z, dtype=np.float32)
