@@ -12,13 +12,12 @@ https://github.com/ddh0/easy-llama"""
 
 # package version (pyproject.toml reads from here)
 
-__version__ = '0.2.12'
+__version__ = '0.2.13'
 
 # submodules
 
 from . import libllama
 from . import sampling
-from . import formats
 from . import server
 from . import thread
 from . import llama
@@ -28,7 +27,6 @@ from . import utils
 
 from .utils    import get_verbose, set_verbose, get_debug, set_debug
 from .sampling import SamplerParams, SamplerPreset, SamplerPresets
-from .formats  import PromptFormat, PromptFormats, SystemPrompts
 from .thread   import Thread, Role
 from .server   import Server
 from .llama    import Llama

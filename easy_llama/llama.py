@@ -551,7 +551,10 @@ class _LlamaModel:
             )
         
         _init_backend_if_needed()
+
         self.path_model = path_model
+        self.model = None
+
         self.params = lib.llama_model_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaModel.__init__")
         if devices is not None:
@@ -645,6 +648,10 @@ class _LlamaCtx:
         swa_full:            Optional[bool]    = None
     ):
         _init_backend_if_needed()
+
+        self.ctx = None
+        self.mem = None
+
         self.params = lib.llama_context_default_params()
         null_ptr_check(self.params, "self.params", "_LlamaCtx.__init__")
         if n_ctx is not None:
@@ -736,6 +743,10 @@ class _LlamaCtx:
         with suppress_output(disable=get_verbose()):
             self.ctx = lib.llama_init_from_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
+
+        with suppress_output(disable=get_verbose()):
+            self.mem: lib.llama_memory_t = lib.llama_get_memory(self.ctx)
+        null_ptr_check(self.mem, "self.mem", "_LlamaCtx.__init__")
     
     def __del__(self):
         self.free()
@@ -745,6 +756,7 @@ class _LlamaCtx:
             with suppress_output(disable=get_verbose()):
                 lib.llama_free(self.ctx)
             self.ctx = None
+        self.memory = None
 
 #
 # Llama
@@ -769,17 +781,18 @@ class Llama:
     def __init__(
         self,
         path_model: str,
-        n_gpu_layers: int = 0,
-        n_ctx: int = 512,
-        n_threads: int = 0,
-        n_threads_batch: int = 0,
-        type_k: Optional[int] = None,
-        type_v: Optional[int] = None,
-        offload_kqv: bool = False,
-        flash_attn: bool = False,
-        warmup: bool = False,
-        verbose: bool = True,
-        vocab_only: bool = False,
+
+        n_gpu_layers:    int           = 0,
+        n_ctx:           int           = 512,
+        n_threads:       int           = 0,
+        n_threads_batch: int           = 0,
+        type_k:          Optional[int] = None,
+        type_v:          Optional[int] = None,
+        offload_kqv:     bool          = False,
+        flash_attn:      bool          = False,
+        warmup:          bool          = False,
+        verbose:         bool          = True,
+        vocab_only:      bool          = False,
         **kwargs
     ):
         """Load a llama model from a file
@@ -905,7 +918,7 @@ class Llama:
                 
                 # NOTE: if n_ctx > n_ctx_train, then rope_freq_base must also be
                 #       increased by at least a proportional amount to guarantee a
-                #       usable kv cache throughout the entire context
+                #       usable KV cache throughout the entire context
                 #
                 #       the function _calculate_rope_freq_base handles this
 
@@ -1093,14 +1106,15 @@ class Llama:
             if _pos < 0:
                 self.reset()
                 log_verbose(
-                    f'self.pos value was {self.pos} - clamping to 0. the KV cache has been reset.',
+                    f'self.pos value was {self.pos} - clamping to 0. '
+                    f'the memory has been reset.',
                     2
                 )
             if _pos != _n_context_tokens:
                 self.reset()
                 log_verbose(
-                    f'n_context_tokens {_n_context_tokens} did not match self.pos {_pos}. the KV '
-                    f'cache has been reset.', 2
+                    f'n_context_tokens {_n_context_tokens} did not match self.pos {_pos}. the '
+                    f'memory has been reset.', 2
                 )
             if not hasattr(self, '_default_sampler_params'):
                 self._default_sampler_params = SamplerParams(self)
@@ -1138,93 +1152,108 @@ class Llama:
         log_verbose('warmup: done')
 
     def n_ctx(self) -> int:
-        """Get the current context length"""
+        """Get the current context length."""
         if self.vocab_only:
             raise RuntimeError('Llama.n_ctx: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_ctx")
         return lib.llama_n_ctx(self._ctx.ctx)
 
     def n_batch(self) -> int:
-        """Get the current batch size"""
+        """Get the current batch size of the context."""
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_batch")
         if self.vocab_only:
             raise RuntimeError('Llama.n_batch: this instance is vocab-only')
         return lib.llama_n_batch(self._ctx.ctx)
 
     def n_ubatch(self) -> int:
-        """Get the current micro-batch size"""
+        """Get the current micro-batch size of the context."""
         if self.vocab_only:
             raise RuntimeError('Llama.n_ubatch: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_batch")
         return lib.llama_n_ubatch(self._ctx.ctx)
 
     def n_seq_max(self) -> int:
-        """Get the max number of sequences"""
+        """Get the maximum number of sequences supported by the context."""
         if self.vocab_only:
             raise RuntimeError('Llama.n_seq_max: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_seq_max")
         return lib.llama_n_seq_max(self._ctx.ctx)
+    
+    def n_params(self) -> int:
+        """Get the total number of parameters in the model."""
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_params")
+        return lib.llama_model_n_params(self._model.model)
 
     def n_vocab(self) -> int:
-        """Get the vocab size"""
+        """Get the number of tokens in the model's vocab."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.n_vocab")
         return lib.llama_vocab_n_tokens(self._vocab)
 
     def n_ctx_train(self) -> int:
-        """Get the trained context length"""
+        """Get the trained context length of the model."""
         null_ptr_check(self._model.model, 'self._model.model', 'Llama.n_ctx_train')
         return lib.llama_model_n_ctx_train(self._model.model)
 
     def n_embd(self) -> int:
-        """Get the embedding size"""
+        """Get the embedding size of the model (d_model)."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_embd")
         return lib.llama_model_n_embd(self._model.model)
 
     def n_layer(self) -> int:
-        """Get the number of layers"""
+        """Get the number of layers in the model."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_layer")
         return lib.llama_model_n_layer(self._model.model)
 
-    def n_head(self) -> int:
-        """Get the number of attention heads"""
+    def n_attn_head(self) -> int:
+        """Get the number of attention heads in the model."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_head")
         return lib.llama_model_n_head(self._model.model)
     
-    def n_head_kv(self) -> int:
-        """Get the number of KV heads"""
+    def n_kv_head(self) -> int:
+        """Get the number of key-value heads in the model."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.n_head_kv")
         return lib.llama_model_n_head_kv(self._model.model)
+    
+    def n_swa(self) -> int:
+        """Get the sliding window size, for models which use sliding window attention."""
+        null_ptr_check(self._model.model, "self._model.model", "Llama.n_swa")
+        return lib.llama_model_n_swa(self._model.model)
+    
+    def n_cls_out(self) -> int:
+        """Get the number of classifier outputs (only valid for classifier models)."""
+        return lib.llama_model_n_cls_out(self._model.model)
 
     def pooling_type(self) -> int:
-        """Get the pooling type used by the context"""
+        """Get the pooling type used by the context."""
         if self.vocab_only:
             raise RuntimeError('Llama.pooling_type: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.pooling_type")
         return lib.llama_pooling_type(self._ctx.ctx)
 
-    def n_swa(self) -> int:
-        """Get the sliding window size, for models which use SWA."""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.n_swa")
-        return lib.llama_model_n_swa(self._model.model)
-
     def vocab_type(self) -> int:
-        """Get the vocab type"""
+        """Get the vocab type of the model (one of `LlamaVocabType`)."""
         null_ptr_check(self._vocab, "self._vocab", "Llama.vocab_type")
         return lib.llama_vocab_type(self._vocab)
 
     def rope_type(self) -> int:
-        """Get the RoPE type"""
+        """Get the RoPE type of the model."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.rope_type")
         return lib.llama_model_rope_type(self._model.model)
 
     def rope_freq_scale_train(self) -> float:
-        """Get the trained RoPE frequency scale"""
+        """Get the trained RoPE frequency scale."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.rope_freq_scale_train")
         return lib.llama_model_rope_freq_scale_train(self._model.model)
 
-    def model_size_bytes(self) -> int:
-        """Get the total size of all tensors in the model, in bytes"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.model_size_bytes")
+    def get_cls_label_by_index(self, i: int) -> Optional[str]:
+        """Get the label of a classifier output by its index.
+        
+        Returns `nullptr` if no index is provided."""
+        return lib.llama_model_cls_label(self._model.model, i)
+
+    def model_size(self) -> int:
+        """Get the total size of all the tensors in the model in bytes."""
+        null_ptr_check(self._model.model, "self._model.model", "Llama.model_size")
         return lib.llama_model_size(self._model.model)
     
     def chat_template(self) -> Optional[str]:
@@ -1232,103 +1261,98 @@ class Llama:
         null_ptr_check(self._model.model, "self._model.model", "Llama.chat_template")
         return lib.llama_model_chat_template(self._model.model, name=None)
 
-    def n_params(self) -> int:
-        """Get the total number of parameters in the model"""
-        null_ptr_check(self._model.model, "self._model.model", "Llama.n_params")
-        return lib.llama_model_n_params(self._model.model)
-
     def has_encoder(self) -> bool:
-        """If the model has an encoder"""
+        """If the model has an encoder."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.has_encoder")
         return lib.llama_model_has_encoder(self._model.model)
 
     def has_decoder(self) -> bool:
-        """If the model has a decoder"""
+        """If the model has a decoder."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.has_decoder")
         return lib.llama_model_has_decoder(self._model.model)
 
     def is_recurrent(self) -> bool:
-        """If the model is recurrent"""
+        """If the model is recurrent."""
         null_ptr_check(self._model.model, "self._model.model", "Llama.is_recurrent")
         return lib.llama_model_is_recurrent(self._model.model)
     
     #
-    # KV cache management methods
+    # Memory management methods (formerly "KV cache management methods")
     #
 
-    def kv_cache_clear(self) -> None:
-        """Clear the KV cache"""
+    def memory_clear(self) -> None:
+        """Clear the memory contents and data buffers."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_clear: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_clear")
-        lib.llama_kv_self_clear(self._ctx.ctx)
+            raise RuntimeError('Llama.memory_clear: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_clear")
+        lib.llama_memory_clear(self._ctx.mem, data=True)
 
-    def kv_cache_seq_rm(self, seq_id: int, p0: int, p1: int) -> bool:
-        """Remove tokens from a sequence in the KV cache"""
+    def memory_seq_rm(self, seq_id: int, p0: int, p1: int) -> bool:
+        """Remove tokens from a sequence in the memory."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_rm: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_rm")
-        return lib.llama_kv_self_seq_rm(self._ctx.ctx, seq_id, p0, p1)
+            raise RuntimeError('Llama.memory_seq_rm: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_rm")
+        return lib.llama_memory_seq_rm(self._ctx.mem, seq_id, p0, p1)
 
-    def kv_cache_seq_cp(self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
-        """Copy tokens between sequences in the KV cache"""
+    def memory_seq_cp(self, seq_id_src: int, seq_id_dst: int, p0: int, p1: int) -> None:
+        """Copy tokens between sequences in the memory."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_cp: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_cp")
-        lib.llama_kv_self_seq_cp(self._ctx.ctx, seq_id_src, seq_id_dst, p0, p1)
+            raise RuntimeError('Llama.memory_seq_cp: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_cp")
+        lib.llama_memory_seq_cp(self._ctx.mem, seq_id_src, seq_id_dst, p0, p1)
 
-    def kv_cache_seq_keep(self, seq_id: int) -> None:
-        """Remove all tokens except for the ones in this sequence"""
+    def memory_seq_keep(self, seq_id: int) -> None:
+        """Remove all tokens except for the ones in this sequence."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_keep: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_keep")
-        lib.llama_kv_self_seq_keep(self._ctx.ctx, seq_id)
+            raise RuntimeError('Llama.memory_seq_keep: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_keep")
+        lib.llama_memory_seq_keep(self._ctx.mem, seq_id)
 
-    def kv_cache_seq_add(self, seq_id: int, p0: int, p1: int, delta: int) -> None:
+    def memory_seq_add(self, seq_id: int, p0: int, p1: int, delta: int) -> None:
         """Add relative position "delta" to the tokens"""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_add: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_add")
-        lib.llama_kv_self_seq_add(self._ctx.ctx, seq_id, p0, p1, delta)
+            raise RuntimeError('Llama.memory_seq_add: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_add")
+        lib.llama_memory_seq_add(self._ctx.mem, seq_id, p0, p1, delta)
 
-    def kv_cache_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
+    def memory_seq_div(self, seq_id: int, p0: int, p1: int, d: int) -> None:
         """Integer division of the positions by factor of `d > 1`"""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_div: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_div")
-        lib.llama_kv_self_seq_div(self._ctx.ctx, seq_id, p0, p1, d)
+            raise RuntimeError('Llama.memory_seq_div: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_div")
+        lib.llama_memory_seq_div(self._ctx.mem, seq_id, p0, p1, d)
     
-    def kv_cache_seq_pos_min(self, seq_id: int) -> int:
-        """Returns the earliest valid position in the KV cache for the specified sequence
-        (relevant for models which use SWA)"""
+    def memory_seq_pos_min(self, seq_id: int) -> int:
+        """Returns the earliest valid position in the memory for the specified sequence
+        (relevant for models which use SWA)."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_pos_min: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max")
-        return lib.llama_kv_self_seq_pos_min(self._ctx.ctx, seq_id)
+            raise RuntimeError('Llama.memory_seq_pos_min: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_pos_min")
+        return lib.llama_memory_seq_pos_min(self._ctx.mem, seq_id)
 
-    def kv_cache_seq_pos_max(self, seq_id: int) -> int:
-        """Returns the largest position present in the KV cache for the specified sequence"""
+    def memory_seq_pos_max(self, seq_id: int) -> int:
+        """Returns the largest position present in the memory for the specified sequence."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_seq_pos_max: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_seq_pos_max")
-        return lib.llama_kv_self_seq_pos_max(self._ctx.ctx, seq_id)
+            raise RuntimeError('Llama.memory_seq_pos_max: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_seq_pos_max")
+        return lib.llama_memory_seq_pos_max(self._ctx.mem, seq_id)
 
-    def kv_cache_can_shift(self) -> bool:
-        """Check if the context supports KV cache shifting"""
+    def memory_can_shift(self) -> bool:
+        """If the memory supports shifting."""
         if self.vocab_only:
-            raise RuntimeError('Llama.kv_cache_can_shift: this instance is vocab-only')
-        null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.kv_cache_can_shift")
-        return lib.llama_kv_self_can_shift(self._ctx.ctx)
+            raise RuntimeError('Llama.memory_can_shift: this instance is vocab-only')
+        null_ptr_check(self._ctx.mem, "self._ctx.mem", "Llama.memory_can_shift")
+        return lib.llama_memory_can_shift(self._ctx.mem)
 
     def n_threads(self) -> int:
-        """Get the number of threads used for batch size == 1"""
+        """Get the number of threads used for batch size == 1 (text generation)."""
         if self.vocab_only:
             raise RuntimeError('Llama.n_threads: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads")
         return lib.llama_n_threads(self._ctx.ctx)
 
     def n_threads_batch(self) -> int:
-        """Get the number of threads used for batch sizes > 1"""
+        """Get the number of threads used for batch sizes > 1 (prompt processing)."""
         if self.vocab_only:
             raise RuntimeError('Llama.n_threads_batch: this instance is vocab-only')
         null_ptr_check(self._ctx.ctx, "self._ctx.ctx", "Llama.n_threads_batch")
@@ -1386,14 +1410,19 @@ class Llama:
         return tok_id if tok_id != lib.LLAMA_TOKEN_NULL else None
 
     def add_bos_token(self) -> bool:
-        """If the model is configured to add a BOS token"""
+        """If the model is configured to add a BOS token when tokenizing"""
         null_ptr_check(self._vocab, "self._vocab", "Llama.add_bos_token")
         return lib.llama_vocab_get_add_bos(self._vocab)
 
     def add_eos_token(self) -> bool:
-        """If the model is configured to add an EOS token"""
+        """If the model is configured to add an EOS token when tokenizing"""
         null_ptr_check(self._vocab, "self._vocab", "Llama.add_eos_token")
         return lib.llama_vocab_get_add_eos(self._vocab)
+    
+    def add_sep_token(self) -> bool:
+        """If the model is configured to add a SEP token when tokenizing"""
+        null_ptr_check(self._vocab, "self._vocab", "Llama.add_sep_token")
+        return lib.llama_vocab_get_add_sep(self._vocab)
 
     def token_fim_pre(self) -> Optional[int]:
         """Get the FIM PRE (Fill-In-Middle Prefix) token. Return None if not available."""
@@ -1530,7 +1559,7 @@ class Llama:
         if n_input_tokens == 0:
             raise ValueError(f'Llama._set_cache_tokens: input_tokens cannot be empty')
         
-        # find how many tokens in the input are already in the KV cache
+        # find how many tokens in the input are already in the memory
         self.pos = self._first_valid_pos(input_tokens)
 
         if self.pos > self._n_ctx:
@@ -1539,10 +1568,10 @@ class Llama:
                 f'{self._n_ctx} (self.pos = {self.pos})'
             )
 
-        # remove all tokens in the KV cache that are past that point
-        self.kv_cache_seq_rm(0, self.pos, -1)
+        # remove all tokens in the memory that are past that point
+        self.memory_seq_rm(0, self.pos, -1)
 
-        # tokens already in the KV cache
+        # tokens already in the memory
         self.context_tokens = input_tokens[:self.pos]
 
         # tokens returned to caller for processing
@@ -1632,7 +1661,7 @@ class Llama:
         if logits_all:
             if self._first_valid_pos(input_tokens) > 0:
                 log(
-                    f'Llama.eval: the KV cache will be cleared in order to compute the logits '
+                    f'Llama.eval: the memory will be cleared in order to compute the logits '
                     f'for all tokens in the input', 2
                 )
             
@@ -2280,8 +2309,8 @@ class Llama:
             raise RuntimeError(f'Llama.load_state: failed to load state')
 
     def reset(self) -> None:
-        """Reset the position of the model and clear the KV cache"""
+        """Reset the position of the model and clear the memory"""
         if not self.vocab_only:
-            self.kv_cache_clear()
+            self.memory_clear()
             self.pos = 0
             self.context_tokens = []

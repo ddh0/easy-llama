@@ -28,56 +28,66 @@ class Thread:
     def __init__(
         self,
         llama: _llama.Llama,
-        sampler_preset: Optional[SamplerPreset] = None,
-        context: Optional[dict[str, Any]] = None
+
+        sampler_preset:       Optional[SamplerPreset]  = None,
+        chat_template:        Optional[str]            = None,
+        chat_template_kwargs: Optional[dict[str, Any]] = None
     ):
         if not isinstance(llama, _llama.Llama):
             raise TypeError(
-                f'Thread.__init__: llama must be an instance of llama.Llama, not {type(llama)}'
+                f'Thread.__init__: llama must be an instance of {_llama.Llama}, not '
+                f'{type(llama)}'
             )
         
         llama._validate_model_state()
 
+        if llama.vocab_only:
+            raise RuntimeError(
+                f'Thread.__init__: cannot create a Thread with a vocab-only Llama!'
+            )
+        
         self.llama = llama
+
+        # this could be None if the GGUF metadata doesn't specify a chat template,
+        # but that's very unlikely in practice
+        self._llama_chat_template = self.llama.chat_template()
+
         self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
-        self.context = context if context is not None else {}
-        self.messages: list[dict[str, Union[Role, str]]] = []
+        self.chat_template = chat_template if chat_template is not None else self._llama_chat_template
+        self.chat_template_kwargs = chat_template_kwargs if chat_template_kwargs is not None else {}
     
     def __repr__(self) -> str:
         return (
             f"Thread("
             f"llama={self.llama!r}, "
             f"sampler_preset={self.sampler_preset!r}, "
-            f"context={self.context!r}, "
-            f"messages={self.messages!r}"
+            f"chat_template={self.chat_template!r}, "
+            f"chat_template_kwargs={self.chat_template_kwargs!r}"
             f")"
         )
 
-    def _render_msgs(
-        self,
-        add_generation_prompt: bool = True
-    ) -> str:
-        """Render the chat template template using the messages in this Thread."""
-        
-        #
-        # get the chat template string from the model's metadata
-        #
+    def _render_msgs(self, add_generation_prompt: bool = True) -> str:
+        """Render the content of this Thread using the chat template."""
 
-        chat_template_str = self.llama.chat_template()
-        if chat_template_str is None:
+        if self.chat_template is None:
             exc_str = (
-                f"_render_msgs: unable to render messages becuase the model has no chat "
-                f"template! re-convert your model or download a newer version."
+                f"_render_msgs: unable to render messages becuase no chat "
+                f"template is set!"
             )
             log(exc_str, 3)
-            raise ValueError(exc_str)
+            hint = (
+                f"this usually happens when the GGUF file header fails to specify a chat "
+                f"template. you can specify a jinja2 chat template when initializing the "
+                f"Thread using `chat_template`."
+            )
+            raise ValueError(exc_str, hint)
         
         #
-        # convert the template string to an actual jinja2 template
+        # convert the chat template string into an actual jinja2 template
         #
 
         try:
-            template = jinja2.Template(chat_template_str)
+            template: jinja2.Template = jinja2.Template(self.chat_template)
         except Exception as exc:
             exc_str = f"_render_msgs: error creating chat template: {exc_to_str(exc)}"
             log(exc_str, 3)
@@ -120,7 +130,7 @@ class Thread:
         context = {
             'messages': jinja_messages,
             'add_generation_prompt': add_generation_prompt,
-            **self.context
+            **self.chat_template_kwargs
         }
 
         #
@@ -140,12 +150,10 @@ class Thread:
         """Get a list of token IDs in this thread, to be used for inference
 
         - add_generation_prompt:
-            Whether or not to include the bot prefix tokens at the end of the input IDs.
-            
-        Any additional kwargs are passed as context for rendering the chat template."""
+            Whether or not to include the bot prefix tokens at the end of the input IDs."""
 
         # render the messages using the provided context
-        thread_chat_string = self._render_msgs(add_generation_prompt)
+        thread_chat_string = self._render_msgs(add_generation_prompt=add_generation_prompt)
 
         # tokenize the rendered chat template
         input_ids = self.llama.tokenize(
@@ -201,6 +209,7 @@ class Thread:
         self.messages.append({'role': role, 'content': content})
     
     def warmup(self) -> None:
+        """Ingest the content of this thread into the model's memory"""
         input_ids = self.get_input_ids()
         if self.llama._first_valid_pos(input_ids) < len(input_ids):
             _llama.log_verbose('Thread.warmup: processing thread content with model ...')
