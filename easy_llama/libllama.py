@@ -5,9 +5,9 @@
 # Manually update these constants to reflect the currently targeted version of llama.cpp:
 # -------------------------------------------------------------------------------------------- #
 # llama.cpp commit OID
-_TARGET_LLAMACPP_COMMIT = "8f22dc0a53338c629c1ef8fa878d8e39bfe627c9"
+_TARGET_LLAMACPP_COMMIT = "0b8855775c6b873931d40b77a5e42558aacbde52"
 # YYYY-MM-DD, the date of the above commit
-_TARGET_LLAMACPP_DATE   = "2025-07-08"
+_TARGET_LLAMACPP_DATE   = "2025-07-10"
 # -------------------------------------------------------------------------------------------- #
 
 f"""This file provides a Python interface to LLAMA_API ("libllama"), which is originally defined
