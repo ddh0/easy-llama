@@ -5,7 +5,8 @@
 # Manually update these constants to reflect the currently targeted version of llama.cpp:
 # -------------------------------------------------------------------------------------------- #
 # llama.cpp commit OID
-_TARGET_LLAMACPP_COMMIT = "0b8855775c6b873931d40b77a5e42558aacbde52"
+#_TARGET_LLAMACPP_COMMIT = "0b8855775c6b873931d40b77a5e42558aacbde52"
+_TARGET_LLAMACPP_COMMIT = "3df2244df40c67dfd6ad548b40ccc507a066af2b"
 # YYYY-MM-DD, the date of the above commit
 _TARGET_LLAMACPP_DATE   = "2025-07-10"
 # -------------------------------------------------------------------------------------------- #
@@ -51,7 +52,9 @@ NULLPTR = ctypes.c_void_p(NULL)
 C_FALSE = ctypes.c_int8(0)
 C_TRUE = ctypes.c_int8(1)
 
-MAX_TOKEN_LENGTH = 256 # update this if you find a token that is > 256 bytes long
+p_c_uint8 = type(ctypes.POINTER(ctypes.c_uint8))
+
+MAX_TOKEN_LENGTH = 1024 # update this if you find a token that is > 1024 bytes long
 """The maximum supported length of a single token's text, in bytes"""
 
 # maximum value for int32, it is used as the value for n_gpu_layers
@@ -122,7 +125,8 @@ class GGMLType(IntEnum):
     # GGML_TYPE_IQ4_NL_4_4 = 36
     # GGML_TYPE_IQ4_NL_4_8 = 37
     # GGML_TYPE_IQ4_NL_8_8 = 38
-    GGML_TYPE_COUNT   = 39
+    GGML_TYPE_MXFP4   = 39
+    GGML_TYPE_COUNT   = 40
 
 # these values are from llama.cpp/gguf-py/gguf/constants.py
 class GGUFValueType(IntEnum):
@@ -158,9 +162,11 @@ LLAMA_SESSION_VERSION = 9
 LLAMA_STATE_SEQ_MAGIC   = LLAMA_FILE_MAGIC_GGSQ
 LLAMA_STATE_SEQ_VERSION = 2
 
+# ==============================================================================================
 #
 # Begin LLAMA_API
 #
+# ==============================================================================================
 
 class llama_vocab(ctypes.Structure):
     pass
@@ -198,12 +204,13 @@ llama_seq_id = ctypes.c_int32
 #
 
 class LlamaVocabType(IntEnum):
-    LLAMA_VOCAB_TYPE_NONE = 0 # For models without vocab
-    LLAMA_VOCAB_TYPE_SPM  = 1 # LLaMA tokenizer based on byte-level BPE with byte fallback
-    LLAMA_VOCAB_TYPE_BPE  = 2 # GPT-2 tokenizer based on byte-level BPE
-    LLAMA_VOCAB_TYPE_WPM  = 3 # BERT tokenizer based on WordPiece
-    LLAMA_VOCAB_TYPE_UGM  = 4 # T5 tokenizer based on Unigram
-    LLAMA_VOCAB_TYPE_RWKV = 5 # RWKV tokenizer based on greedy tokenization
+    LLAMA_VOCAB_TYPE_NONE   = 0 # For models without vocab
+    LLAMA_VOCAB_TYPE_SPM    = 1 # LLaMA tokenizer based on byte-level BPE with byte fallback
+    LLAMA_VOCAB_TYPE_BPE    = 2 # GPT-2 tokenizer based on byte-level BPE
+    LLAMA_VOCAB_TYPE_WPM    = 3 # BERT tokenizer based on WordPiece
+    LLAMA_VOCAB_TYPE_UGM    = 4 # T5 tokenizer based on Unigram
+    LLAMA_VOCAB_TYPE_RWKV   = 5 # RWKV tokenizer based on greedy tokenization
+    LLAMA_VOCAB_TYPE_PLAMO2 = 6 # PLaMo-2 tokenizer based on Aho-Corasick with dynamic programming
 
 class LlamaVocabPreType(IntEnum):
     LLAMA_VOCAB_PRE_TYPE_DEFAULT        = 0
@@ -313,6 +320,7 @@ class LlamaFType(IntEnum):
     # LLAMA_FTYPE_MOSTLY_Q4_0_8_8 = 35 -- removed from gguf files, use Q4_0 and runtime repack
     LLAMA_FTYPE_MOSTLY_TQ1_0         = 36 # except 1d tensors
     LLAMA_FTYPE_MOSTLY_TQ2_0         = 37 # except 1d tensors
+    LLAMA_FTYPE_MOSTLY_MXFP4_MOE     = 38 # except 1d tensors
 
     LLAMA_FTYPE_GUESSED = 1024 # not specified in the model file
 
@@ -326,16 +334,32 @@ class LlamaRopeScalingType(IntEnum):
 
 class LlamaPoolingType(IntEnum):
     LLAMA_POOLING_TYPE_UNSPECIFIED = -1
-    LLAMA_POOLING_TYPE_NONE = 0
-    LLAMA_POOLING_TYPE_MEAN = 1
-    LLAMA_POOLING_TYPE_CLS  = 2
-    LLAMA_POOLING_TYPE_LAST = 3
-    LLAMA_POOLING_TYPE_RANK = 4 # used by reranking models to attach the classification head to the graph
+    LLAMA_POOLING_TYPE_NONE        = 0
+    LLAMA_POOLING_TYPE_MEAN        = 1
+    LLAMA_POOLING_TYPE_CLS         = 2
+    LLAMA_POOLING_TYPE_LAST        = 3
+    LLAMA_POOLING_TYPE_RANK        = 4 # used by reranking models to attach the classification head to the graph
 
 class LlamaAttentionType(IntEnum):
     LLAMA_ATTENTION_TYPE_UNSPECIFIED = -1
     LLAMA_ATTENTION_TYPE_CAUSAL      = 0
     LLAMA_ATTENTION_TYPE_NON_CAUSAL  = 1
+
+class LlamaFlashAttnType(IntEnum):
+    LLAMA_FLASH_ATTN_TYPE_AUTO     = -1
+    LLAMA_FLASH_ATTN_TYPE_DISABLED = 0
+    LLAMA_FLASH_ATTN_TYPE_ENABLED  = 1
+
+def llama_flash_attn_type_name(flash_attn_type: int) -> str:
+    """Get the name of a flash attention type"""
+    libllama.llama_flash_attn_type_name.argtypes = [ctypes.c_int]
+    libllama.llama_flash_attn_type_name.restype = ctypes.c_char_p
+    c_name = libllama.llama_flash_attn_type_name(flash_attn_type)
+    if c_name:
+        c_name_p = ctypes.c_char_p(c_name)
+        return c_name_p.value.decode('utf-8')
+    else:
+        return ""
 
 class LlamaSplitMode(IntEnum):
     LLAMA_SPLIT_MODE_NONE  = 0 # single GPU
@@ -356,7 +380,7 @@ class llama_token_data_array(ctypes.Structure):
         ("data",     ctypes.POINTER(llama_token_data)), # NOTE: this pointer can be modified by the samplers
         ("size",     ctypes.c_size_t                 ),
         ("selected", ctypes.c_int64                  ), # this is the index in the data array (i.e. not the token id)
-        ("sorted",   ctypes.c_bool                   )
+        ("sorted",   ctypes.c_bool                   )  # NOTE: do not assume the data is sorted - always check this flag
     ]
 
 llama_token_data_array_p = ctypes.POINTER(llama_token_data_array)
@@ -375,8 +399,8 @@ class llama_batch(ctypes.Structure):
         ("n_seq_id", ctypes.POINTER(ctypes.c_int32)              ),
         # the sequence to which the respective token belongs
         ("seq_id",   ctypes.POINTER(ctypes.POINTER(llama_seq_id))),
-        # if zero: the logits (and/or the embeddings) for the respective token will not be output
-        # if null:
+        # if C_FALSE: the logits (and/or the embeddings) for the respective token will not be output
+        # if NULL:
         #     - if embd: all tokens are output
         #     - if not:  only the last token is output
         ("logits",   ctypes.POINTER(ctypes.c_int8)               ) # use C_FALSE / C_TRUE
@@ -439,7 +463,7 @@ class llama_model_params(ctypes.Structure):
         # If the provided progress_callback returns true, model loading continues.
         # If it returns false, model loading is immediately aborted.
         ("progress_callback", progress_callback_functype),
-        
+
         # context pointer passed to the progress callback
         ("progress_callback_user_data", ctypes.c_void_p),
 
@@ -447,10 +471,12 @@ class llama_model_params(ctypes.Structure):
         ("kv_overrides", ctypes.POINTER(llama_model_kv_override)),
 
         # Keep the booleans together to avoid misalignment during copy-by-value.
-        ("vocab_only",    ctypes.c_bool), # only load the vocabulary, no weights
-        ("use_mmap",      ctypes.c_bool), # use mmap if possible
-        ("use_mlock",     ctypes.c_bool), # force system to keep model in RAM
-        ("check_tensors", ctypes.c_bool)  # validate model tensor data
+        ("vocab_only",      ctypes.c_bool), # only load the vocabulary, no weights
+        ("use_mmap",        ctypes.c_bool), # use mmap if possible
+        ("use_mlock",       ctypes.c_bool), # force system to keep model in RAM
+        ("check_tensors",   ctypes.c_bool), # validate model tensor data
+        ("use_extra_bufts", ctypes.c_bool), # use extra buffer types (used for weight repacking)
+        ("no_host",         ctypes.c_bool)  # bypass host buffer allowing extra buffers to be used
     ]
 
 llama_model_params_p = ctypes.POINTER(llama_model_params)
@@ -470,9 +496,10 @@ class llama_context_params(ctypes.Structure):
         ("n_threads",       ctypes.c_int32 ), # number of threads to use for generation
         ("n_threads_batch", ctypes.c_int32 ), # number of threads to use for batch processing
 
-        ("rope_scaling_type", ctypes.c_int), # RoPE scaling type, from `enum llama_rope_scaling_type`
-        ("pooling_type",      ctypes.c_int), # whether to pool (sum) embedding results by sequence id
-        ("attention_type",    ctypes.c_int), # attention type to use for embeddings
+        ("rope_scaling_type",     ctypes.c_int), # RoPE scaling type, from `enum llama_rope_scaling_type`
+        ("pooling_type",          ctypes.c_int), # whether to pool (sum) embedding results by sequence id
+        ("attention_type",        ctypes.c_int), # attention type to use for embeddings
+        ("llama_flash_attn_type", ctypes.c_int), # when to enable Flash Attention
 
         # ref: https://github.com/ggml-org/llama.cpp/pull/2054
         ("rope_freq_base",   ctypes.c_float ), # RoPE base frequency, 0 = from model
@@ -482,7 +509,7 @@ class llama_context_params(ctypes.Structure):
         ("yarn_beta_fast",   ctypes.c_float ), # YaRN low correction dim
         ("yarn_beta_slow",   ctypes.c_float ), # YaRN high correction dim
         ("yarn_orig_ctx",    ctypes.c_uint32), # YaRN original context size
-        ("defrag_thold",     ctypes.c_float ), # defragment the KV cache if holes/size > thold, < 0 disabled (default)
+        ("defrag_thold",     ctypes.c_float ), # [DEPRECATED] defragment the KV cache if holes/size > thold, < 0 disabled (default)
 
         ("cb_eval",           eval_callback_functype), # callback for eval
         ("cb_eval_user_data", ctypes.c_void_p       ), # user data for eval callback
@@ -499,10 +526,14 @@ class llama_context_params(ctypes.Structure):
         # Keep the booleans together and at the end of the struct to avoid misalignment during copy-by-value.
         ("embeddings",  ctypes.c_bool), # if true, extract embeddings (together with logits)
         ("offload_kqv", ctypes.c_bool), # whether to offload the KQV ops (including the KV cache) to GPU
-        ("flash_attn",  ctypes.c_bool), # whether to use flash attention [EXPERIMENTAL]
         ("no_perf",     ctypes.c_bool), # whether to measure performance timings
         ("op_offload",  ctypes.c_bool), # whether to offload host tensor operations to device
-        ("swa_full",    ctypes.c_bool)  # use full-size SWA cache (https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+        ("swa_full",    ctypes.c_bool), # use full-size SWA cache (https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+
+        # use a unified buffer across the input sequences when computing the attention
+        # try to disable when n_seq_max > 1 for improved performance when the sequences do not share a large prefix
+        # ref: https://github.com/ggml-org/llama.cpp/pull/14363
+        ("kv_unified",  ctypes.c_bool)
     ]
 
 llama_context_params_p = ctypes.POINTER(llama_context_params)
@@ -565,10 +596,10 @@ def llama_backend_init() -> None:
     """Initialize the libllama backend. This function needs to be called before any other
     libllama functions can be used."""
     global _BACKEND_INIT, libllama, _PATH
-    
+
     if _BACKEND_INIT:
         return
-    
+
     log_verbose(
         f'easy_llama v{__version__} '
         f'targeting llama.cpp@{_TARGET_LLAMACPP_COMMIT[:8]} ({_TARGET_LLAMACPP_DATE})'
@@ -611,7 +642,7 @@ def llama_backend_init() -> None:
         raise exc
     else:
         log(f'loaded libllama from {lib_path}')
-    
+
     # actually initialize the backend
     libllama.llama_backend_init.argtypes = []
     libllama.llama_backend_init.restype = None
@@ -992,6 +1023,18 @@ def llama_model_is_recurrent(model: ptr[llama_model]) -> bool:
     libllama.llama_model_is_recurrent.restype = ctypes.c_bool
     return libllama.llama_model_is_recurrent(model)
 
+def llama_model_is_hybrid(model: ptr[llama_model]) -> bool:
+    """Check if the model is hybrid (like Jamba, Granite, etc.)"""
+    libllama.llama_model_is_hybrid.argtypes = [llama_model_p]
+    libllama.llama_model_is_hybrid.restype = ctypes.c_bool
+    return libllama.llama_model_is_hybrid(model)
+
+def llama_model_is_diffusion(model: ptr[llama_model]) -> bool:
+    """Check if the model is diffusion-based (like LLaDA, Dream, etc.)"""
+    libllama.llama_model_is_diffusion.argtypes = [llama_model_p]
+    libllama.llama_model_is_diffusion.restype = ctypes.c_bool
+    return libllama.llama_model_is_diffusion(model)
+
 #
 # Quantization
 #
@@ -1011,6 +1054,37 @@ def llama_adapter_lora_init(model: ptr[llama_model], path_lora: str) -> ptr[llam
     libllama.llama_adapter_lora_init.argtypes = [llama_model_p, ctypes.c_char_p]
     libllama.llama_adapter_lora_init.restype = llama_adapter_lora_p
     return libllama.llama_adapter_lora_init(model, path_lora.encode('utf-8'))
+
+
+# Functions to access the adapter's GGUF metadata scalar values
+# - The functions return the length of the string on success, or -1 on failure
+# - The output string is always null-terminated and cleared on failure
+# - When retrieving a string, an extra byte must be allocated to account for the null terminator
+# - GGUF array values are not supported by these functions
+
+def llama_adapter_meta_val_str(adapter: ptr[llama_adapter_lora], key: str, buf: ctypes.c_char_p, buf_size: int) -> int:
+    """Get metadata value as a string by key name"""
+    libllama.llama_adapter_meta_val_str.argtypes = [llama_adapter_lora_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_size_t]
+    libllama.llama_adapter_meta_val_str.restype = ctypes.c_int32
+    return libllama.llama_adapter_meta_val_str(adapter, key.encode('utf-8'), buf, buf_size)
+
+def llama_adapter_meta_count(adapter: ptr[llama_adapter_lora]) -> int:
+    """Get the number of metadata key/value pairs"""
+    libllama.llama_adapter_meta_count.argtypes = [llama_adapter_lora_p]
+    libllama.llama_adapter_meta_count.restype = ctypes.c_int32
+    return libllama.llama_adapter_meta_count(adapter)
+
+def llama_adapter_meta_key_by_index(adapter: ptr[llama_adapter_lora], i: int, buf: ctypes.c_char_p, buf_size: int) -> int:
+    """Get metadata key name by index"""
+    libllama.llama_adapter_meta_key_by_index.argtypes = [llama_adapter_lora_p, ctypes.c_int32, ctypes.c_char_p, ctypes.c_size_t]
+    libllama.llama_adapter_meta_key_by_index.restype = ctypes.c_int32
+    return libllama.llama_adapter_meta_key_by_index(adapter, i, buf, buf_size)
+
+def llama_adapter_meta_val_str_by_index(adapter: ptr[llama_adapter_lora], i: int, buf: ctypes.c_char_p, buf_size: int) -> int:
+    """Get metadata value as a string by index"""
+    libllama.llama_adapter_meta_val_str_by_index.argtypes = [llama_adapter_lora_p, ctypes.c_int32, ctypes.c_char_p, ctypes.c_size_t]
+    libllama.llama_adapter_meta_val_str_by_index.restype = ctypes.c_int32
+    return libllama.llama_adapter_meta_val_str_by_index(adapter, i, buf, buf_size)
 
 def llama_adapter_lora_set(ctx: ptr[llama_context], adapter: llama_adapter_lora, scale: float) -> int:
     """Set a LoRA adapter for a context"""
@@ -1035,6 +1109,23 @@ def llama_adapter_lora_free(adapter: ptr[llama_adapter_lora]) -> None:
     libllama.llama_adapter_lora_free.argtypes = [llama_adapter_lora_p]
     libllama.llama_adapter_lora_free.restype = None
     libllama.llama_adapter_lora_free(adapter)
+
+def llama_adapter_get_alora_n_invocation_tokens(adapter: ptr[llama_adapter_lora]) -> int:
+    """Get the number of invocation tokens if the current lora is an alora"""
+    libllama.llama_adapter_get_alora_n_invocation_tokens.argtypes = [llama_adapter_lora_p]
+    libllama.llama_adapter_get_alora_n_invocation_tokens.restype = ctypes.c_uint64
+    return libllama.llama_adapter_get_alora_n_invocation_tokens(adapter)
+
+def llama_adapter_get_alora_invocation_tokens(adapter: ptr[llama_adapter_lora]) -> list:
+    """Get the invocation tokens if the current lora is an alora"""
+    libllama.llama_adapter_get_alora_invocation_tokens.argtypes = [llama_adapter_lora_p]
+    libllama.llama_adapter_get_alora_invocation_tokens.restype = ctypes.POINTER(llama_token)
+    n_tokens = llama_adapter_get_alora_n_invocation_tokens(adapter)
+    c_tokens = libllama.llama_adapter_get_alora_invocation_tokens(adapter)
+    tokens = []
+    for i in range(n_tokens):
+        tokens.append(c_tokens[i])
+    return tokens
 
 #
 # Control vector
@@ -1181,7 +1272,7 @@ def llama_state_seq_get_data(ctx: ptr[llama_context], dst: ctypes.c_void_p, size
 def llama_state_seq_set_data(ctx: ptr[llama_context], src: ctypes.c_void_p, size: int, dest_seq_id: int) -> int:
     """Copy the sequence data (originally copied with `llama_state_seq_get_data`)
     into the specified sequence
-    
+
     Returns:
     - Positive: Ok
     - Zero: Failed to load"""
@@ -1198,6 +1289,32 @@ def llama_state_seq_load_file(ctx: ptr[llama_context], filepath: str, dest_seq_i
     libllama.llama_state_seq_load_file.argtypes = [llama_context_p, ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(ctypes.c_int), ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
     libllama.llama_state_seq_load_file.restype = ctypes.c_size_t
     return libllama.llama_state_seq_load_file(ctx, filepath, dest_seq_id, tokens_out, n_token_capacity, n_token_count_out)
+
+# for backwards-compat
+LLAMA_STATE_SEQ_FLAGS_SWA_ONLY = 1
+
+# work only with partial states, such as SWA KV cache or recurrent cache (e.g. Mamba)
+LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY = 1
+
+llama_state_seq_flags = ctypes.c_uint32
+
+def llama_state_seq_get_size_ext(ctx: ptr[llama_context], seq_id: llama_seq_id, flags: llama_state_seq_flags) -> int:
+    """Get the size of the state sequence with extended flags"""
+    libllama.llama_state_seq_get_size_ext.argtypes = [llama_context_p, llama_seq_id, llama_state_seq_flags]
+    libllama.llama_state_seq_get_size_ext.restype = ctypes.c_size_t
+    return libllama.llama_state_seq_get_size_ext(ctx, seq_id, flags)
+
+def llama_state_seq_get_data_ext(ctx: ptr[llama_context], dst: ptr[ctypes.c_uint8], size: int, seq_id: llama_seq_id, flags: llama_state_seq_flags) -> int:
+    """Get the data of the state sequence with extended flags"""
+    libllama.llama_state_seq_get_data_ext.argtypes = [llama_context_p, ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t, llama_seq_id, llama_state_seq_flags]
+    libllama.llama_state_seq_get_data_ext.restype = ctypes.c_size_t
+    return libllama.llama_state_seq_get_data_ext(ctx, dst, size, seq_id, flags)
+
+def llama_state_seq_set_data_ext(ctx: ptr[llama_context], src: ptr[ctypes.c_uint8], size: int, dest_seq_id: llama_seq_id, flags: llama_state_seq_flags) -> int:
+    """Set the data of the state sequence with extended flags"""
+    libllama.llama_state_seq_set_data_ext.argtypes = [llama_context_p, ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t, llama_seq_id, llama_state_seq_flags]
+    libllama.llama_state_seq_set_data_ext.restype = ctypes.c_size_t
+    return libllama.llama_state_seq_set_data_ext(ctx, src, size, dest_seq_id, flags)
 
 #
 # Batch
@@ -1252,15 +1369,15 @@ def llama_encode(ctx: ptr[llama_context], batch: llama_batch) -> int:
 
 def llama_decode(ctx: ptr[llama_context], batch: llama_batch) -> int:
     """Process a batch of tokens.
-    
+
     Requires the context to have a memory.
     For encoder-decoder contexts, processes the batch using the decoder.
     Positive return values does not mean a fatal error, but rather a warning.
 
     Upon fatal error or abort, the ubatches that managed to be been processed will remain in the memory state of the context.
-    
+
     To handle this correctly, query the memory state using `llama_memory_seq_pos_min()` and `llama_memory_seq_pos_max()`.
-    
+
     Upon other return values, the memory state is restored to the state before this call.
         - 0: success
         - 1: could not find a KV slot for the batch (try reducing the size of the batch or increase the context)
@@ -1322,9 +1439,10 @@ def llama_synchronize(ctx: ptr[llama_context]) -> None:
     libllama.llama_synchronize.restype = None
     libllama.llama_synchronize(ctx)
 
+# NOTE: will be deprecated in favor of llama_get_logits_ith() (ref: https://github.com/ggml-org/llama.cpp/pull/14853#issuecomment-3113143522)
 def llama_get_logits(ctx: ptr[llama_context]) -> ptr[ctypes.c_float]:
     """Get the token logits obtained from the last call to llama_decode()
-    
+
     Rows: number of tokens for which llama_batch.logits[i] != 0
     Cols: n_vocab"""
     libllama.llama_get_logits.argtypes = [llama_context_p]
@@ -1337,6 +1455,7 @@ def llama_get_logits_ith(ctx: ptr[llama_context], i: int) -> ptr[ctypes.c_float]
     libllama.llama_get_logits_ith.restype = ctypes.POINTER(ctypes.c_float)
     return libllama.llama_get_logits_ith(ctx, i)
 
+# NOTE: will be deprecated in favor of llama_get_embeddings_ith() (ref: https://github.com/ggml-org/llama.cpp/pull/14853#issuecomment-3113143522)
 def llama_get_embeddings(ctx: ptr[llama_context]) -> ptr[ctypes.c_float]:
     """Get all output token embeddings"""
     libllama.llama_get_embeddings.argtypes = [llama_context_p]
@@ -1430,6 +1549,12 @@ def llama_vocab_pad(vocab: ptr[llama_vocab]) -> int:
     libllama.llama_vocab_pad.restype = llama_token
     return libllama.llama_vocab_pad(vocab)
 
+def llama_vocab_mask(vocab: ptr[llama_vocab]) -> int:
+    """Get the mask token ID. Returns the value of `LLAMA_TOKEN_NULL` if not found."""
+    libllama.llama_vocab_mask.argtypes = [llama_vocab_p]
+    libllama.llama_vocab_mask.restype = llama_token
+    return libllama.llama_vocab_mask(vocab)
+
 def llama_vocab_get_add_bos(vocab: ptr[llama_vocab]) -> bool:
     """Whether BOS token should be added to tokenizations."""
     libllama.llama_vocab_get_add_bos.argtypes = [llama_vocab_p]
@@ -1506,11 +1631,11 @@ def llama_tokenize(vocab: ptr[llama_vocab], text: bytes, text_len: int, tokens: 
     - parse_special:
         Allow tokenizing special and/or control tokens which otherwise are not
         exposed and treated as plaintext. Does not insert a leading space.
-    
+
     Returns the number of tokens on success, no more than n_tokens_max. Returns
     a negative number on failure - the number of tokens that would have been
     returned.
-    
+
     Returns INT32_MIN on overflow (e.g., tokenization result size exceeds int32_t limit)."""
     libllama.llama_tokenize.argtypes = [llama_vocab_p, ctypes.c_char_p, ctypes.c_int32, ctypes.POINTER(llama_token), ctypes.c_int32, ctypes.c_bool, ctypes.c_bool]
     libllama.llama_tokenize.restype = ctypes.c_int32
@@ -1606,7 +1731,7 @@ def llama_sampler_clone(smpl: ptr[llama_sampler]) -> ptr[llama_sampler]:
 
 def llama_sampler_free(smpl: ptr[llama_sampler]) -> None:
     """Free a sampler
-    
+
     NOTE: Do not free if the sampler has been added to a llama_sampler_chain
     (via llama_sampler_chain_add)"""
     libllama.llama_sampler_free.argtypes = [llama_sampler_p]
@@ -1625,7 +1750,7 @@ def llama_sampler_chain_init(params: llama_sampler_chain_params) -> ptr[llama_sa
 
 def llama_sampler_chain_add(chain: ptr[llama_sampler], smpl: ptr[llama_sampler]) -> None:
     """Add a sampler to a sampler chain
-    
+
     Takes ownership of the sampler object and will free it when llama_sampler_free is called"""
     libllama.llama_sampler_chain_add.argtypes = [llama_sampler_p, llama_sampler_p]
     libllama.llama_sampler_chain_add.restype = None
@@ -1645,7 +1770,7 @@ def llama_sampler_chain_n(chain: ptr[llama_sampler]) -> int:
 
 def llama_sampler_chain_remove(chain: ptr[llama_sampler], i: int) -> ptr[llama_sampler]:
     """Remove a sampler from a sampler chain
-    
+
     After removing a sampler, the chain will no longer own it, and it will not be freed when
     the chain is freed.
     """
@@ -1695,7 +1820,7 @@ def llama_sampler_init_typical(p: float, min_keep: int) -> ptr[llama_sampler]:
 
 def llama_sampler_init_temp(t: float) -> ptr[llama_sampler]:
     """Initialize a temperature sampler
-    
+
     When `t` <= 0.0, the maximum logit is kept at it's original value, the rest are set to
     -inf"""
     libllama.llama_sampler_init_temp.argtypes = [ctypes.c_float]
@@ -1766,7 +1891,7 @@ def llama_sampler_init_logit_bias(n_vocab: int, n_logit_bias: int, logit_bias: p
 
 def llama_sampler_init_infill(vocab: ptr[llama_vocab]) -> ptr[llama_sampler]:
     """Initialize an infill sampler
-    
+
     This sampler is meant to be used for fill-in-the-middle infilling. It's supposed to be used
     after top_k + top_p sampling"""
     libllama.llama_sampler_init_infill.argtypes = [llama_vocab_p]
@@ -1827,22 +1952,25 @@ def llama_log_set(log_callback: ctypes.c_void_p, user_data: ctypes.c_void_p) -> 
 # Performance utils
 #
 
+# NOTE: ms == milliseconds
+
 class llama_perf_context_data(ctypes.Structure):
     _fields_ = [
-        ("t_start_ms",  ctypes.c_double),
-        ("t_load_ms",   ctypes.c_double),
-        ("t_p_eval_ms", ctypes.c_double),
-        ("t_eval_ms",   ctypes.c_double),
-        ("n_p_eval",    ctypes.c_int32 ),
-        ("n_eval",      ctypes.c_int32 )
+        ("t_start_ms",  ctypes.c_double), # absolute start time
+        ("t_load_ms",   ctypes.c_double), # time needed for loading the model
+        ("t_p_eval_ms", ctypes.c_double), # time needed for processing the prompt
+        ("t_eval_ms",   ctypes.c_double), # time needed for generating tokens
+        ("n_p_eval",    ctypes.c_int32 ), # number of prompt tokens
+        ("n_eval",      ctypes.c_int32 ), # number of generated tokens
+        ("n_reused",    ctypes.c_int32 )  # number of times a ggml compute graph had been reused
     ]
 
 llama_perf_context_data_p = ctypes.POINTER(llama_perf_context_data)
 
 class llama_perf_sampler_data(ctypes.Structure):
     _fields_ = [
-        ("t_sample_ms", ctypes.c_double),
-        ("n_sample",    ctypes.c_int32 )
+        ("t_sample_ms", ctypes.c_double), # time needed for sampling in ms
+        ("n_sample",    ctypes.c_int32 )  # number of sampled tokens
     ]
 
 llama_perf_sampler_data_p = ctypes.POINTER(llama_perf_sampler_data)
@@ -1868,7 +1996,7 @@ def llama_perf_context_print(ctx: ptr[llama_context]) -> None:
 
 def llama_perf_context_reset(ctx: ptr[llama_context]) -> None:
     """AVOID USING
-    
+
     Reset performance data for a context"""
     libllama.llama_perf_context_reset.argtypes = [llama_context_p]
     libllama.llama_perf_context_reset.restype = None
@@ -1895,11 +2023,19 @@ def llama_perf_sampler_reset(smpl: ptr[llama_sampler]) -> None:
     libllama.llama_perf_sampler_reset.restype = None
     libllama.llama_perf_sampler_reset(smpl)
 
+def llama_memory_breakdown_print(ctx: ptr[llama_context]) -> None:
+    """Print a breakdown of per-device memory use via LLAMA_LOG"""
+    libllama.llama_memory_breakdown_print.argtypes = [llama_context_p]
+    libllama.llama_memory_breakdown_print.restype = None
+    libllama.llama_memory_breakdown_print(ctx)
+
 # NOTE: training functions are not included
 
+# ==============================================================================================
 #
 # End of LLAMA_API
 #
+# ==============================================================================================
 
 class _internals:
     """### INTERNAL
@@ -1969,12 +2105,12 @@ class _internals:
         """### INTERNAL
 
         Decode with batch size > 1 (prompt processing).
-        
+
         Return logits for all tokens in the batch. The returned logits have shape 
         `(n_tokens, n_vocab)`.
-        
+
         The logits at index `i` are the predictions for the token at index `i + 1` in the batch.
-        
+
         The last column in the array (`logits[n_tokens]`) contains the logits for the inferred
         next token."""
         batch = llama_batch_init(n_tokens=n_tokens, embd=0, n_seq_max=1)
@@ -2005,7 +2141,7 @@ class _internals:
         """### INTERNAL
 
         Decode with batch size == 1 (text generation).
-        
+
         Return the logits for the inferred next token."""
         batch = llama_batch_init(n_tokens=1, embd=0, n_seq_max=1)
         batch.n_tokens = 1
@@ -2023,7 +2159,7 @@ class _internals:
         c_logits = llama_get_logits(ctx)
         logits: np.ndarray = np.ctypeslib.as_array(c_logits, shape=(1, n_vocab))[0]
         return logits
-    
+
     @staticmethod
     def decode_embd(
         ctx: ptr[llama_context],
@@ -2074,13 +2210,13 @@ class _internals:
             raise RuntimeError(
                 f'decode_embd: llama_decode failed with status code {ret}'
             )
-    
-    # TODO: add internal functions that handle decoding of multiple sequences
-    
+
+    # TODO: add internal functions that handle decoding of multiple sequences?
+
     @staticmethod
     def get_logits(ctx: ptr[llama_context], n_vocab: int) -> np.ndarray:
         """### INTERNAL
-        
+
         Get the logits for the last token decoded."""
         c_last_token_logits = llama_get_logits_ith(ctx, -1)
         return np.ctypeslib.as_array(c_last_token_logits, shape=(1, n_vocab))[0]
@@ -2213,7 +2349,7 @@ class _internals:
             add_special=add_special,
             parse_special=parse_special
         )
-    
+
     @staticmethod
     def get_logit_bias_array(logit_biases: dict[int, float]) -> LogitBiasArrayType:
         """### INTERNAL
@@ -2239,7 +2375,7 @@ class LlamaDeprecatedException(Exception):
 
 def DEPRECATED(new_func: Optional[Callable] = None):
     """Decorator for functions that are marked with DEPRECATED in libllama"""
-    
+
     def decorator(func: Callable):
         def deprecator(*args, **kwargs):
             if new_func is None:

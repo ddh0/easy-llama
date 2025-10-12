@@ -743,9 +743,9 @@ class _LlamaCtx:
         with suppress_output(disable=get_verbose()):
             self.ctx = lib.llama_init_from_model(model.model, self.params)
         null_ptr_check(self.ctx, "self.ctx", "_LlamaCtx.__init__")
-
+        
         with suppress_output(disable=get_verbose()):
-            self.mem: lib.llama_memory_t = lib.llama_get_memory(self.ctx)
+            self.mem = lib.llama_get_memory(self.ctx)
         null_ptr_check(self.mem, "self.mem", "_LlamaCtx.__init__")
     
     def __del__(self):
@@ -1100,7 +1100,7 @@ class Llama:
         null_ptr_check(self._vocab,       'self._vocab',       '_validate_model_state')
 
         if not self.vocab_only:
-            null_ptr_check(self._ctx.ctx,     'self._ctx.ctx',     '_validate_model_state')
+            null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', '_validate_model_state')
         
             _n_context_tokens = len(self.context_tokens)
             _pos = self.pos
@@ -1108,15 +1108,15 @@ class Llama:
             if _pos < 0:
                 self.reset()
                 log_verbose(
-                    f'self.pos value was {self.pos} - clamping to 0. '
-                    f'the memory has been reset.',
+                    f'self.pos value was {_pos} - clamping to 0. '
+                    f'the context has been reset.',
                     2
                 )
             if _pos != _n_context_tokens:
                 self.reset()
                 log_verbose(
                     f'n_context_tokens {_n_context_tokens} did not match self.pos {_pos}. the '
-                    f'memory has been reset.', 2
+                    f'context has been reset.', 2
                 )
             if not hasattr(self, '_default_sampler_params'):
                 self._default_sampler_params = SamplerParams(self)
@@ -1137,15 +1137,6 @@ class Llama:
         log_verbose('warmup: single token decode ...')
         with self._lock:
             _internals.decode_tg(self._ctx.ctx, 0, 0)
-        
-        # this section decodes a full batch of tokens, but is probably unnecessary
-        #
-        # with suppress_output(disable=get_verbose()):
-        #     self.reset()
-        # 
-        # log_verbose('warmup: full batch decode ...')
-        # with self._lock:
-        #     _internals.decode_pp(self._ctx.ctx, 0, [0] * self._n_batch, self._n_batch)
 
         with suppress_output(disable=get_verbose()):
             lib.llama_set_warmup(self._ctx.ctx, False)
@@ -2227,12 +2218,13 @@ class Llama:
     def name(self) -> str:
         """Get the name of the model from the GGUF metadata. Fallback to using the filename
         if the name is not set in the metadata."""
-        # '/path/to/my-model.gguf' --> 'my-model'
-        model_file_basename = os.path.basename(self._model.path_model).removesuffix('.gguf')
-        # 'my-model-00001-of-99999' --> 'my-model'
-        model_file_basename = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
         # use name from metadata if possible
-        model_name = self.metadata.get('general.name', model_file_basename)
+        model_name = self.metadata.get('general.name')
+        if model_name is None:
+            # '/path/to/my-model.gguf' --> 'my-model'
+            model_file_basename = os.path.basename(self._model.path_model).removesuffix('.gguf')
+            # 'my-model-00001-of-99999' --> 'my-model'
+            model_name = re.sub(r'-\d{5}-of-\d{5}$', '', model_file_basename)
         return model_name
     
     def bpw(self) -> float:
@@ -2247,9 +2239,10 @@ class Llama:
         null_ptr_check(self._ctx.ctx, 'self._ctx.ctx', 'Llama.save_state')
 
         state_size_bytes = lib.llama_state_get_size(self._ctx.ctx)
-        state_size_mib = int(state_size_bytes / (1024 * 1024)) # approximate
+        state_size_mib = state_size_bytes / (1024 * 1024)
 
-        log(f'Llama.save_state: state size: {state_size_mib} MiB ({state_size_bytes} bytes)')
+        log_debug(f'{state_size_bytes=}')
+        log(f'Llama.save_state: state size: {state_size_mib:.2f} MiB')
         log(f'Llama.save_state: saving to {file_path} ...')
 
         if os.path.exists(file_path):
@@ -2303,9 +2296,10 @@ class Llama:
             self.pos = n_loaded_tokens
 
             state_size_bytes = lib.llama_state_get_size(self._ctx.ctx)
-            state_size_mib = int(state_size_bytes / (1024 * 1024)) # approximate
+            state_size_mib = state_size_bytes / (1024 * 1024)
 
-            log(f'Llama.load_state: state size: {state_size_mib} MiB ({state_size_bytes} bytes)')
+            log_debug(f'{state_size_bytes=}')
+            log(f'Llama.load_state: state size: {state_size_mib:.2f} MiB')
             log(f'Llama.load_state: successfully loaded state ({n_loaded_tokens} tokens)')
         else:
             raise RuntimeError(f'Llama.load_state: failed to load state')
