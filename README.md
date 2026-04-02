@@ -19,6 +19,14 @@ This repository provides **easy-llama**, a Python package which serves as a wrap
 ' the tree.\nAs a young man I was always a huge fan of the original band and they were the first I ever saw live in concert.\nI always hoped to see the original band get back together with a full reunion tour, but sadly this will not happen.\nI really hope that the original members of'
 ```
 
+---
+
+### ⚠️ Out of date!
+
+I have not updated this project in some time - I have been working directly on and with llama.cpp instead. While I won't completely abandon this project, it may not be maintained for the forseeable future. If you are interested in contributing, feel free to open a PR or an issue, and feel free to ping me @ddh0.
+
+---
+
 ## Quick links
 
 1. [Prerequisites](#prerequisites)
