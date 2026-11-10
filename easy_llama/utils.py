@@ -97,8 +97,8 @@ class LlamaNullException(Exception):
 T = TypeVar('T')
 
 class ptr(Generic[T]):
-    """Generic type hint representing any ctypes pointer. Optionally subscriptable with any
-    type."""
+    """Generic type hint representing any `ctypes` pointer.
+    Optionally subscriptable with any type."""
 
 def set_verbose(state: bool) -> None:
     """Enable or disable verbose terminal output from easy-llama"""
@@ -106,8 +106,8 @@ def set_verbose(state: bool) -> None:
     _VERBOSE = state
 
 def get_verbose() -> bool:
-    """Return `True` if verbose output is enabled in easy-llama, `False` otherwise. If debug
-    output is enabled, this will always `True`."""
+    """Return `True` if verbose output is enabled in easy-llama, `False` otherwise.
+    If debug output is enabled, this will always `True`."""
     global _VERBOSE, _DEBUG
     return _VERBOSE or _DEBUG # force-enable verbose output if debug output is enabled
 
@@ -163,7 +163,7 @@ def KeyboardInterruptHandler():
     try:
         yield
     except KeyboardInterrupt:
-        print(ANSI.MODE_RESET_ALL, end='\n', flush=True)
+        print(ANSI.MODE_RESET_ALL, flush=True)
 
 def softmax(z: _ArrayLike, T: float = 1.0, axis: int = -1) -> np.ndarray:
     """Numerically stable softmax over a specified axis of an arbitrarily shaped array
@@ -190,27 +190,29 @@ def cls() -> None:
         os.system('cls')
     else:
         #os.system('clear')
-        print(ANSI.CLEAR, end='', flush=True)
+        print(ANSI.CLEAR, flush=True)
 
 def truncate(text: str) -> str:
     return text if len(text) < 72 else f"{text[:69]}..."
 
-def ez_encode(txt: str) -> bytes:
-    """Encode the given text `txt` from string to UTF-8. If strict encoding fails, an error
-    will be shown and the offending character(s) will be replaced with `?`."""
+def str_encode(txt: str) -> bytes:
+    """Encode the given text `txt` from string to UTF-8.
+    If strict encoding fails, an error will be shown and the offending character(s) will be
+    replaced with `?`."""
     try:
         return txt.encode('utf-8', errors='strict')
     except UnicodeEncodeError:
         log(f'error encoding string to UTF-8. using ? replacement character.', level=3)
         return txt.encode('utf-8', errors='replace')
 
-def ez_decode(txt: bytes) -> str:
-    """Decode the given text `txt` from UTF-8 to string. If strict decoding fails, an error
-    will be shown and the offending character(s) will be replaced with `�` (U+FFFD)."""
+def str_decode(txt: bytes) -> str:
+    """Decode the given text `txt` from UTF-8 to string.
+    If strict decoding fails, an error will be shown and the offending character(s) will be replaced
+    with `�` (U+FFFD)."""
     try:
         return txt.decode('utf-8', errors='strict')
     except UnicodeDecodeError:
-        log(f'error decoding string from UTF-8. using � replacement character.', level=3)
+        log(f'error decoding string from UTF-8: using replacement character(s)', level=3)
         return txt.decode('utf-8', errors='replace')
 
 _open = open
@@ -224,6 +226,8 @@ def suppress_output(disable: bool = False):
     # NOTE: simply changing sys.stdout and sys.stderr does not affect output from llama.cpp.
     #       this method (or similar) is required to suppress all undesired output, for example
     #       when `verbose=False`.
+    #
+    # credit (idea and approx. impl): abetlen (llama-cpp-python)
 
     if disable:
         yield
@@ -251,9 +255,9 @@ def suppress_output(disable: bool = False):
                 _os.close(saved_stdout_fd)
                 _os.close(saved_stderr_fd)
 
-def null_ptr_check(obj: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
-    """Ensure that the given object `obj` is not NULL / NULLPTR. Raise `LlamaNullException` on
-    failure.
+def _not_null(obj: ptr, ptr_name: str, loc_hint: str) -> None | NoReturn:
+    """Ensure that the given object `obj` is not NULL / NULLPTR.
+    Raise `LlamaNullException` on failure.
 
     - obj:
         The object to check (should be a ctypes pointer of some kind)

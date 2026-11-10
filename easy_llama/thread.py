@@ -11,7 +11,7 @@ from enum      import Enum
 from .sampling import SamplerPreset
 from typing    import Optional, Any, Union
 from .utils    import (
-    _SupportsWriteAndFlush, ANSI, log, ez_encode, suppress_output, KeyboardInterruptHandler,
+    _SupportsWriteAndFlush, ANSI, log, str_encode, suppress_output, KeyboardInterruptHandler,
     exc_to_str, get_verbose
 )
 
@@ -38,25 +38,22 @@ class Thread:
                 f'Thread.__init__: llama must be an instance of {_llama.Llama}, not '
                 f'{type(llama)}'
             )
-        
-        llama._validate_model_state()
 
+        llama._validate_model_state()
         if llama.vocab_only:
             raise RuntimeError(
                 f'Thread.__init__: cannot create a Thread with a vocab-only Llama!'
             )
-        
+
         self.llama = llama
 
-        # this could be None if the GGUF metadata doesn't specify a chat template,
-        # but that's very unlikely in practice
         self._llama_chat_template = self.llama.chat_template()
 
         self.sampler_preset = sampler_preset if sampler_preset is not None else SamplerPreset()
         self.chat_template = chat_template if chat_template is not None else self._llama_chat_template
         self.chat_template_kwargs = chat_template_kwargs if chat_template_kwargs is not None else {}
         self.messages: list[dict[str, Union[Role, str]]] = []
-    
+
     def __repr__(self) -> str:
         return (
             f"Thread("
@@ -82,10 +79,6 @@ class Thread:
                 f"Thread using `chat_template`."
             )
             raise ValueError(exc_str, hint)
-        
-        #
-        # convert the chat template string into an actual jinja2 template
-        #
 
         try:
             template: jinja2.Template = jinja2.Template(self.chat_template)
@@ -93,10 +86,6 @@ class Thread:
             exc_str = f"_render_msgs: error creating chat template: {exc_to_str(exc)}"
             log(exc_str, 3)
             raise ValueError(exc_str) from exc
-        
-        #
-        # convert all messages in the thread into the format expected by the chat template
-        #
 
         jinja_messages = []
 
@@ -114,7 +103,7 @@ class Thread:
 
             if len(content) == 0:
                 log(f'_render_msgs: {role} message content is empty (keeping anyway)', 2)
-            
+
             if role == Role.SYSTEM:
                 jinja_messages.append({'role': 'system', 'content': content})
             elif role == Role.USER:
@@ -123,23 +112,15 @@ class Thread:
                 jinja_messages.append({'role': 'assistant', 'content': content})
             else:
                 raise ValueError(f'_render_msgs: message has invalid role {role!r}')
-        
-        #
-        # set the context data used when rendering the template
-        #
-        
-        context = {
+
+        conv_context = {
             'messages': jinja_messages,
             'add_generation_prompt': add_generation_prompt,
             **self.chat_template_kwargs
         }
 
-        #
-        # finally, render the chat template and return the resulting string
-        #
-
         try:
-            return template.render(context)
+            return template.render(conv_context)
         except Exception as exc:
             exc_str = (
                 f"_render_msgs: error rendering chat template with context: {exc_to_str(exc)}"
@@ -152,22 +133,17 @@ class Thread:
 
         - add_generation_prompt:
             Whether or not to include the bot prefix tokens at the end of the input IDs."""
-
-        # render the messages using the provided context
         thread_chat_string = self._render_msgs(add_generation_prompt=add_generation_prompt)
-
-        # tokenize the rendered chat template
         input_ids = self.llama.tokenize(
-            text_bytes=ez_encode(thread_chat_string),
+            text_bytes=str_encode(thread_chat_string),
             add_special=True,
             parse_special=True
         )
-        
         return input_ids
-    
+
     def send(self, content: str, n_predict: Optional[int] = None) -> str:
-        """Send a message in this thread and return the generated response. This adds your
-        message and the bot's message to the thread."""
+        """Send a message in this thread and return the generated response.
+        This adds your message and the bot's message to the thread."""
         self.messages.append({
             'role': Role.USER,
             'content': content
@@ -175,7 +151,7 @@ class Thread:
         response_toks = self.llama.generate(
             input_tokens=self.get_input_ids(add_generation_prompt=True),
             n_predict=n_predict if n_predict is not None else -1,
-            stop_tokens=self._stop_tokens,
+            stop_tokens=self._stop_tokens, # FIXME
             sampler_preset=self.sampler_preset
         )
         response_txt = self.llama.detokenize(response_toks, special=False)
@@ -184,20 +160,18 @@ class Thread:
             'content': response_txt
         })
         return response_txt
-    
+
     def set_sys_prompt(self, content: str) -> None:
         """Set the system prompt used in this thread."""
         if len(self.messages) > 0 and self.messages[0]['role'] == Role.SYSTEM:
-            # overwrite existing system message
             self.messages[0]['content'] = content
         else:
-            # insert system message if none exists
             self.messages.insert(0, {'role': Role.SYSTEM, 'content': content})
 
     def as_string(self) -> str:
         """Return this thread's message history as a string"""
         return self._render_msgs(add_generation_prompt=False)
-    
+
     def add_message(self, role: Role, content: str) -> None:
         """Append a message to `Thread.messages` with the specified role and content
 
@@ -208,7 +182,7 @@ class Thread:
         if role not in Role:
             raise ValueError(f'Thread.add_message: invalid role {role!r}')
         self.messages.append({'role': role, 'content': content})
-    
+
     def warmup(self) -> None:
         """Ingest the content of this thread into the model's memory"""
         input_ids = self.get_input_ids()
@@ -216,11 +190,8 @@ class Thread:
             _llama.log_verbose('Thread.warmup: processing thread content with model ...')
             with suppress_output(disable=get_verbose()):
                 self.llama.generate(input_tokens=input_ids, n_predict=0)
-        
-        # if the above condition is not True, the thread is already in the cache, so
-        # nothing needs to be done
         _llama.log_verbose('Thread.warmup: done')
-    
+
     def interact(self, stream: bool = True, n_predict: Optional[int] = None) -> None:
         """Start an interactive terminal-based chat using this thread"""
         R = ANSI.MODE_RESET_ALL
@@ -231,14 +202,10 @@ class Thread:
             while True:
                 user_input = input(f'{R}  > {G}')
                 print(R, end='\n', flush=True)
-                
+
                 if stream:
-                    # add input as a user message
                     self.messages.append({'role': Role.USER, 'content': user_input})
-
-                    # get input tokens
                     input_ids = self.get_input_ids(add_generation_prompt=True)
-
                     # stream UTF8 characters (as individual strings)
                     char_gen = self.llama.stream_chars(
                         input_tokens=input_ids,
@@ -246,25 +213,22 @@ class Thread:
                         stop_tokens=self.llama.eog_tokens,
                         sampler_preset=self.sampler_preset
                     )
-                    
                     # print characters as they are generated
                     response_chars = []
                     for char in char_gen:
                         response_chars.append(char)
                         print(f"{B}{char}{R}", end='', flush=True)
-                    
                     # add complete response string as a bot message
                     response_str = "".join(response_chars)
                     self.messages.append({'role': Role.BOT, 'content': response_str})
-
                     print()
                     if not get_verbose():
                         print()
-                
+
                 else:
                     response = self.send(content=user_input, n_predict=n_predict)
                     print(f'\n{B}{response}{R}\n')
-    
+
     def summarize(self) -> str:
         """Generate a summary of this thread"""
         thread_as_string = self.as_string()
@@ -277,7 +241,7 @@ class Thread:
             },
             {
                 'role': Role.USER,
-                'content': 'Take a moment to read through the following conversation '
+                'content': 'Please take your time to read through the following conversation '
                            'carefully. When you\'re done, write a single paragraph that '
                            'explains all of the most relevant details.'
                            f'\n\n```\n{thread_as_string}\n```\n\n'
@@ -303,6 +267,6 @@ class Thread:
         print(f"{n_thread_tokens} / {n_ctx} tokens", file=_file)
         print(f"{ctx_used_pct}% of context used", file=_file)
         print(f"{n_msgs} messages", file=_file)
-    
+
     def reset(self) -> None:
         self.messages: list[dict[str, Union[Role, str]]] = []
